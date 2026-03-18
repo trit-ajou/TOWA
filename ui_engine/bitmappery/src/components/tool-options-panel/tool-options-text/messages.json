@@ -1,0 +1,14 @@
+{
+    "en-US": {
+        "typeYourTextHere": "Type your text here",
+        "font": "Font",
+        "size": "Size",
+        "lineHeight": "Line height",
+        "letterSpacing": "Letter spacing",
+        "color": "Color",
+        "pixels": "Px",
+        "points": "Pts",
+        "millis": "Mm",
+        "centis": "Cm"
+    }
+}
