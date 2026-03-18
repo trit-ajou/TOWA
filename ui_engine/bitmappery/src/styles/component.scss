@@ -1,0 +1,57 @@
+@use "_colors";
+@use "_mixins";
+@use "_variables";
+@use "typography";
+
+@mixin component {
+    position: relative;
+    box-shadow: 0 0 5px rgba(0,0,0,.5);
+    background-image: colors.$color-window-bg;
+
+    .component__header {
+        display: flex;
+        align-items: center;
+        margin: 0;
+        padding: 0 variables.$spacing-medium;
+        @include mixins.boxSize();
+        @include mixins.truncate();
+        @include typography.customFont();
+        color: colors.$color-text;
+        background-image: colors.$color-window-bg;
+        height: variables.$heading-height;
+        border-bottom: 1px solid colors.$color-1;
+    }
+
+    .component__title {
+        display: block;
+        margin: 0;
+        padding: 0;
+        width: calc(100% - 24px); // minus close button width
+        text-overflow: ellipsis;
+        overflow: hidden;
+        color: colors.$color-text;
+
+        &--no-action {
+            width: 100%;
+        }
+    }
+
+    .component__content {
+        @include mixins.boxSize();
+
+        @include mixins.large() {
+            padding: variables.$spacing-medium;
+            height: calc(100% - #{variables.$heading-height});
+        }
+        @include mixins.mobile() {
+            padding: variables.$spacing-xsmall variables.$spacing-small;
+        }
+    }
+
+    .component__header-button {
+        cursor: pointer;
+        position: absolute;
+        top: variables.$spacing-small;
+        right: variables.$spacing-medium;
+    }
+}

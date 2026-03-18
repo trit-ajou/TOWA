@@ -1,0 +1,36 @@
+{
+    "en-US": {
+        "bitmappery": "BitMappery",
+        "areYouSure": "Are you sure?",
+        "closeDocumentWarning": "Are you sure you want to close \"{document}\" ? If you have pending changes these will be lost.",
+        "loadedFileSuccessfully": "Loaded document \"{file}\"",
+        "savedFileSuccessfully": "Saved document \"{file}\"",
+        "errorLoadingFile": "An error occured during the loading of \"{file}\"",
+        "selectionCopied": "Selection copied",
+        "selectionCut": "Selection cut",
+        "warningUnload": "You are about to close BitMappery. Confirmation means you have either saved your pending changes or are aware these will otherwise be lost.",
+        "selectionInverted": "Selection inverted",
+        "corsError": "Could not open file '{file}' as the owner does not allow cross-origin sharing",
+        "importError": "Could not import file '{file}'",
+        "fonts": {
+            "consentRequired": "Consent required",
+            "consentExpl": "You are about to use text within a BitMappery document. BitMappery text is rendered using Google Fonts, which is a free to use online service providing a large range of type faces. \n\nBecause we can't have nice things, the EU requires sites to request explicit approval before serving Google Fonts to end users under GDPR (even though no cookies are placed by use of the service).\n\nIf you are not in the EU or of the understanding that usage of Google Fonts does not surrender any personal information to Google or evil ad networks, you can provide consent by clicking OK.\n\nYou can also choose to reject using Google Fonts and continue using BitMappery with fallback fonts (or not use text at all). When in doubt, consult the privacy policy."
+        },
+        "title": {
+            "success": "Success",
+            "error": "Error"
+        },
+        "cloud": {
+            "establishConnection": "Establish connection",
+            "privacyPolicy": "BitMappery privacy policy",
+            "login": "Login",
+            "connectedToDropbox": "Connected to Dropbox",
+            "connectedToDrive": "Connected to Google Drive",
+            "connectionExplDropbox": "In order to import files from or save projects to Dropbox you must first connect to Dropbox and grant BitMappery read and write permission. Dropbox connects directly to your machine without middleware, keeping your data private at all times.\n\nFor more information, consult the privacy policy.",
+            "connectionExplDrive": "In order to import files from or save projects to Google Drive you must first connect to Google Drive and grant BitMappery read and write permission.\n\nDrive operates under stricter restrictions than Dropbox, it is not possible to access just any file or folder in your Google Drive, only those created by the BitMappery app.\n\nGoogle Drive connects directly to your machine without any middleware, keeping your data and file access private at all times. For more information, consult the privacy policy.",
+            "errorLoadingDrive": "An unknown error has occurred while loading the Google Drive API",
+            "notAllPermissionsGrantedDrive": "Not all required read and write permissions were granted. Without these BitMappery cannot use Google Drive. If this was by mistake, reconnect and tick the appropriate permission box.",
+            "errorConnectingS3": "An unknown error has occurred while connecting to S3"
+        }
+    }
+}

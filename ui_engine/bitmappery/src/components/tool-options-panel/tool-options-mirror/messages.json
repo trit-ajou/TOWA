@@ -1,0 +1,9 @@
+{
+    "en-US": {
+        "mirror": "Mirror",
+        "mirrorLayers": "Mirrors layer over the horizontal or vertical axis, or both axes.",
+        "horizontal": "Horizontal",
+        "vertical": "Vertical",
+        "reset": "Reset"
+    }
+}

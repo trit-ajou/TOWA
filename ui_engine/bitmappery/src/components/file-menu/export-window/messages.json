@@ -1,0 +1,24 @@
+{
+    "en-US": {
+        "exportImage": "Export image",
+        "imageType": "Image type",
+        "imageQuality": "Image quality",
+        "fileName": "File name",
+        "original": "Original",
+        "exported": "{type} quality: {quality}%",
+        "syncScroll": "Sync scroll",
+        "layersToAnimation": "As animation",
+        "frameDuration": "Frame duration (ms)",
+        "layersToSheetExpl": "This document contains layers and seems to be of appropriate size. You can combine the layers into a grid layout (e.g. create a spritesheet)",
+        "layersToSpriteSheet": "Merge into sheet",
+        "columnAmount": "Column amount",
+        "export": "Export",
+        "cancel": "Cancel",
+        "viewActualSize": "View actual size",
+        "storageLocation": "Storage location",
+        "local": "Local",
+        "dropbox": "Dropbox",
+        "drive": "Google Drive",
+        "s3": "S3 bucket"
+    }
+}

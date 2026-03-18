@@ -1,0 +1,13 @@
+{
+    "en-US": {
+        "saveDocument": "Save document",
+        "documentTitle": "Document title",
+        "storageLocation": "Storage location",
+        "local": "Local",
+        "dropbox": "Dropbox",
+        "drive": "Google Drive",
+        "s3": "S3 bucket",
+        "save": "Save",
+        "cancel": "Cancel"
+    }
+}
