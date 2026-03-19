@@ -20,6 +20,8 @@
  * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
+import { isFeatureEnabled } from "@/config/towa-features";
+
 let dropbox: any;
 let drive: any;
 let s3: any;
@@ -27,6 +29,7 @@ let s3: any;
 // Dropbox
 
 export const supportsDropbox = (): boolean => {
+    if ( !isFeatureEnabled( "CLOUD_DROPBOX" )) return false;
     // @ts-expect-error import.meta unsupported for current module option (no issue, Vite will replace)
     return !!import.meta.env.VITE_DROPBOX_API_KEY;
 };
@@ -41,6 +44,7 @@ export const getDropboxService = async (): Promise<any> => {
 // Google Drive
 
 export const supportsGoogleDrive = (): boolean => {
+    if ( !isFeatureEnabled( "CLOUD_GOOGLE_DRIVE" )) return false;
     // @ts-expect-error import.meta unsupported for current module option (no issue, Vite will replace)
     return !!import.meta.env.VITE_DRIVE_API_KEY;
 };
@@ -55,6 +59,7 @@ export const getGoogleDriveService = async (): Promise<any> => {
 // AWS S3
 
 export const supportsS3 = (): boolean => {
+    if ( !isFeatureEnabled( "CLOUD_S3" )) return false;
     // @ts-expect-error import.meta unsupported for current module option (no issue, Vite will replace)
     return !!import.meta.env.VITE_S3_ACCESS_KEY;
 };
