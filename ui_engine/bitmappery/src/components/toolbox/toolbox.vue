@@ -104,6 +104,7 @@ import { PANEL_TOOL_OPTIONS } from "@/definitions/panel-types";
 import { addTextLayer } from "@/store/actions/layer-add-text-layer";
 import { isMobile } from "@/utils/environment-util";
 import ToolTypes, { canDraw } from "@/definitions/tool-types";
+import { isFeatureEnabled, type FeatureKey } from "@/config/towa-features";
 import messages  from "./messages.json";
 
 type ToolDef = {
@@ -149,8 +150,8 @@ export default {
         },
         tools(): ToolDef[] {
             const drawable = !!this.activeLayer && canDraw( this.activeDocument, this.activeLayer, this.activeLayerMask );
-            
-            return [
+
+            return ([
                 {
                     type: ToolTypes.MOVE,
                     i18n: "panViewport", icon: "move", key: "P / Space + Drag",
@@ -226,7 +227,7 @@ export default {
                     i18n: "zoom", icon: "zoom", key: "Z",
                     disabled: !this.activeDocument, hasOptions: true
                 },
-            ]
+            ] as ToolDef[]).filter( tool => isFeatureEnabled( `TOOL_${tool.type.toUpperCase()}` as FeatureKey ));
         },
         color: {
             get(): string {

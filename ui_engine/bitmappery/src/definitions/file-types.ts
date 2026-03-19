@@ -22,6 +22,7 @@
  */
 import { ALL_IMAGE_TYPES, ACCEPTED_IMAGE_TYPES, ACCEPTED_IMAGE_EXTENSIONS, JPEG } from "@/definitions/image-types";
 import { type FileNode } from "@/definitions/storage-types";
+import { isFeatureEnabled } from "@/config/towa-features";
 
 export const PROJECT_FILE_EXTENSION = "bpy"; // BitMappery document
 export const PREVIEW_THUMBNAIL = "bpp"; // BitMappery document preview
@@ -29,9 +30,21 @@ export const PREVIEW_THUMBNAIL = "bpp"; // BitMappery document preview
 export const PSD = { mime: "image/vnd.adobe.photoshop", ext: "psd" };
 export const PDF = { mime: "application/pdf", ext: "pdf" };
 
-export const ACCEPTED_FILE_TYPES      = [ ...ACCEPTED_IMAGE_TYPES, PSD.mime, PDF.mime ];
-export const ACCEPTED_FILE_EXTENSIONS = [ ...ACCEPTED_IMAGE_EXTENSIONS, PROJECT_FILE_EXTENSION, PSD.ext, PDF.ext ];
-export const THIRD_PARTY_DOCUMENTS    = [ PSD, PDF ];
+export const ACCEPTED_FILE_TYPES = [
+    ...ACCEPTED_IMAGE_TYPES,
+    ...( isFeatureEnabled( "FILE_PSD_IMPORT" ) ? [ PSD.mime ] : [] ),
+    ...( isFeatureEnabled( "FILE_PDF_IMPORT" ) ? [ PDF.mime ] : [] ),
+];
+export const ACCEPTED_FILE_EXTENSIONS = [
+    ...ACCEPTED_IMAGE_EXTENSIONS,
+    PROJECT_FILE_EXTENSION,
+    ...( isFeatureEnabled( "FILE_PSD_IMPORT" ) ? [ PSD.ext ] : [] ),
+    ...( isFeatureEnabled( "FILE_PDF_IMPORT" ) ? [ PDF.ext ] : [] ),
+];
+export const THIRD_PARTY_DOCUMENTS = [
+    ...( isFeatureEnabled( "FILE_PSD_IMPORT" ) ? [ PSD ] : [] ),
+    ...( isFeatureEnabled( "FILE_PDF_IMPORT" ) ? [ PDF ] : [] ),
+];
 
 export const isImageFile = ( item: File ): boolean => ACCEPTED_IMAGE_TYPES.includes( item.type );
 

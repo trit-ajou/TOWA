@@ -176,6 +176,7 @@ import { MAX_SPRITESHEET_WIDTH } from "@/definitions/editor-properties";
 import { EXPORTABLE_IMAGE_TYPES, GIF, typeToExt, isCompressableFileType } from "@/definitions/image-types";
 import { STORAGE_TYPES } from "@/definitions/storage-types";
 import { supportsGIF, createGIF, createAnimatedGIF } from "@/services/gif-creation-service";
+import { isFeatureEnabled } from "@/config/towa-features";
 import { mapSelectOptions, type SelectOption }  from "@/utils/search-select-util";
 import { isLandscape, isSquare } from "@/math/image-math";
 import { canvasToBlob, resizeImage, getPixelRatio } from "@/utils/canvas-util";
@@ -306,7 +307,7 @@ export default {
         },
     },
     created(): void {
-        this.canCreateGIF = supportsGIF();
+        this.canCreateGIF = isFeatureEnabled( "FILE_GIF_EXPORT" ) && supportsGIF();
         if ( this.showOriginal ) {
             this.syncPreviews = true;
         }

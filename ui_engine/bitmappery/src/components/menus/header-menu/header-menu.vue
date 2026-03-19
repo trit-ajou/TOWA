@@ -195,7 +195,7 @@
                     :class="{ 'submenu--opened': activeSubMenu === 'document' }"
                     @click="close()"
                 >
-                    <li>
+                    <li v-if="featureDocResize">
                         <button
                             v-t="'resizeDocument'"
                             type="button"
@@ -203,7 +203,7 @@
                             @click="requestDocumentResize()"
                         ></button>
                     </li>
-                    <li>
+                    <li v-if="featureDocCanvasSize">
                         <button
                             v-t="'canvasSize'"
                             type="button"
@@ -211,7 +211,7 @@
                             @click="requestCanvasResize()"
                         ></button>
                     </li>
-                    <li>
+                    <li v-if="featureDocCropSelection">
                         <button
                             v-t="'cropToSelection'"
                             type="button"
@@ -219,7 +219,7 @@
                             @click="requestCropToSelection()"
                         ></button>
                     </li>
-                    <li>
+                    <li v-if="featureDocGridToLayers">
                         <button
                             v-t="'sliceGridToLayers'"
                             type="button"
@@ -379,6 +379,7 @@ import { getCanvasInstance } from "@/services/canvas-service";
 import { cropToSelection } from "@/store/actions/crop-to-selection";
 import { supportsFullscreen, setToggleButton } from "@/utils/environment-util";
 import { supportsDropbox, supportsGoogleDrive, supportsS3 } from "@/utils/cloud-service-loader";
+import { isFeatureEnabled } from "@/config/towa-features";
 import sharedMessages from "@/messages.json"; // for CloudServiceConnector
 import messages from "./messages.json";
 
@@ -415,6 +416,18 @@ export default {
             "pixelGrid",
         ]),
         supportsFullscreen,
+        featureDocResize(): boolean {
+            return isFeatureEnabled( "DOC_RESIZE" );
+        },
+        featureDocCanvasSize(): boolean {
+            return isFeatureEnabled( "DOC_CANVAS_SIZE" );
+        },
+        featureDocCropSelection(): boolean {
+            return isFeatureEnabled( "DOC_CROP_SELECTION" );
+        },
+        featureDocGridToLayers(): boolean {
+            return isFeatureEnabled( "DOC_GRID_TO_LAYERS" );
+        },
         noDocumentsAvailable(): boolean {
             return !this.activeDocument;
         },
