@@ -2,6 +2,11 @@
 
 FastAPI 기반 `service_engine` 초안입니다.
 
+문서:
+
+- 현재 wire contract: [API_CONTRACT.md](/home/user/dev/TOWA/service_engine/API_CONTRACT.md)
+- 현재 경계/비목표: [ARCHITECTURE.md](/home/user/dev/TOWA/service_engine/ARCHITECTURE.md)
+
 현재 범위:
 
 - `POST /auth/dev/login`
@@ -46,6 +51,12 @@ pytest
 uvicorn app.main:app --reload
 ```
 
+### 6. 마이그레이션 적용
+
+```bash
+.venv/bin/python -m app.cli.dev_admin migrate
+```
+
 ## If `python3 -m venv` Fails
 
 일부 환경에서는 `ensurepip`가 빠져 있어서 기본 `venv` 생성이 실패할 수 있습니다.
@@ -66,9 +77,39 @@ curl -fsSL https://bootstrap.pypa.io/get-pip.py -o /tmp/get-pip.py
 .venv/bin/uvicorn app.main:app --reload
 ```
 
+## Dev CLI
+
+다른 engine과 merge 전에 `service_engine` 단독으로 상태를 준비할 수 있도록 dev CLI를 제공한다.
+
+### Seed User
+
+```bash
+.venv/bin/python -m app.cli.dev_admin seed-user \
+  --email user@example.com \
+  --nickname tester \
+  --initial-balance 1000
+```
+
+### Grant Credits
+
+```bash
+.venv/bin/python -m app.cli.dev_admin grant-credits \
+  --email user@example.com \
+  --units 500
+```
+
+### Reset Credits
+
+```bash
+.venv/bin/python -m app.cli.dev_admin reset-credits \
+  --email user@example.com \
+  --balance 1000
+```
+
+`reset-credits`는 held credit이 남아 있으면 거부한다.
+
 ## Notes
 
 - `.venv/`는 Git에 포함하지 않습니다.
 - 시스템 Python이나 `~/.local` user site에 패키지를 설치하지 않는 것을 기준으로 합니다.
 - PostgreSQL migration 테스트는 `TEST_DATABASE_URL`이 있어야 실행됩니다.
-
