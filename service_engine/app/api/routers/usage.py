@@ -93,7 +93,7 @@ def release_usage_job(
 @router.get(
     "/jobs/{job_id}",
     response_model=UsageJobResponse,
-    responses=openapi_error_responses(401, 404, 409),
+    responses=openapi_error_responses(401, 404, 409, 422),
 )
 def get_usage_job(
     job_id: UUID,
@@ -109,4 +109,3 @@ def get_usage_job(
     except Exception as exc:  # noqa: BLE001
         raise_usage_http_error(exc)
     return UsageJobResponse.model_validate(result)
-
