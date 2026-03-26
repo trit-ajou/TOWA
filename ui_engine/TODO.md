@@ -62,6 +62,25 @@
    - 상단 메뉴바 또는 네비게이션
    - 모달/팝업 기본 컴포넌트
 
+6. **Deployment Mode 시스템 (`cloud` / `standalone`)**
+   - `config/deployment.ts`에 deployment mode 정의
+     ```ts
+     type DeploymentMode = 'cloud' | 'standalone'
+     const DEPLOYMENT_MODE: DeploymentMode = import.meta.env.VITE_DEPLOYMENT_MODE ?? 'standalone'
+     ```
+   - `useDeploymentMode()` composable 제공 (`isCloud`, `isStandalone` 등)
+   - **탭/섹션 단위 제어**: 각 탭/섹션 정의에 `mode: 'all' | 'cloud' | 'standalone'` 필드 포함
+     ```ts
+     { id: 'account', label: '계정', mode: 'cloud' }
+     { id: 'local-model', label: '모델 연결', mode: 'standalone' }
+     { id: 'general', label: '일반', mode: 'all' }
+     ```
+   - 컴포넌트 내부 `v-if` 분기보다 탭/섹션 통째로 태그하는 방식 우선
+   - **분기 기준**:
+     - 서비스 엔진 통신이 필요한 기능 → `cloud` (당장은. 추후 standalone에서도 열릴 수 있음)
+     - 로컬 모델 연결/설정 UI → `standalone`
+     - 나머지 → `all`
+
 ### 참고
 - CLAUDE.md와 towa_project_description.md의 화면 구성 참조
 - **bitmappery의 기존 UI 스타일을 따르지 않음** — 독자적으로 깔끔하고 완성도 높은 디자인 추구
