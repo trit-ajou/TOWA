@@ -1,0 +1,64 @@
+@import "tailwindcss";
+
+@theme {
+  --color-towa-bg: var(--towa-bg);
+  --color-towa-surface: var(--towa-surface);
+  --color-towa-surface-light: var(--towa-surface-light);
+  --color-towa-accent: #9569B4;
+  --color-towa-accent-hover: #7d56a0;
+  --color-towa-pink: #e84a8a;
+  --color-towa-green: #4ade80;
+  --color-towa-warning: #fb8b24;
+  --color-towa-danger: #F44174;
+  --color-towa-text: var(--towa-text);
+  --color-towa-text-muted: var(--towa-text-muted);
+  --color-towa-border: var(--towa-border);
+}
+
+/* Dark theme (default) */
+:root,
+html.dark {
+  --towa-bg: #0f0d18;
+  --towa-surface: #1a1726;
+  --towa-surface-light: #2a2540;
+  --towa-text: #e6e6e6;
+  --towa-text-muted: #9ca3af;
+  --towa-border: #332e4a;
+}
+
+/* Light theme */
+html.light {
+  --towa-bg: #f5f3f8;
+  --towa-surface: #ffffff;
+  --towa-surface-light: #ede8f4;
+  --towa-text: #1a1726;
+  --towa-text-muted: #6b7280;
+  --towa-border: #d4cfe0;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background-color: var(--towa-bg);
+  color: var(--towa-text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--towa-bg);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--towa-surface-light);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--towa-text-muted);
+}
