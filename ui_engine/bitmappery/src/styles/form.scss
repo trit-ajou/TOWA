@@ -1,0 +1,79 @@
+@use "_colors";
+@use "_mixins";
+@use "_variables";
+@use "typography";
+
+$labelWidth: 35%;
+$inputWidth: 65%;
+
+.form {
+    .wrapper {
+        margin: variables.$spacing-small 0;
+
+        // use where there is no <label> element
+        &.full {
+            width: 200%;
+            margin-left: variables.$spacing-xsmall;
+
+            &.slider .slider-input {
+                width: 48% !important;
+            }
+        }
+
+        label {
+            display: inline-block;
+            width: $labelWidth;
+        }
+
+        .input-field,
+        .input-textarea,
+        .slider-input,
+        .form-element {
+            display: inline-block;
+            width: $inputWidth;
+        }
+        .color-picker {
+            display: inline-block;
+            margin: variables.$spacing-xsmall;
+        }
+        .slider-input {
+            vertical-align: middle;
+        }
+        .input-field,
+        .input-textarea {
+            box-sizing: border-box;
+            border-radius: variables.$spacing-small;
+            border: none;
+            padding: variables.$spacing-small variables.$spacing-medium;
+            font-size: 95%;
+            @include typography.bodyFont();
+        }
+
+        .full {
+            width: 100%; // when elements have no label
+        }
+
+        // when there are multiple inputs within a single wrapper
+        // this is a wrapper following the <label> element
+        .shared-inputs {
+            display: inline-flex;
+            width: $inputWidth;
+            justify-content: space-around;
+        
+            .input-field,
+            .input-textarea,
+            .slider-input,
+            .select-box-wrapper,
+            .form-element {
+                width: 76px !important;
+            }
+        }
+    }
+
+    .fieldset {
+        border: 1px solid colors.$color-bg;
+        border-radius: variables.$spacing-small;
+        padding: variables.$spacing-xsmall variables.$spacing-medium;
+        margin: variables.$spacing-medium 0;
+    }
+}

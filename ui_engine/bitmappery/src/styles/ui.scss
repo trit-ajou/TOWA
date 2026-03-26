@@ -1,0 +1,328 @@
+@use "_colors";
+@use "_mixins";
+@use "_variables";
+@use "typography";
+
+@mixin overlay() {
+    // mobile first, override in custom inheriting classes
+    // what the desktop / tablet views should look like
+    position: fixed;
+    z-index: 500;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 3px 10px rgba(0, 0, 0, .75) !important;
+
+    .header {
+        width: 100%;
+        display: inline-block;
+
+        h2 {
+            float: left;
+            margin: 0;
+        }
+
+        .help-button {
+            position: absolute;
+            top: variables.$spacing-medium;
+            right: (variables.$spacing-xlarge + variables.$spacing-medium);
+        }
+    }
+
+    .close-button {
+        position: absolute;
+        top: variables.$spacing-medium;
+        right: variables.$spacing-large;
+        @include closeButton();
+    }
+}
+
+/**
+ * Base behaviour for a modal window. A modal should be displayed inside the modal.vue component
+ * which also applies overlay() and component()-mixin stylings.
+ *
+ * By invoking this mixin when providing your modal with a custom class, you can specify custom
+ * dimensions. The modal will be fixed at those dimensions when there is sufficient screen space.
+ * If not, it will accommodate responsive sizing for each edge below given threshold. On mobile, when
+ * both $width and $height thresholds can't be met, the modal becomes fullscreen (as defined by overlay())
+ */
+@mixin modalBase( $width, $height ) {
+    @include mixins.minWidth( $width ) {
+        width: $width;
+
+        .component__content {
+            padding: variables.$spacing-medium variables.$spacing-large;
+        }
+    }
+
+    @include mixins.minWidthFallback( $width ) {
+        .component__content {
+            padding: variables.$spacing-small variables.$spacing-medium;
+        }
+    }
+
+    $actionsHeight: 74px;
+    $heightPlusActions: $height + $actionsHeight;
+
+    @include mixins.minHeight( $heightPlusActions ) {
+        height: $heightPlusActions;
+    }
+
+    @include mixins.minHeightFallback( $heightPlusActions ) {
+        .component__actions {
+            position: fixed;
+        }
+    }
+
+    /* when on mobile, if one of the given dimensions doesn't match, force fullscreen overlay */
+
+    @include mixins.mobile() {
+        @include mixins.componentFallback( $width, $heightPlusActions ) {
+            width: 100% !important;
+            height: 100% !important;
+        }
+    }
+}
+
+@mixin closeButton() {
+    cursor: pointer;
+    background: none;
+    color: colors.$color-lines;
+    border: 2px solid colors.$color-lines;
+    border-radius: 5px;
+    padding: variables.$spacing-xxsmall #{variables.$spacing-xsmall + variables.$spacing-xxsmall};
+
+    &:hover {
+        color: colors.$color-4;
+        border-color: colors.$color-4;
+    }
+}
+
+.button {
+    $buttonColor: colors.$color-2;
+    cursor: pointer;
+    padding: #{variables.$spacing-xsmall + variables.$spacing-small} variables.$spacing-medium;
+    border: none;// 2px solid #FFF;
+    @include typography.customFont();
+    border-radius: variables.$spacing-large;
+    font-weight: bold;
+    font-size: 100%;
+    background-color: $buttonColor;
+    color: colors.$color-text;
+
+    &:hover {
+        background-color: colors.$color-4;
+        border-color: colors.$color-4;
+        color: #FFF;
+    }
+
+    &:disabled {
+        cursor: default;
+        background-color: colors.$color-bg-dark !important;
+        color: colors.$color-bg !important;
+        border-color: colors.$color-bg !important;
+    }
+
+    &--block {
+        display: block;
+        text-align: center;
+    }
+
+    &--small {
+        font-size: 75%;
+        padding: variables.$spacing-xsmall variables.$spacing-small;
+        border-radius: variables.$spacing-medium;
+        border: 2px solid colors.$color-bg;
+    }
+
+    &--ghost {
+        background: transparent;
+        border: none;
+    }
+
+    &--primary {
+        border: 2px solid colors.$color-1;
+        background: transparent;
+    }
+
+    &--secondary {
+        border: 2px solid colors.$color-4;
+        background: transparent;
+    }
+}
+
+@mixin actionsFooter() {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    text-align: center;
+    display: flex;
+    padding: variables.$spacing-small variables.$spacing-medium;
+    box-sizing: border-box;
+
+    button {
+        flex: 1;
+        margin: variables.$spacing-small;
+    }
+}
+
+@mixin nestedMenu() {
+    .menu-list {
+        flex: 1;
+        list-style-type: none;
+        padding: 0;
+        margin: 0;
+        @include mixins.boxSize();
+
+        li {
+            display: inline-block;
+            padding: 0 variables.$spacing-medium 0 0;
+            margin: 0;
+            font-family: Montserrat, Helvetica, Verdana;
+            cursor: pointer;
+
+            a {
+                color: #b6b6b6;
+                text-decoration: none;
+                padding-bottom: variables.$spacing-large;
+            }
+
+            &:hover,
+            &:hover a {
+                color: colors.$color-1;
+                border-bottom: none;
+                text-decoration: none;
+            }
+
+            &.active {
+                a {
+                    border-bottom: 3px solid #555;
+                }
+            }
+
+            button {
+                background: none;
+                cursor: pointer;
+                border: none;
+                color: #b6b6b6;
+                margin: 0;
+                padding: 0;
+                font-size: 95%;
+
+                &:disabled {
+                    color: colors.$color-bg !important;
+                }
+
+                &.checked::before {
+                    content: "\2713";
+                    margin-right: variables.$spacing-small;
+                }
+
+                &:hover {
+                    color: colors.$color-4;
+                }
+            }
+
+            @include mixins.large() {
+                &:hover, &:focus {
+                    a {
+                        color: colors.$color-1;
+                    }
+                    .submenu {
+                        display: block;
+                        z-index: 2;
+                    }
+                }
+
+                .submenu {
+                    display: none;
+                }
+            }
+        }
+    }
+
+    .submenu {
+        list-style: none;
+
+        li {
+            padding: variables.$spacing-small 0;
+
+            @include mixins.large() {
+                display: block;
+                color: #b6b6b6;
+                padding: variables.$spacing-xsmall variables.$spacing-small;
+                
+                &:hover {
+                    color: #FFF;
+                }
+            }
+        }
+
+        @include mixins.large() {
+            position: absolute;
+            box-shadow: 0 0 5px rgba(0,0,0,.5);
+            padding: variables.$spacing-medium;
+            background-image: colors.$color-window-bg;
+            background-repeat: repeat-x;
+            @include mixins.boxSize();
+        }
+    }
+
+    @include mixins.mobile() {
+        .menu-list,
+        .submenu {
+            li {
+                display: block;
+                width: 100%;
+
+                a {
+                    display: block;
+                    width: 100%;
+                    padding: variables.$spacing-medium variables.$spacing-large;
+                    color: #000;
+
+                    &:hover {
+                        color: #000;
+                    }
+                }
+
+                &.active a {
+                    border-bottom: none;
+                    color: #FFF;
+                    font-weight: bold;
+                    font-style: italic;
+                    background-color: colors.$color-1;
+                }
+            }
+        }
+
+        .menu-list {
+            position: absolute;
+            width: 100%;
+            padding: 0;
+            top: variables.$menu-height;
+            background-image: linear-gradient(to bottom,#fff 35%,#eee 90%);
+            background-repeat: repeat-x;
+            display: none;
+
+            .title {
+                padding: variables.$spacing-small variables.$spacing-medium;
+            }
+        }
+
+        .submenu {
+            display: none;
+
+            &--opened {
+                display: block;
+                padding-left: variables.$spacing-medium;
+                background-image: colors.$color-window-bg;
+            }
+        }
+    }
+}
