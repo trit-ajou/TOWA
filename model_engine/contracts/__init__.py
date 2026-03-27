@@ -1,0 +1,2 @@
+"""Model engine contracts package."""
+
