@@ -115,6 +115,7 @@ def run_nanobanana_inpaint(
     prompt_override = request.stage_config.get("prompt")
     model_name = str(request.stage_config.get("model_name", NANOBANANA_IMAGE_MODEL))
     prompt = str(prompt_override or NANOBANANA_DEFAULT_PROMPT)
+    warnings: list[str] = []
 
     try:
         for task in tasks_payload.tasks:
@@ -130,11 +131,9 @@ def run_nanobanana_inpaint(
             api_key,
         )
         generated_page = Image.open(BytesIO(generated_bytes)).convert("RGBA")
-        if generated_page.size != base_image.size:
-            raise RuntimeError(
-                "Nanobanana response image size mismatch: "
-                f"expected={base_image.size} actual={generated_page.size}"
-            )
+        generated_page, resize_warning = _normalize_generated_page_size(generated_page, base_image.size)
+        if resize_warning is not None:
+            warnings.append(resize_warning)
         composite_mask = _build_composite_mask(request, tasks_payload, base_image.size)
         edited_image.paste(generated_page, (0, 0), composite_mask)
     except Exception as exc:
@@ -156,7 +155,7 @@ def run_nanobanana_inpaint(
         status=StageStatus.SUCCEEDED,
         input_refs=sorted(request.artifacts.keys()),
         output_refs=[output_artifact.artifact_ref],
-        warnings=[],
+        warnings=warnings,
         metrics={
             "provider": "nanobanana",
             "model_name": model_name,
@@ -164,6 +163,9 @@ def run_nanobanana_inpaint(
             "target_layer_id": target_layer_id,
             "provider_call_mode": "full_page_single_call",
             "composite_mask_mode": "local_mask_only",
+            "provider_output_size": f"{generated_page.width}x{generated_page.height}",
+            "base_image_size": f"{base_image.width}x{base_image.height}",
+            "provider_output_resized": "yes" if resize_warning is not None else "no",
         },
         provider=request.credential_bindings.get("primary_provider"),
         started_at=started_at,
@@ -284,6 +286,22 @@ def _build_composite_mask(
         position = (task.expanded_bbox["x"], task.expanded_bbox["y"])
         composite_mask.paste(region_mask, position, region_mask)
     return composite_mask
+
+
+def _normalize_generated_page_size(
+    generated_page: Image.Image,
+    expected_size: tuple[int, int],
+) -> tuple[Image.Image, Optional[str]]:
+    if generated_page.size == expected_size:
+        return generated_page, None
+
+    resampling = getattr(Image, "Resampling", Image)
+    resized = generated_page.resize(expected_size, resampling.LANCZOS)
+    warning = (
+        "provider_output_resized: "
+        f"expected={expected_size} actual={generated_page.size}"
+    )
+    return resized, warning
 
 
 def _missing_image_error(response: object, response_texts: list[str]) -> str:
