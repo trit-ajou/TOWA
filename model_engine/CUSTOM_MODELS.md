@@ -160,6 +160,15 @@ PYTHONPYCACHEPREFIX=/tmp/pythoncache python3 -m unittest discover -s model_engin
 
 ### 10-1. Built-in CRAFT 실행
 
+처음 한 번은 모델 weight를 미리 받아두는 쪽이 훨씬 빠르다.
+
+```bash
+cd model_engine
+docker compose -f docker-compose.inference.yml run --rm craft-preload
+```
+
+이 명령은 CRAFT weight를 호스트의 `model_engine/.cache/models/` 아래에 받아둔다. 이후 `craft-sample`와 `inpaint-sample`는 같은 캐시를 재사용한다.
+
 샘플 이미지로 `text_detection=CRAFT`만 실행하려면 아래 스크립트를 사용한다.
 
 ```bash
@@ -178,6 +187,11 @@ python3 model_engine/scripts/run_craft_sample.py \
 cd model_engine
 docker compose -f docker-compose.inference.yml run --rm craft-sample
 ```
+
+권장 순서:
+
+1. `docker compose -f docker-compose.inference.yml run --rm craft-preload`
+2. `docker compose -f docker-compose.inference.yml run --rm craft-sample`
 
 ### 10-2. Built-in Inpaint 실행
 
@@ -208,12 +222,18 @@ export TOWA_NANOBANANA_API_KEY="YOUR_API_KEY"
 docker compose -f docker-compose.inference.yml run --rm inpaint-sample
 ```
 
+권장 순서:
+
+1. `docker compose -f docker-compose.inference.yml run --rm craft-preload`
+2. `docker compose -f docker-compose.inference.yml run --rm inpaint-sample`
+
 Compose 파일은 아래를 자동으로 처리한다.
 
 - `Dockerfile.inference` 빌드
 - `model_engine/.runtime -> /workspace_out` 마운트
 - `model_engine/.cache/models -> /cache/models` 마운트
 - 샘플 이미지 경로와 workspace 경로 전달
+- `HOME`, `XDG_CACHE_HOME`, `TORCH_HOME`을 `/cache/models` 기준으로 고정
 
 주의:
 
