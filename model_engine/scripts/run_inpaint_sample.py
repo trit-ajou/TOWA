@@ -97,7 +97,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--model-name",
-        default="gemini-2.5-flash-image",
+        default="gemini-3.1-flash-image-preview",
         help="Nanobanana image model name.",
     )
     args = parser.parse_args()
