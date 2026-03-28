@@ -114,6 +114,24 @@ class NanobananaInpaintTests(unittest.TestCase):
                 response.stage_report.metrics["selection_reason"],
             )
 
+    def test_nanobanana_inpaint_resizes_provider_output_to_base_size(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            planning_response = run_mask_or_erase_planning(_planning_request(Path(tmpdir)))
+            inpaint_request = _inpaint_request(Path(tmpdir), planning_response.artifacts)
+
+            response = run_nanobanana_inpaint(
+                inpaint_request,
+                generate_edit_fn=_fake_generate_edit_resized,
+            )
+
+            self.assertEqual(StageStatus.SUCCEEDED, response.status)
+            self.assertEqual("yes", response.stage_report.metrics["provider_output_resized"])
+            self.assertTrue(response.stage_report.warnings)
+            bitmap_artifact = next(iter(response.artifacts.values()))
+            output_image = Image.open(Path(bitmap_artifact.uri.removeprefix("file://"))).convert("RGBA")
+            self.assertEqual((10, 200, 20, 255), output_image.getpixel((5, 5)))
+            self.assertEqual((10, 10), output_image.size)
+
     def test_nanobanana_inpaint_retains_failure_snapshot(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             planning_response = run_mask_or_erase_planning(_planning_request(Path(tmpdir)))
@@ -331,6 +349,24 @@ def _failing_generate_edit(
     _ = model_name
     _ = api_key
     raise TimeoutError("provider stalled")
+
+
+def _fake_generate_edit_resized(
+    source_image_bytes: bytes,
+    source_mime_type: str,
+    prompt: str,
+    model_name: str,
+    api_key: str,
+) -> bytes:
+    _ = source_image_bytes
+    _ = source_mime_type
+    _ = prompt
+    _ = model_name
+    _ = api_key
+    edited = Image.new("RGBA", (8, 8), color=(10, 200, 20, 255))
+    buffer = BytesIO()
+    edited.save(buffer, format="PNG")
+    return buffer.getvalue()
 
 
 if __name__ == "__main__":
