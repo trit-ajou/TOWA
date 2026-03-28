@@ -211,6 +211,7 @@ python3 model_engine/scripts/run_inpaint_sample.py \
 
 - API 키는 코드나 manifest에 쓰지 않고 환경 변수로만 넣는다.
 - `inpaint` 결과는 원본 페이지와 병합되지 않고 새 `inpainting layer` artifact로 남는다.
+- planner mask는 provider에 보내지 않고 로컬 `inpainting layer` 합성에만 쓴다.
 - 생성 파일은 모두 transaction 경로 아래에 저장된다.
 - provider가 멈추거나 timeout이면 stage는 `failed`가 되고, partial bitmap + failure snapshot이 남는다.
 - 현재 기본 image model 이름은 사용자 지정 최신값인 `gemini-3.1-flash-image-preview`를 사용한다.

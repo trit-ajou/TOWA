@@ -79,6 +79,10 @@ class NanobananaInpaintTests(unittest.TestCase):
             self.assertEqual((0, 255, 0, 255), output_image.getpixel((5, 5)))
             self.assertEqual((0, 0, 0, 0), output_image.getpixel((0, 0)))
             self.assertEqual("add_layer", response.patches[0].op.value)
+            self.assertEqual(
+                "full_page_single_call",
+                response.stage_report.metrics["provider_call_mode"],
+            )
             output_path = Path(bitmap_artifact.uri.removeprefix("file://"))
             self.assertIn(
                 "/transactions/pipe_inpaint/inpaint/pipe_inpaint_inpaint_1/",
@@ -297,36 +301,32 @@ def _write_base_image(path: Path) -> None:
 
 
 def _fake_generate_edit(
-    crop_bytes: bytes,
-    crop_mime_type: str,
-    mask_bytes: bytes,
+    source_image_bytes: bytes,
+    source_mime_type: str,
     prompt: str,
     model_name: str,
     api_key: str,
 ) -> bytes:
-    _ = crop_mime_type
-    _ = mask_bytes
+    _ = source_mime_type
     _ = prompt
     _ = model_name
     _ = api_key
-    crop = Image.open(BytesIO(crop_bytes)).convert("RGBA")
-    edited = Image.new("RGBA", crop.size, color=(0, 255, 0, 255))
+    source_image = Image.open(BytesIO(source_image_bytes)).convert("RGBA")
+    edited = Image.new("RGBA", source_image.size, color=(0, 255, 0, 255))
     buffer = BytesIO()
     edited.save(buffer, format="PNG")
     return buffer.getvalue()
 
 
 def _failing_generate_edit(
-    crop_bytes: bytes,
-    crop_mime_type: str,
-    mask_bytes: bytes,
+    source_image_bytes: bytes,
+    source_mime_type: str,
     prompt: str,
     model_name: str,
     api_key: str,
 ) -> bytes:
-    _ = crop_bytes
-    _ = crop_mime_type
-    _ = mask_bytes
+    _ = source_image_bytes
+    _ = source_mime_type
     _ = prompt
     _ = model_name
     _ = api_key

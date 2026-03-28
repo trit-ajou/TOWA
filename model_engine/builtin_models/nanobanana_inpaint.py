@@ -28,12 +28,11 @@ from ..storage import stage_run_slug, stage_transaction_dir
 NANOBANANA_INPAINT_MODEL_ID = "builtin.nanobanana.inpaint"
 NANOBANANA_IMAGE_MODEL = "gemini-3.1-flash-image-preview"
 NANOBANANA_DEFAULT_PROMPT = (
-    "Use image 1 as the original manga page and image 2 as the edit guide. "
-    "White areas in image 2 mark regions to edit, black areas must remain unchanged. "
-    "Remove all visible source text, speech balloon text, and sound effects only inside the "
-    "white regions. Reconstruct the underlying manga background, lineart, screentones, and "
-    "balloon interiors naturally. Do not add any new text. Preserve composition, character art, "
-    "panel borders, and all pixels outside the mask as faithfully as possible."
+    "Use the provided manga page as the source image. "
+    "Remove all visible source text, speech balloon text, and sound effects from the page. "
+    "Reconstruct the underlying manga background, lineart, screentones, and balloon interiors naturally. "
+    "Do not add any new text. Preserve composition, character art, panel borders, and the rest of the page "
+    "as faithfully as possible."
 )
 
 
@@ -86,7 +85,7 @@ def run_nanobanana_inpaint(
     request: StageRequest,
     *,
     generate_edit_fn: Optional[
-        Callable[[bytes, str, bytes, str, str, str], bytes]
+        Callable[[bytes, str, str, str, str], bytes]
     ] = None,
 ) -> StageResponse:
     started_at = datetime.now(timezone.utc)
@@ -121,28 +120,23 @@ def run_nanobanana_inpaint(
         for task in tasks_payload.tasks:
             if task.target_layer_id != "layer_inpainting":
                 raise ValueError("Nanobanana inpaint task attempted to target a non-inpainting layer")
-            expanded_bbox = task.expanded_bbox
-            crop_box = (
-                expanded_bbox["x"],
-                expanded_bbox["y"],
-                expanded_bbox["x"] + expanded_bbox["width"],
-                expanded_bbox["y"] + expanded_bbox["height"],
+
+        page_bytes = _image_to_bytes(base_image, format_hint="PNG")
+        generated_bytes = generate_edit_fn(
+            page_bytes,
+            "image/png",
+            prompt,
+            model_name,
+            api_key,
+        )
+        generated_page = Image.open(BytesIO(generated_bytes)).convert("RGBA")
+        if generated_page.size != base_image.size:
+            raise RuntimeError(
+                "Nanobanana response image size mismatch: "
+                f"expected={base_image.size} actual={generated_page.size}"
             )
-            crop_image = base_image.crop(crop_box)
-            crop_bytes = _image_to_bytes(crop_image, format_hint="PNG")
-            mask_artifact = request.artifacts[task.mask_artifact_ref]
-            mask_path = _file_path_from_uri(mask_artifact.uri)
-            mask_bytes = mask_path.read_bytes()
-            generated_bytes = generate_edit_fn(
-                crop_bytes,
-                "image/png",
-                mask_bytes,
-                prompt,
-                model_name,
-                api_key,
-            )
-            generated_crop = Image.open(BytesIO(generated_bytes)).convert("RGBA")
-            edited_image.paste(generated_crop, (expanded_bbox["x"], expanded_bbox["y"]))
+        composite_mask = _build_composite_mask(request, tasks_payload, base_image.size)
+        edited_image.paste(generated_page, (0, 0), composite_mask)
     except Exception as exc:
         return _failed_response(
             request,
@@ -168,6 +162,8 @@ def run_nanobanana_inpaint(
             "model_name": model_name,
             "task_count": len(tasks_payload.tasks),
             "target_layer_id": target_layer_id,
+            "provider_call_mode": "full_page_single_call",
+            "composite_mask_mode": "local_mask_only",
         },
         provider=request.credential_bindings.get("primary_provider"),
         started_at=started_at,
@@ -211,9 +207,8 @@ def _image_to_bytes(image: Image.Image, *, format_hint: str) -> bytes:
 
 
 def _generate_with_nanobanana_vertex(
-    crop_bytes: bytes,
-    crop_mime_type: str,
-    mask_bytes: bytes,
+    source_image_bytes: bytes,
+    source_mime_type: str,
     prompt: str,
     model_name: str,
     api_key: str,
@@ -230,8 +225,7 @@ def _generate_with_nanobanana_vertex(
     response = client.models.generate_content(
         model=model_name,
         contents=[
-            types.Part.from_bytes(data=crop_bytes, mime_type=crop_mime_type),
-            types.Part.from_bytes(data=mask_bytes, mime_type="image/png"),
+            types.Part.from_bytes(data=source_image_bytes, mime_type=source_mime_type),
             prompt,
         ],
         config=types.GenerateContentConfig(response_modalities=["TEXT", "IMAGE"]),
@@ -275,6 +269,21 @@ def _image_part_to_png_bytes(part: object) -> bytes:
             return _image_to_bytes(pil_image.convert("RGBA"), format_hint="PNG")
 
     raise RuntimeError("Nanobanana image part could not be converted into PNG bytes")
+
+
+def _build_composite_mask(
+    request: StageRequest,
+    tasks_payload: object,
+    image_size: tuple[int, int],
+) -> Image.Image:
+    composite_mask = Image.new("L", image_size, color=0)
+    for task in getattr(tasks_payload, "tasks", []) or []:
+        mask_artifact = request.artifacts[task.mask_artifact_ref]
+        mask_path = _file_path_from_uri(mask_artifact.uri)
+        region_mask = Image.open(mask_path).convert("L")
+        position = (task.expanded_bbox["x"], task.expanded_bbox["y"])
+        composite_mask.paste(region_mask, position, region_mask)
+    return composite_mask
 
 
 def _missing_image_error(response: object, response_texts: list[str]) -> str:
