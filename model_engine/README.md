@@ -1049,3 +1049,137 @@ CRAFT raw output은 다음 stage에 직접 넘기지 않는다.
 - 입력 bitmap은 `file://` artifact를 사용한다.
 - 결과 `text_regions`는 workspace 아래 JSON artifact로 기록한다.
 - 샘플 실행은 `scripts/run_craft_sample.py`를 사용한다.
+
+## 19. Built-in Inpaint Strategy
+
+첫 built-in `inpaint` 구현체는 나노바나나 API를 기준으로 설계한다.
+
+핵심 원칙:
+
+- 나노바나나는 "텍스트를 지운 원본처럼 보이는 배경 복원"에 사용한다.
+- 하지만 전체 페이지를 통째로 다시 생성하지 않는다.
+- `text_regions`에 해당하는 부분만 잘라서 요청하고, 결과는 다시 원래 위치에 합성한다.
+- 이 작업은 항상 `inpainting layer`에만 적용한다.
+- 원본 입력 레이어는 직접 수정하지 않는다.
+
+### 19.1 왜 crop 기반으로 처리하는가
+
+전체 페이지를 한 번에 inpaint하면 아래 문제가 커진다.
+
+- 원본 그림 손실이 커진다.
+- 텍스트 주변과 무관한 배경도 같이 흔들린다.
+- provider 변동성이 페이지 전체에 퍼진다.
+- 재시도 시 비용이 커진다.
+
+따라서 기본 전략은 `text_regions -> crop -> inpaint -> composite`다.
+
+### 19.2 Layer 규칙
+
+`inpaint` stage는 문서의 원본 그림 레이어를 직접 덮어쓰지 않는다.
+
+권장 레이어 구조:
+
+- 원본 페이지 레이어
+- `inpainting layer`
+- 이후 식자용 텍스트 레이어
+
+규칙:
+
+- `inpainting layer`의 `source_ref`만 `inpaint` stage가 갱신한다.
+- 원본 레이어의 `source_ref`는 보존한다.
+- 결과적으로 UI에서는 원본과 인페인팅 결과를 분리해서 토글/검토할 수 있어야 한다.
+
+### 19.3 Stage 분리
+
+`inpaint` 앞에는 `mask_or_erase_planning` stage를 둔다.
+
+역할 분리:
+
+- `text_detection`
+  - CRAFT가 `text_regions`를 만든다.
+
+- `mask_or_erase_planning`
+  - `text_regions`를 정리한다.
+  - crop box, padding, merge group, erase mask를 계산한다.
+  - 나노바나나 요청 단위를 만든다.
+
+- `inpaint`
+  - planner가 만든 task를 실제 provider 호출로 실행한다.
+  - 결과 crop들을 `inpainting layer`용 비트맵으로 합성한다.
+
+즉 `mask_or_erase_planning`은 모델보다 "inpaint 전처리 planner"에 가깝다.
+
+### 19.4 mask_or_erase_planning 출력 계약
+
+planner stage는 최소한 아래 artifact kind를 만들 수 있어야 한다.
+
+- `erase_regions`
+  - crop 단위 작업 리스트
+- `erase_mask`
+  - 필요 시 provider 입력용 mask bitmap
+- `inpaint_tasks`
+  - provider 호출 단위 메타데이터
+
+`inpaint_tasks` 예시 필드:
+
+- `task_id`
+- `source_artifact_ref`
+- `text_region_refs`
+- `crop_bbox`
+- `expanded_bbox`
+- `mask_artifact_ref`
+- `target_layer_id`
+- `composite_mode`
+- `provider_params`
+
+v1에서는 planner를 규칙 기반으로 시작한다.
+
+### 19.5 Inpaint 요청 방식
+
+나노바나나 API에는 페이지 전체가 아니라 task 단위 crop만 넘긴다.
+
+입력:
+
+- 원본 또는 현재 inpainting base에서 자른 crop bitmap
+- 해당 crop용 erase mask
+- provider prompt 또는 erase instruction
+- stage/provider config
+
+출력:
+
+- crop별 inpaint result bitmap
+
+그 다음 orchestrator 또는 `inpaint` stage 내부 합성기가 아래를 수행한다.
+
+- 원래 crop 위치에 결과를 되돌려 붙인다.
+- 여러 crop 결과를 하나의 `inpainting layer` bitmap으로 병합한다.
+- 최종 bitmap을 새 artifact ref로 저장한다.
+- `replace_source_ref` 또는 `set_stage_meta`로 문서에 반영한다.
+
+### 19.6 Inpainting Layer 전용 적용 규칙
+
+이 규칙은 강제한다.
+
+- `inpaint` stage는 `target_layer_id`가 `inpainting layer`가 아니면 실행하면 안 된다.
+- planner가 만든 task에도 `target_layer_id`를 명시한다.
+- 원본 레이어, OCR overlay, typesetting layer에는 inpaint를 적용하지 않는다.
+
+즉 inpaint는 "문서를 직접 파괴하는 stage"가 아니라 "인페인팅 전용 레이어를 갱신하는 stage"다.
+
+### 19.7 v1 구현 결론
+
+현재 v1 방향은 아래로 고정한다.
+
+- `text_detection`은 CRAFT
+- `mask_or_erase_planning`은 규칙 기반
+- `inpaint`는 나노바나나 API
+- `text_regions`를 그대로 provider에 넘기지 않고 planner task로 변환
+- provider 결과는 crop 단위로 받아 `inpainting layer`에만 합성
+- 원본 그림 손실 최소화가 기본 목표
+
+현재 구현 범위:
+
+- 규칙 기반 `mask_or_erase_planning` stage가 `erase_mask`와 `inpaint_tasks`를 만든다.
+- built-in `inpaint` adapter가 Vertex AI 경유 나노바나나 호출 형식을 따른다.
+- 나노바나나 prompt는 기본 프롬프트를 내장하되 stage config로 override 가능하다.
+- 실제 provider 호출은 `google-genai` 런타임이 준비된 환경에서 수행한다.
