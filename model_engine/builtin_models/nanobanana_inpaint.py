@@ -234,12 +234,16 @@ def _generate_with_nanobanana_vertex(
             types.Part.from_bytes(data=mask_bytes, mime_type="image/png"),
             prompt,
         ],
-        config=types.GenerateContentConfig(response_modalities=["IMAGE"]),
+        config=types.GenerateContentConfig(response_modalities=["TEXT", "IMAGE"]),
     )
+    response_texts: list[str] = []
     for part in _iter_response_parts(response):
+        text = getattr(part, "text", None)
+        if isinstance(text, str) and text.strip():
+            response_texts.append(text.strip())
         if getattr(part, "inline_data", None):
             return _image_part_to_png_bytes(part)
-    raise RuntimeError("Nanobanana Vertex AI response did not include an image")
+    raise RuntimeError(_missing_image_error(response, response_texts))
 
 
 def _iter_response_parts(response: object) -> list[object]:
@@ -271,6 +275,28 @@ def _image_part_to_png_bytes(part: object) -> bytes:
             return _image_to_bytes(pil_image.convert("RGBA"), format_hint="PNG")
 
     raise RuntimeError("Nanobanana image part could not be converted into PNG bytes")
+
+
+def _missing_image_error(response: object, response_texts: list[str]) -> str:
+    details: list[str] = ["Nanobanana Vertex AI response did not include an image"]
+    finish_reasons: list[str] = []
+    for candidate in getattr(response, "candidates", []) or []:
+        finish_reason = getattr(candidate, "finish_reason", None)
+        if finish_reason is not None:
+            finish_reasons.append(str(finish_reason))
+
+    if finish_reasons:
+        details.append(f"finish_reasons={','.join(finish_reasons)}")
+
+    if response_texts:
+        joined = " | ".join(response_texts[:3])
+        details.append(f"text_response={joined}")
+
+    prompt_feedback = getattr(response, "prompt_feedback", None)
+    if prompt_feedback is not None:
+        details.append(f"prompt_feedback={prompt_feedback}")
+
+    return ". ".join(details)
 
 
 def _write_inpainted_bitmap(

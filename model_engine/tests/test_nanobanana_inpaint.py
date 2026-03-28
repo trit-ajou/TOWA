@@ -11,6 +11,7 @@ from PIL import Image
 
 from model_engine.builtin_models.nanobanana_inpaint import (
     NANOBANANA_INPAINT_MODEL_ID,
+    _missing_image_error,
     _image_part_to_png_bytes,
     register_nanobanana_inpaint_model,
     run_nanobanana_inpaint,
@@ -162,6 +163,30 @@ class NanobananaInpaintTests(unittest.TestCase):
 
         converted = _image_part_to_png_bytes(_Part(payload))
         self.assertEqual(payload, converted)
+
+    def test_missing_image_error_includes_text_and_finish_reason(self) -> None:
+        class _Part:
+            def __init__(self, text: str) -> None:
+                self.text = text
+
+        class _Content:
+            def __init__(self, parts: list[object]) -> None:
+                self.parts = parts
+
+        class _Candidate:
+            def __init__(self) -> None:
+                self.finish_reason = "STOP"
+                self.content = _Content([_Part("image generation blocked")])
+
+        class _Response:
+            def __init__(self) -> None:
+                self.candidates = [_Candidate()]
+                self.prompt_feedback = "safety_check_passed"
+
+        error_message = _missing_image_error(_Response(), ["image generation blocked"])
+        self.assertIn("did not include an image", error_message)
+        self.assertIn("finish_reasons=STOP", error_message)
+        self.assertIn("text_response=image generation blocked", error_message)
 
 
 def _planning_request(workspace_dir: Path) -> StageRequest:
