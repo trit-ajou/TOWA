@@ -1,0 +1,7 @@
+-r requirements-base.txt
+
+# Local inference dependencies for built-in text detection.
+torch
+torchvision
+opencv-python-headless
+craft-text-detector
