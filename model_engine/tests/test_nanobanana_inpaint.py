@@ -11,6 +11,7 @@ from PIL import Image
 
 from model_engine.builtin_models.nanobanana_inpaint import (
     NANOBANANA_INPAINT_MODEL_ID,
+    _image_part_to_png_bytes,
     register_nanobanana_inpaint_model,
     run_nanobanana_inpaint,
 )
@@ -144,6 +145,23 @@ class NanobananaInpaintTests(unittest.TestCase):
             )
             self.assertEqual("provider_timeout", snapshot_payload["error_code"])
             self.assertEqual(partial_bitmap.artifact_ref, snapshot_payload["partial_bitmap_ref"])
+
+    def test_image_part_to_png_bytes_prefers_inline_data(self) -> None:
+        image = Image.new("RGBA", (2, 2), color=(12, 34, 56, 255))
+        buffer = BytesIO()
+        image.save(buffer, format="PNG")
+        payload = buffer.getvalue()
+
+        class _InlineData:
+            def __init__(self, data: bytes) -> None:
+                self.data = data
+
+        class _Part:
+            def __init__(self, data: bytes) -> None:
+                self.inline_data = _InlineData(data)
+
+        converted = _image_part_to_png_bytes(_Part(payload))
+        self.assertEqual(payload, converted)
 
 
 def _planning_request(workspace_dir: Path) -> StageRequest:
