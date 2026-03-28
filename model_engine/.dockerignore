@@ -3,6 +3,8 @@ __pycache__/
 *.pyo
 *.pyd
 .Python
+.venv/
+.coverage
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/

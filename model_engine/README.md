@@ -1004,3 +1004,48 @@ SaaS와 local의 차이는 인증/정산 레이어에만 있다.
 - custom model도 같은 출력 계약을 따름
 
 이 문서에 반하는 구현은 도입하지 않는다.
+
+## 17. Container Strategy
+
+컨테이너는 역할별로 분리한다.
+
+- `Dockerfile`
+  - 기본 개발/테스트 이미지
+  - 공통 계약층, orchestrator, IPC, adapter 테스트를 빠르게 재현하는 용도
+  - 무거운 로컬 추론 의존성은 넣지 않는다
+
+- `Dockerfile.inference`
+  - 로컬 추론 이미지
+  - CRAFT 같은 built-in 모델 의존성을 담는다
+  - 이후 OCR/local model/GPU 런타임도 이 계열에서 확장한다
+
+의존성 파일도 같은 원칙으로 분리한다.
+
+- `requirements-base.txt`
+  - 공통 런타임과 lightweight adapter용
+
+- `requirements-craft.txt`
+  - base 위에 CRAFT text detection 의존성을 추가
+
+즉 기본 개발 환경은 가볍게 유지하고, 실제 로컬 추론은 별도 inference 이미지로 확장한다.
+
+## 18. Built-in Text Detection
+
+첫 built-in `text_detection` 구현체는 CRAFT로 고정한다.
+
+- model id: `builtin.craft.text_detection`
+- stage capability: `text_detection`
+- 출력 artifact kind: `text_regions`
+- artifact media type: `application/json`
+
+CRAFT raw output은 다음 stage에 직접 넘기지 않는다.
+
+- `polys` / `boxes` 같은 provider raw 결과를 정규화한다.
+- 정규화 결과는 `text_regions` artifact로 저장한다.
+- orchestrator/document 쪽에는 `set_stage_meta(text_detection)` patch로 요약만 남긴다.
+
+현재 구현 범위:
+
+- 입력 bitmap은 `file://` artifact를 사용한다.
+- 결과 `text_regions`는 workspace 아래 JSON artifact로 기록한다.
+- 샘플 실행은 `scripts/run_craft_sample.py`를 사용한다.

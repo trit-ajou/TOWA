@@ -1,6 +1,13 @@
 """Core contracts and orchestration primitives for the model engine."""
 
 from .adapters import CallableModelAdapter, HttpApiModelAdapter, ModelAdapter
+from .builtin_models import (
+    CRAFT_TEXT_DETECTION_MODEL_ID,
+    build_craft_text_detection_adapter,
+    build_craft_text_detection_manifest,
+    craft_text_detection_handler,
+    register_craft_text_detection_model,
+)
 from .contracts.artifacts import ArtifactDescriptor, ArtifactRegistry, ArtifactStatus, InMemoryArtifactRegistry
 from .contracts.credentials import BillingMode, CredentialBinding, CredentialSource, ResolvedCredential
 from .contracts.document_ir import DocumentIR, LayerIR, TextBlock, TextStyle, Transform
@@ -14,6 +21,7 @@ from .contracts.stages import (
     StageStatus,
     StageRuntimeContext,
 )
+from .contracts.text_regions import TextRegion, TextRegionsPayload
 from .credentials import CredentialResolutionError, CredentialResolver, DefaultCredentialResolver
 from .custom_models import CustomModelLoader, load_custom_models_into_registry
 from .ipc.process_stage import ProcessStage
@@ -24,6 +32,7 @@ from .stages.base import Stage, StaticStage
 
 __all__ = [
     "CallableModelAdapter",
+    "CRAFT_TEXT_DETECTION_MODEL_ID",
     "CustomModelLoader",
     "HttpApiModelAdapter",
     "ModelAdapter",
@@ -41,6 +50,8 @@ __all__ = [
     "StageKind",
     "StageManifest",
     "TextBlock",
+    "TextRegion",
+    "TextRegionsPayload",
     "TextStyle",
     "Transform",
     "PatchOp",
@@ -62,6 +73,10 @@ __all__ = [
     "PipelineOrchestrator",
     "PipelineRunResult",
     "AdapterBackedStage",
+    "build_craft_text_detection_adapter",
+    "build_craft_text_detection_manifest",
+    "craft_text_detection_handler",
+    "register_craft_text_detection_model",
     "Stage",
     "StaticStage",
     "load_custom_models_into_registry",

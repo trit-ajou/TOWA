@@ -1,0 +1,29 @@
+FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app \
+    TOWA_MODEL_CACHE_DIR=/cache/models
+
+WORKDIR /app
+
+RUN mkdir -p /workspace /artifacts /cache /cache/models
+
+# Keep system packages here so the base Dockerfile remains lean for tests and contracts.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        libglib2.0-0 \
+        libsm6 \
+        libxext6 \
+        libxrender1 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements-base.txt /app/model_engine/requirements-base.txt
+COPY requirements-craft.txt /app/model_engine/requirements-craft.txt
+
+# This image is the local inference runtime for built-in text detection and later OCR workers.
+RUN python3 -m pip install --no-cache-dir -r /app/model_engine/requirements-craft.txt
+
+COPY . /app/model_engine
+
+CMD ["python3", "-m", "unittest", "discover", "-s", "/app/model_engine/tests", "-v"]

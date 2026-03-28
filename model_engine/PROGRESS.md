@@ -187,19 +187,26 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 구현 파일:
 
 - `Dockerfile`
+- `Dockerfile.inference`
 - `.dockerignore`
+- `requirements-base.txt`
+- `requirements-craft.txt`
 
 구현 내용:
 
 - Python 실행 가능한 최소 컨테이너 환경
+- 기본 개발/테스트 이미지와 추론용 이미지 분리
+- base/craft 의존성 파일 분리
 - `/app` 작업 디렉토리
 - `/workspace`, `/artifacts`, `/cache` 기본 경로 생성
 - 기본 `CMD`로 현재 테스트 스위트 실행
 
 비고:
 
+- `Dockerfile`은 contract test와 개발용 기본 이미지다.
+- `Dockerfile.inference`는 CRAFT 같은 로컬 모델 의존성을 담는 추론용 이미지다.
 - 아직 GPU 세팅은 넣지 않았다.
-- 현재 목적은 추론 런타임보다 개발/테스트 재현 가능성 확보이다.
+- 현재 목적은 추론 런타임을 별도 이미지로 분리해 재현성과 확장성을 확보하는 것이다.
 
 ### 9. Model Merge / Adapter Registry
 
@@ -270,6 +277,36 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - 아직 plugin 설치/배포 자동화는 없다.
 - 현재 범위는 "개발자가 manifest와 adapter entrypoint를 추가하면 쉽게 붙일 수 있는 수준"이다.
 
+### 11. Built-in CRAFT Text Detection
+
+구현 파일:
+
+- `contracts/text_regions.py`
+- `builtin_models/craft_text_detection.py`
+- `builtin_models/__init__.py`
+- `scripts/run_craft_sample.py`
+- `samples/images/README.md`
+
+구현 내용:
+
+- `text_regions` payload/dataclass 계약 추가
+- built-in `text_detection=CRAFT` manifest/adapter 등록 함수 추가
+- CRAFT 결과를 `text_regions` artifact로 정규화
+- stage meta에 `text_detection.engine=craft` 기록
+- 샘플 이미지 실행용 runner 추가
+
+현재 지원 규칙:
+
+- 입력은 `bitmap` artifact 하나 이상 필요
+- 현재는 `file://` 기반 bitmap/workspace만 지원
+- 출력은 `text_regions` artifact + `set_stage_meta(text_detection)` patch
+- built-in model id는 `builtin.craft.text_detection`
+
+비고:
+
+- 실제 추론 런타임은 `craft-text-detector` 설치가 필요하다.
+- 현재 저장소 테스트는 fake detector로 계약과 artifact 생성을 검증한다.
+
 ## 테스트 상태
 
 테스트 파일:
@@ -280,6 +317,7 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - `tests/test_ipc.py`
 - `tests/test_model_merge.py`
 - `tests/test_custom_models.py`
+- `tests/test_craft_text_detection.py`
 
 검증한 항목:
 
@@ -292,11 +330,12 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - IPC stage 실패 시 pipeline 중단
 - manifest 기반 Python custom model 로드/실행
 - manifest 기반 HTTP API custom model 로드/실행
+- built-in CRAFT text detection artifact 생성/registry 실행
 
 현재 상태:
 
 - `python3 -m unittest discover -s model_engine/tests -v`
-- 총 14개 테스트 통과
+- 총 16개 테스트 통과
 - subprocess child env로 credential secret 주입
 - manifest 기반 adapter selection
 - `preferred_model_id` override
