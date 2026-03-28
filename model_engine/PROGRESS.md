@@ -222,6 +222,7 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - 현재 `Dockerfile.inference`는 CRAFT 의존성 호환성 때문에 Python 3.10을 사용한다.
 - OpenCV/CRAFT 런타임을 위해 `libGL.so.1` system package를 포함한다.
 - CRAFT/OpenCV ABI 충돌을 피하기 위해 inference 의존성은 `numpy<2`로 고정했다.
+- CRAFT 런타임의 `cv2.dnn.DictValue` 충돌을 피하기 위해 OpenCV는 `opencv-python==4.7.0.72`로 고정했다.
 - 아직 GPU 세팅은 넣지 않았다.
 - 현재 목적은 추론 런타임을 별도 이미지로 분리해 재현성과 확장성을 확보하는 것이다.
 
