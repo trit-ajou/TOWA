@@ -12,6 +12,7 @@ RUN mkdir -p /workspace /artifacts /cache /cache/models
 # Keep system packages here so the base Dockerfile remains lean for tests and contracts.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
+        libgl1 \
         libglib2.0-0 \
         libsm6 \
         libxext6 \

@@ -219,6 +219,7 @@ Compose 파일은 아래를 자동으로 처리한다.
 
 - 현재 `Dockerfile.inference`는 CRAFT 호환성을 위해 Python 3.10을 사용한다.
 - `craft-text-detector` 계열이 Python 3.11에서 `numpy==1.21.2` 의존성 때문에 실패할 수 있어서, CRAFT 실행은 compose/inference 이미지 기준으로 맞춰두었다.
+- OpenCV 런타임 때문에 `libGL.so.1`이 필요하므로, 로컬이 아니라 inference 이미지 안에서 실행하는 것을 기준으로 본다.
 
 ### 10-3. Custom Python 모델 실행 흐름
 
