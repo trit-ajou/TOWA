@@ -238,8 +238,7 @@ def _generate_with_nanobanana_vertex(
     )
     for part in _iter_response_parts(response):
         if getattr(part, "inline_data", None):
-            image = part.as_image()
-            return _image_to_bytes(image.convert("RGBA"), format_hint="PNG")
+            return _image_part_to_png_bytes(part)
     raise RuntimeError("Nanobanana Vertex AI response did not include an image")
 
 
@@ -254,6 +253,24 @@ def _iter_response_parts(response: object) -> list[object]:
         if content and getattr(content, "parts", None):
             parts.extend(list(content.parts))
     return parts
+
+
+def _image_part_to_png_bytes(part: object) -> bytes:
+    inline_data = getattr(part, "inline_data", None)
+    raw_bytes = getattr(inline_data, "data", None)
+    if isinstance(raw_bytes, (bytes, bytearray)) and raw_bytes:
+        return bytes(raw_bytes)
+
+    as_image = getattr(part, "as_image", None)
+    if callable(as_image):
+        image_object = as_image()
+        if hasattr(image_object, "convert"):
+            return _image_to_bytes(image_object.convert("RGBA"), format_hint="PNG")
+        pil_image = getattr(image_object, "_pil_image", None)
+        if pil_image is not None and hasattr(pil_image, "convert"):
+            return _image_to_bytes(pil_image.convert("RGBA"), format_hint="PNG")
+
+    raise RuntimeError("Nanobanana image part could not be converted into PNG bytes")
 
 
 def _write_inpainted_bitmap(
