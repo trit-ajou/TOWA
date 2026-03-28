@@ -241,6 +241,7 @@ Compose 파일은 아래를 자동으로 처리한다.
 - `craft-text-detector` 계열이 Python 3.11에서 `numpy==1.21.2` 의존성 때문에 실패할 수 있어서, CRAFT 실행은 compose/inference 이미지 기준으로 맞춰두었다.
 - OpenCV 런타임 때문에 `libGL.so.1`이 필요하므로, 로컬이 아니라 inference 이미지 안에서 실행하는 것을 기준으로 본다.
 - CRAFT/OpenCV 조합은 현재 NumPy 2.x와 ABI 충돌이 날 수 있어서 inference 의존성은 `numpy<2`로 고정했다.
+- CRAFT 이미지에서는 `opencv-python==4.7.0.72` 한 계열만 설치해 `cv2.dnn.DictValue` 충돌을 피한다.
 
 ### 10-3. Custom Python 모델 실행 흐름
 
