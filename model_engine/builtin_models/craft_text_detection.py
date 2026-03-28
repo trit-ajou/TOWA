@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import inspect
 import json
 from pathlib import Path
 from typing import Any, Callable, Optional
@@ -305,13 +306,46 @@ def _detect_with_craft(image_path: str, config: dict[str, object]) -> dict[str, 
         cuda=bool(config.get("cuda", False)),
     )
     try:
-        return detector.detect_text(
-            image=image_path,
-            text_threshold=float(config.get("text_threshold", _DEFAULT_TEXT_THRESHOLD)),
-            link_threshold=float(config.get("link_threshold", _DEFAULT_LINK_THRESHOLD)),
-            low_text=float(config.get("low_text", _DEFAULT_LOW_TEXT)),
-        )
+        detect_kwargs = _craft_detect_kwargs(detector, image_path, config)
+        return detector.detect_text(**detect_kwargs)
     finally:
         unload_all = getattr(detector, "unload_all_models", None)
         if callable(unload_all):
             unload_all()
+
+
+def _craft_detect_kwargs(
+    detector: object,
+    image_path: str,
+    config: dict[str, object],
+) -> dict[str, object]:
+    signature = inspect.signature(detector.detect_text)
+    supported = set(signature.parameters.keys())
+    kwargs: dict[str, object] = {}
+
+    if "image" in supported:
+        kwargs["image"] = image_path
+    elif "image_path" in supported:
+        kwargs["image_path"] = image_path
+    else:
+        first_parameter = next(iter(signature.parameters.keys()), None)
+        if first_parameter:
+            kwargs[first_parameter] = image_path
+
+    threshold_mappings = {
+        "text_threshold": float(config.get("text_threshold", _DEFAULT_TEXT_THRESHOLD)),
+        "text_thresh": float(config.get("text_threshold", _DEFAULT_TEXT_THRESHOLD)),
+        "link_threshold": float(config.get("link_threshold", _DEFAULT_LINK_THRESHOLD)),
+        "link_thresh": float(config.get("link_threshold", _DEFAULT_LINK_THRESHOLD)),
+        "low_text": float(config.get("low_text", _DEFAULT_LOW_TEXT)),
+        "low_text_score": float(config.get("low_text", _DEFAULT_LOW_TEXT)),
+    }
+    for key, value in threshold_mappings.items():
+        if key in supported:
+            kwargs[key] = value
+
+    for key in ("poly", "crop_type"):
+        if key in supported and key not in kwargs:
+            kwargs[key] = config.get(key, "poly" if key == "crop_type" else False)
+
+    return kwargs
