@@ -180,6 +180,8 @@ python3 model_engine/scripts/run_craft_sample.py \
 결과 `text_regions` artifact는 transaction 경로 아래에 생성된다.
 
 - `model_engine/.runtime/transactions/pipe_craft_sample/text_detection/...`
+- 현재 샘플 실행 결과 예:
+  - `model_engine/.runtime/transactions/pipe_craft_sample/text_detection/pipe_craft_sample_text_detection_1/pipe_craft_sample_text_detection_1_text_regions.json`
 
 복잡한 명령 대신 Docker Compose로도 바로 실행할 수 있다.
 
@@ -211,6 +213,17 @@ python3 model_engine/scripts/run_inpaint_sample.py \
 - `inpaint` 결과는 원본 페이지와 병합되지 않고 새 `inpainting layer` artifact로 남는다.
 - 생성 파일은 모두 transaction 경로 아래에 저장된다.
 - provider가 멈추거나 timeout이면 stage는 `failed`가 되고, partial bitmap + failure snapshot이 남는다.
+
+결과물을 보는 위치:
+
+- CRAFT 결과:
+  - `model_engine/.runtime/transactions/pipe_craft_sample/text_detection/.../text_regions.json`
+- planner 결과:
+  - `model_engine/.runtime/transactions/pipe_inpaint_sample/mask_or_erase_planning/.../inpaint_tasks.json`
+  - `model_engine/.runtime/transactions/pipe_inpaint_sample/mask_or_erase_planning/.../mask_0001.png`
+- inpaint 결과:
+  - `model_engine/.runtime/transactions/pipe_inpaint_sample/inpaint/.../inpainting.png`
+  - 실패 시 같은 디렉터리 아래 `partial_inpainting.png`, `failure_snapshot.json`
 
 기본 API 키 환경 변수 이름은 `TOWA_NANOBANANA_API_KEY`이며, 필요하면 `--api-key-env`로 바꿀 수 있다.
 
