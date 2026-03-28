@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 from urllib.parse import urlparse
 
+import numpy as np
 from PIL import Image
 
 from ..adapters.callable import CallableModelAdapter
@@ -294,6 +295,7 @@ def _write_text_regions_artifact(
 def _detect_with_craft(image_path: str, config: dict[str, object]) -> dict[str, object]:
     try:
         from craft_text_detector import Craft
+        from craft_text_detector import craft_utils as craft_utils_module
     except ImportError as exc:
         raise RuntimeError(
             "Failed to import craft_text_detector.Craft. "
@@ -301,6 +303,7 @@ def _detect_with_craft(image_path: str, config: dict[str, object]) -> dict[str, 
             f"Original import error: {exc!r}"
         ) from exc
 
+    _patch_craft_adjust_result_coordinates(craft_utils_module)
     detector = Craft(
         output_dir=None,
         cuda=bool(config.get("cuda", False)),
@@ -350,3 +353,37 @@ def _craft_detect_kwargs(
         kwargs["crop_type"] = str(config.get("crop_type", "box"))
 
     return kwargs
+
+
+def _patch_craft_adjust_result_coordinates(craft_utils_module: object) -> None:
+    current = getattr(craft_utils_module, "adjustResultCoordinates", None)
+    if current is None or getattr(current, "__name__", "") == "_safe_adjust_result_coordinates":
+        return
+
+    # Older craft-text-detector releases assume polygons can be stacked into a single ndarray.
+    # Real outputs often contain ragged polygon lists or None entries, which crashes the package
+    # before we can normalize the detections. Keep the return shape list-based so downstream code
+    # still receives scaled polygons without forcing a homogeneous numpy array.
+    def _safe_adjust_result_coordinates(
+        polys: object,
+        ratio_w: float,
+        ratio_h: float,
+        ratio_net: int = 2,
+    ) -> list[object]:
+        if not polys:
+            return []
+
+        scale = np.array([ratio_w * ratio_net, ratio_h * ratio_net], dtype=np.float32)
+        adjusted: list[object] = []
+        for poly in list(polys):
+            if poly is None:
+                adjusted.append(None)
+                continue
+            poly_array = np.asarray(poly, dtype=np.float32)
+            if poly_array.size == 0:
+                adjusted.append(poly_array)
+                continue
+            adjusted.append(poly_array * scale)
+        return adjusted
+
+    setattr(craft_utils_module, "adjustResultCoordinates", _safe_adjust_result_coordinates)
