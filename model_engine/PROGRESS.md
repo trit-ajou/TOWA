@@ -223,6 +223,7 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - OpenCV/CRAFT 런타임을 위해 `libGL.so.1` system package를 포함한다.
 - CRAFT/OpenCV ABI 충돌을 피하기 위해 inference 의존성은 `numpy<2`로 고정했다.
 - CRAFT 런타임의 `cv2.dnn.DictValue` 충돌을 피하기 위해 OpenCV는 `opencv-python==4.7.0.72`로 고정했다.
+- CRAFT의 구형 `model_urls` 참조를 수용하기 위해 torch stack은 `torch==1.12.1`, `torchvision==0.13.1`로 고정했다.
 - 아직 GPU 세팅은 넣지 않았다.
 - 현재 목적은 추론 런타임을 별도 이미지로 분리해 재현성과 확장성을 확보하는 것이다.
 
