@@ -351,6 +351,7 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - 샘플 이미지 실행용 end-to-end runner 추가
 - Compose 기반 샘플 실행 경로 추가
 - host-mounted `.cache/models` 재사용을 위한 preload 경로 추가
+- nanobanana 기본 model name을 `gemini-3.1-flash-image-preview`로 변경
 
 현재 지원 규칙:
 

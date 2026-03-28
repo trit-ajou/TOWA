@@ -26,7 +26,7 @@ from ..storage import stage_run_slug, stage_transaction_dir
 
 
 NANOBANANA_INPAINT_MODEL_ID = "builtin.nanobanana.inpaint"
-NANOBANANA_IMAGE_MODEL = "gemini-2.5-flash-image"
+NANOBANANA_IMAGE_MODEL = "gemini-3.1-flash-image-preview"
 NANOBANANA_DEFAULT_PROMPT = (
     "Use image 1 as the original manga page and image 2 as the edit guide. "
     "White areas in image 2 mark regions to edit, black areas must remain unchanged. "
