@@ -4,6 +4,7 @@
 
 - `README.md`: 현재 `model_engine` 내부 구현 기준서
 - `PLAN.md`: 확정/미확정 범위 판단 기준
+- `IMPLEMENTATION_SUMMARY.md`: 현재 실제 구현 완료 범위 요약
 - `SPEC.md`, `API_CONTRACT.md`: 외부 엔진 경계와 SaaS/local 계약 참고
 
 ## 이번에 구현한 범위
