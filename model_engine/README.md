@@ -1127,11 +1127,12 @@ CRAFT raw output은 다음 stage에 직접 넘기지 않는다.
 - `mask_or_erase_planning`
   - `text_regions`를 정리한다.
   - crop box, padding, merge group, erase mask를 계산한다.
-  - 나노바나나 요청 단위를 만든다.
+  - 나노바나나 합성 기준 단위를 만든다.
 
 - `inpaint`
   - planner가 만든 task를 실제 provider 호출로 실행한다.
-  - 결과 crop들을 `inpainting layer`용 비트맵으로 합성한다.
+  - 원본 페이지 전체를 provider에 1회 전달한다.
+  - provider가 돌려준 전체 결과 이미지에서 planner mask 영역만 `inpainting layer`용 비트맵으로 합성한다.
 
 즉 `mask_or_erase_planning`은 모델보다 "inpaint 전처리 planner"에 가깝다.
 
@@ -1142,7 +1143,7 @@ planner stage는 최소한 아래 artifact kind를 만들 수 있어야 한다.
 - `erase_regions`
   - crop 단위 작업 리스트
 - `erase_mask`
-  - 필요 시 provider 입력용 mask bitmap
+  - 로컬 `inpainting layer` 합성용 mask bitmap
 - `inpaint_tasks`
   - provider 호출 단위 메타데이터
 
@@ -1162,23 +1163,22 @@ v1에서는 planner를 규칙 기반으로 시작한다.
 
 ### 19.5 Inpaint 요청 방식
 
-나노바나나 API에는 페이지 전체가 아니라 task 단위 crop만 넘긴다.
+나노바나나 API에는 planner mask를 보내지 않고, 원본 페이지 전체 이미지를 한 번만 넘긴다.
 
 입력:
 
-- 원본 또는 현재 inpainting base에서 자른 crop bitmap
-- 해당 crop용 erase mask
+- 원본 페이지 bitmap
 - provider prompt 또는 erase instruction
 - stage/provider config
 
 출력:
 
-- crop별 inpaint result bitmap
+- 텍스트가 제거된 전체 페이지 result bitmap
 
 그 다음 orchestrator 또는 `inpaint` stage 내부 합성기가 아래를 수행한다.
 
-- 원래 crop 위치에 결과를 되돌려 붙인다.
-- 여러 crop 결과를 "새로운 inpainting layer canvas"에만 반영한다.
+- planner가 만든 erase mask들을 하나의 합성 mask로 합친다.
+- provider가 돌려준 전체 페이지 결과에서 mask 영역만 "새로운 inpainting layer canvas"에만 반영한다.
 - 최종 결과는 새 `inpainting layer` artifact ref로 저장한다.
 - 원본 페이지 bitmap과는 병합하지 않는다.
 - 문서에는 `replace_source_ref` 또는 `add_layer`로 새 인페인팅 레이어 결과만 반영한다.
@@ -1206,7 +1206,7 @@ v1에서는 planner를 규칙 기반으로 시작한다.
 나노바나나 같은 외부 provider stage는 다음 규칙을 따른다.
 
 - provider가 멈추거나 timeout/abort로 끝나면 `failed`로 간주한다.
-- 이 경우 현재 transaction 경로 아래의 입력 crop, mask, task snapshot, 이미 생성된 결과물은 보존할 수 있다.
+- 이 경우 현재 transaction 경로 아래의 입력 페이지, mask, task snapshot, 이미 생성된 결과물은 보존할 수 있다.
 - 기본 정책은 "실패 + snapshot 보존"이며, 성공으로 간주되는 `partial` 처리로 올리지 않는다.
 
 즉 운영상 재현과 디버깅을 우선하고, 묵시적 성공 처리로 넘기지 않는다.
@@ -1219,7 +1219,8 @@ v1에서는 planner를 규칙 기반으로 시작한다.
 - `mask_or_erase_planning`은 규칙 기반
 - `inpaint`는 나노바나나 API
 - `text_regions`를 그대로 provider에 넘기지 않고 planner task로 변환
-- provider 결과는 crop 단위로 받아 새 `inpainting layer` 결과물로만 유지
+- provider에는 원본 페이지 전체를 1회 전달한다
+- provider 결과는 전체 페이지 단위로 받고, planner mask 영역만 새 `inpainting layer` 결과물로 유지
 - 원본 그림 손실 최소화가 기본 목표
 - provider hang/timeout은 `failed + snapshot 보존`
 - local file artifact는 transaction 경로 아래 저장

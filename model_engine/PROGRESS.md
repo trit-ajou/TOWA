@@ -346,7 +346,7 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - 규칙 기반 `mask_or_erase_planning` stage 구현
 - `text_regions -> erase_mask + inpaint_tasks` 변환
 - built-in `inpaint=nanobanana` manifest/adapter 등록 함수 추가
-- crop 단위 inpaint 결과를 별도 `layer_inpainting` bitmap으로 유지
+- provider 전체 페이지 결과에서 mask 영역만 별도 `layer_inpainting` bitmap으로 유지
 - provider 실패 시 partial bitmap + failure snapshot 보존
 - 샘플 이미지 실행용 end-to-end runner 추가
 - Compose 기반 샘플 실행 경로 추가
@@ -358,6 +358,7 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - planner는 `text_regions`와 `bitmap`을 입력으로 받는다
 - planner는 `layer_inpainting` 대상 task와 mask artifact를 만든다
 - inpaint stage는 `layer_inpainting` 이외의 레이어를 거부한다
+- provider에는 원본 페이지 전체 이미지를 1회 전달하고, planner mask는 로컬 합성에만 사용한다
 - inpaint 결과는 원본 페이지와 병합하지 않고 새 `layer_inpainting` artifact로만 저장된다
 - transaction 경로 아래에 mask/task/output/snapshot 파일이 정리된다
 - nanobanana 호출 prompt는 stage config override가 없으면 기본 프롬프트를 사용한다
