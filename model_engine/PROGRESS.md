@@ -360,6 +360,7 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - inpaint stage는 `layer_inpainting` 이외의 레이어를 거부한다
 - provider에는 원본 페이지 전체 이미지를 1회 전달하고, planner mask는 로컬 합성에만 사용한다
 - inpaint 결과는 원본 페이지와 병합하지 않고 새 `layer_inpainting` artifact로만 저장된다
+- provider가 돌려준 전체 페이지 원본 출력도 별도 bitmap artifact로 저장한다
 - transaction 경로 아래에 mask/task/output/snapshot 파일이 정리된다
 - nanobanana 호출 prompt는 stage config override가 없으면 기본 프롬프트를 사용한다
 
