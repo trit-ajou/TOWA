@@ -224,6 +224,7 @@ python3 model_engine/scripts/run_inpaint_sample.py \
   - `model_engine/.runtime/transactions/pipe_inpaint_sample/mask_or_erase_planning/.../inpaint_tasks.json`
   - `model_engine/.runtime/transactions/pipe_inpaint_sample/mask_or_erase_planning/.../mask_0001.png`
 - inpaint 결과:
+  - `model_engine/.runtime/transactions/pipe_inpaint_sample/inpaint/.../provider_output.png`
   - `model_engine/.runtime/transactions/pipe_inpaint_sample/inpaint/.../inpainting.png`
   - 실패 시 같은 디렉터리 아래 `partial_inpainting.png`, `failure_snapshot.json`
 

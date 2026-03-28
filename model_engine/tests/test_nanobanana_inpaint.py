@@ -74,7 +74,17 @@ class NanobananaInpaintTests(unittest.TestCase):
             )
 
             self.assertEqual(StageStatus.SUCCEEDED, response.status)
-            bitmap_artifact = next(iter(response.artifacts.values()))
+            self.assertEqual(2, len(response.artifacts))
+            bitmap_artifact = next(
+                descriptor
+                for descriptor in response.artifacts.values()
+                if descriptor.metadata.get("role") == "inpainting_layer_bitmap"
+            )
+            provider_artifact = next(
+                descriptor
+                for descriptor in response.artifacts.values()
+                if descriptor.metadata.get("role") == "provider_output_bitmap"
+            )
             output_image = Image.open(Path(bitmap_artifact.uri.removeprefix("file://"))).convert("RGBA")
             self.assertEqual((0, 255, 0, 255), output_image.getpixel((5, 5)))
             self.assertEqual((0, 0, 0, 0), output_image.getpixel((0, 0)))
@@ -83,6 +93,8 @@ class NanobananaInpaintTests(unittest.TestCase):
                 "full_page_single_call",
                 response.stage_report.metrics["provider_call_mode"],
             )
+            provider_image = Image.open(Path(provider_artifact.uri.removeprefix("file://"))).convert("RGBA")
+            self.assertEqual((0, 255, 0, 255), provider_image.getpixel((0, 0)))
             output_path = Path(bitmap_artifact.uri.removeprefix("file://"))
             self.assertIn(
                 "/transactions/pipe_inpaint/inpaint/pipe_inpaint_inpaint_1/",

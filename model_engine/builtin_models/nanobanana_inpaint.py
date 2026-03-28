@@ -134,6 +134,7 @@ def run_nanobanana_inpaint(
         generated_page, resize_warning = _normalize_generated_page_size(generated_page, base_image.size)
         if resize_warning is not None:
             warnings.append(resize_warning)
+        provider_output_artifact = _write_provider_output_bitmap(request, generated_page)
         composite_mask = _build_composite_mask(request, tasks_payload, base_image.size)
         edited_image.paste(generated_page, (0, 0), composite_mask)
     except Exception as exc:
@@ -154,7 +155,7 @@ def run_nanobanana_inpaint(
         stage_run_id=request.stage_run_id,
         status=StageStatus.SUCCEEDED,
         input_refs=sorted(request.artifacts.keys()),
-        output_refs=[output_artifact.artifact_ref],
+        output_refs=[provider_output_artifact.artifact_ref, output_artifact.artifact_ref],
         warnings=warnings,
         metrics={
             "provider": "nanobanana",
@@ -177,7 +178,10 @@ def run_nanobanana_inpaint(
         stage_run_id=request.stage_run_id,
         status=StageStatus.SUCCEEDED,
         patches=patches,
-        artifacts={output_artifact.artifact_ref: output_artifact},
+        artifacts={
+            provider_output_artifact.artifact_ref: provider_output_artifact,
+            output_artifact.artifact_ref: output_artifact,
+        },
         stage_report=report,
     )
 
@@ -352,6 +356,31 @@ def _write_inpainted_bitmap(
     )
 
 
+def _write_provider_output_bitmap(
+    request: StageRequest,
+    image: Image.Image,
+) -> ArtifactDescriptor:
+    stage_dir = stage_transaction_dir(request)
+    run_slug = stage_run_slug(request.stage_run_id)
+    output_path = stage_dir / f"{run_slug}_provider_output.png"
+    image.save(output_path)
+    artifact_ref = (
+        f"artifact://{request.pipeline_id}/{request.stage_name}/"
+        f"{run_slug}/provider_output_bitmap"
+    )
+    return ArtifactDescriptor(
+        artifact_ref=artifact_ref,
+        kind="bitmap",
+        media_type="image/png",
+        uri=output_path.resolve().as_uri(),
+        width=image.width,
+        height=image.height,
+        byte_size=output_path.stat().st_size,
+        producer_stage=request.stage_name,
+        metadata={"role": "provider_output_bitmap", "provider": "nanobanana"},
+    )
+
+
 def _patches_for_inpainting_layer(
     request: StageRequest,
     artifact_ref: str,
@@ -386,6 +415,7 @@ def _patches_for_inpainting_layer(
                         "engine": "nanobanana_vertex",
                         "target_layer_id": target_layer_id,
                         "artifact_ref": artifact_ref,
+                        "provider_output_role": "provider_output_bitmap",
                     },
                 },
             ),
@@ -404,6 +434,7 @@ def _patches_for_inpainting_layer(
                     "engine": "nanobanana_vertex",
                     "target_layer_id": target_layer_id,
                     "artifact_ref": artifact_ref,
+                    "provider_output_role": "provider_output_bitmap",
                 },
             },
         ),
