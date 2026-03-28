@@ -22,6 +22,7 @@ from ..contracts.stages import (
 )
 from ..contracts.text_regions import TextRegion, TextRegionsPayload
 from ..models.registry import ModelRegistry
+from ..storage import stage_run_slug, stage_transaction_dir
 
 
 CRAFT_TEXT_DETECTION_MODEL_ID = "builtin.craft.text_detection"
@@ -264,17 +265,15 @@ def _write_text_regions_artifact(
     request: StageRequest,
     payload: TextRegionsPayload,
 ) -> ArtifactDescriptor:
-    workspace_dir = _workspace_path(request)
-    stage_dir = workspace_dir / request.pipeline_id / request.stage_name
-    stage_dir.mkdir(parents=True, exist_ok=True)
-    stage_run_slug = request.stage_run_id.replace(":", "_")
-    artifact_path = stage_dir / f"{stage_run_slug}_text_regions.json"
+    stage_dir = stage_transaction_dir(request)
+    run_slug = stage_run_slug(request.stage_run_id)
+    artifact_path = stage_dir / f"{run_slug}_text_regions.json"
     artifact_path.write_text(
         json.dumps(payload.to_dict(), ensure_ascii=True, indent=2),
         encoding="utf-8",
     )
     artifact_ref = (
-        f"artifact://{request.pipeline_id}/{request.stage_name}/{stage_run_slug}/text_regions"
+        f"artifact://{request.pipeline_id}/{request.stage_name}/{run_slug}/text_regions"
     )
     return ArtifactDescriptor(
         artifact_ref=artifact_ref,
@@ -291,17 +290,6 @@ def _write_text_regions_artifact(
             "source_artifact_ref": payload.source_artifact_ref,
         },
     )
-
-
-def _workspace_path(request: StageRequest) -> Path:
-    if request.runtime_context is None:
-        return Path("/tmp/towa/workspace")
-    parsed = urlparse(request.runtime_context.workspace_uri)
-    if parsed.scheme != "file":
-        raise RuntimeError("CRAFT text detection currently requires file:// workspace_uri")
-    return Path(parsed.path)
-
-
 def _detect_with_craft(image_path: str, config: dict[str, object]) -> dict[str, object]:
     try:
         from craft_text_detector import Craft

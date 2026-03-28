@@ -8,7 +8,15 @@
 
 ## 이번에 구현한 범위
 
-현재 `PLAN.md`에서 이미 확정된 공통 계약층만 구현했다. 아직 미정인 OCR/번역/식자/실제 provider adapter는 구현하지 않았다.
+현재는 공통 계약층을 넘어서, 첫 built-in 모델 경로까지 구현했다.
+
+이미 구현된 capability:
+
+- built-in `text_detection=CRAFT`
+- 규칙 기반 `mask_or_erase_planning`
+- built-in `inpaint=nanobanana(Vertex AI 경유)`
+
+아직 미구현인 영역은 OCR/번역/식자/postprocess와 실제 billable provider smoke run이다.
 
 README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage IPC, artifact lifecycle, credential binding/key management 규칙을 README에 먼저 고정하고 그 범위까지만 구현했다.
 
@@ -78,6 +86,8 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 비고:
 
 - `file://` URI 기준 checksum verify를 지원한다.
+- local file artifact는 `{workspace}/transactions/{pipeline_id}/{stage_name}/{stage_run_id}/`
+  경로 아래에 stage-run 단위로 저장한다.
 - 운영용 durable registry는 아직 구현하지 않았다.
 
 ### 4. Stage I/O / Report Contract
@@ -98,7 +108,7 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 비고:
 
 - stage output은 patch + artifact + report 조합을 기본으로 둔다.
-- 미정 영역 때문에 snapshot 기반 예외 경로는 아직 구현하지 않았다.
+- provider hang/timeout 시 snapshot artifact를 남기는 실패 경로를 지원한다.
 
 ### 5. Orchestrator / Stage Base
 
@@ -314,6 +324,7 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - `contracts/inpaint_tasks.py`
 - `stages/mask_or_erase_planning.py`
 - `builtin_models/nanobanana_inpaint.py`
+- `scripts/run_inpaint_sample.py`
 - `tests/test_nanobanana_inpaint.py`
 
 구현 내용:
@@ -322,20 +333,23 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - 규칙 기반 `mask_or_erase_planning` stage 구현
 - `text_regions -> erase_mask + inpaint_tasks` 변환
 - built-in `inpaint=nanobanana` manifest/adapter 등록 함수 추가
-- crop 단위 inpaint 결과를 `layer_inpainting`용 bitmap으로 composite
+- crop 단위 inpaint 결과를 별도 `layer_inpainting` bitmap으로 유지
+- provider 실패 시 partial bitmap + failure snapshot 보존
+- 샘플 이미지 실행용 end-to-end runner 추가
 
 현재 지원 규칙:
 
 - planner는 `text_regions`와 `bitmap`을 입력으로 받는다
 - planner는 `layer_inpainting` 대상 task와 mask artifact를 만든다
 - inpaint stage는 `layer_inpainting` 이외의 레이어를 거부한다
-- inpaint 결과는 새 bitmap artifact로 저장되고, 문서에는 `add_layer` 또는 `replace_source_ref` patch로 반영된다
+- inpaint 결과는 원본 페이지와 병합하지 않고 새 `layer_inpainting` artifact로만 저장된다
+- transaction 경로 아래에 mask/task/output/snapshot 파일이 정리된다
 - nanobanana 호출 prompt는 stage config override가 없으면 기본 프롬프트를 사용한다
 
 비고:
 
 - 실제 Vertex AI 호출은 `google-genai` 런타임이 필요하다
-- 현재 저장소 테스트는 fake image edit 함수로 planner/composite 계약을 검증한다
+- 현재 저장소 테스트는 fake image edit 함수로 planner/composite/failure snapshot 계약을 검증한다
 
 ## 테스트 상태
 
@@ -363,11 +377,13 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - manifest 기반 HTTP API custom model 로드/실행
 - built-in CRAFT text detection artifact 생성/registry 실행
 - 규칙 기반 planner와 nanobanana inpaint composite 실행
+- transaction-scoped artifact 저장 경로
+- nanobanana failure snapshot 보존
 
 현재 상태:
 
 - `python3 -m unittest discover -s model_engine/tests -v`
-- 총 19개 테스트 통과
+- 총 20개 테스트 통과
 - subprocess child env로 credential secret 주입
 - manifest 기반 adapter selection
 - `preferred_model_id` override
@@ -382,14 +398,12 @@ PYTHONPYCACHEPREFIX=/tmp/pythoncache python3 -m unittest discover -s model_engin
 
 결과:
 
-- 12 tests passed
+- 20 tests passed
 
 ## 아직 구현하지 않은 것
 
 아래는 의도적으로 보류했다.
 
-- 실제 `text_detection=CRAFT` stage 실행체
-- 실제 `inpaint=나노바나나 API` adapter
 - OCR stage 구현
 - translation stage 구현
 - typesetting/layout stage 구현
@@ -398,6 +412,7 @@ PYTHONPYCACHEPREFIX=/tmp/pythoncache python3 -m unittest discover -s model_engin
 - session credential ingress flow
 - provider별 secret manager adapter
 - GPU/container runtime 분화
+- 실제 Vertex AI billable smoke run
 - UI 반환 포맷
 - capability contract test 세분화
 
@@ -407,12 +422,12 @@ PYTHONPYCACHEPREFIX=/tmp/pythoncache python3 -m unittest discover -s model_engin
 
 현재 코드에서 다음 단계로 자연스러운 순서는 아래다.
 
-1. `text_detection` stage contract를 `CRAFT` 기준으로 구체화
-2. `text_regions` / `text_blocks` schema를 더 닫기
-3. `inpaint` stage용 provider adapter interface 정의
+1. OCR stage와 OCR 출력 schema 구현
+2. `text_regions` / `text_blocks` 연결 규칙을 더 닫기
+3. translation stage 구현
 4. orchestrator에 optional stage / partial failure 정책 추가
-5. `AdapterBackedStage`를 실제 capability stage에 연결
-6. capability contract test를 adapter별 공통 테스트로 분리
+5. capability contract test를 adapter별 공통 테스트로 분리
+6. 실제 Vertex AI smoke run과 error mapping 검증
 7. 장기적으로 subprocess IPC와 별개로 socket/queue transport가 필요한지 판단
 8. session credential을 실제 login/session 경로와 연결
 
@@ -422,3 +437,4 @@ PYTHONPYCACHEPREFIX=/tmp/pythoncache python3 -m unittest discover -s model_engin
 - `pydantic` 없이 표준 라이브러리 기반으로 작성했다.
 - 수정 범위는 `model_engine/` 내부로 제한했다.
 - 현재 Dockerfile은 CPU 개발용 최소 이미지다.
+- 실제 provider key는 코드/저장소에 하드코딩하지 않고 credential binding 경로로만 주입한다.

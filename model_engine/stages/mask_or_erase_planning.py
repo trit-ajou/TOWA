@@ -12,6 +12,7 @@ from ..contracts.inpaint_tasks import InpaintTask, InpaintTasksPayload
 from ..contracts.patches import PatchOperation
 from ..contracts.stages import StageReport, StageRequest, StageResponse, StageStatus
 from ..contracts.text_regions import text_regions_payload_from_mapping
+from ..storage import stage_run_slug, stage_transaction_dir
 
 
 def run_mask_or_erase_planning(request: StageRequest) -> StageResponse:
@@ -43,18 +44,17 @@ def run_mask_or_erase_planning(request: StageRequest) -> StageResponse:
 
     tasks: list[InpaintTask] = []
     artifacts: dict[str, ArtifactDescriptor] = {}
-    workspace_dir = _workspace_path(request)
-    stage_dir = workspace_dir / request.pipeline_id / request.stage_name
-    stage_dir.mkdir(parents=True, exist_ok=True)
+    stage_dir = stage_transaction_dir(request)
+    run_slug = stage_run_slug(request.stage_run_id)
 
     for index, region in enumerate(text_regions.regions, start=1):
         expanded_bbox = _expand_bbox(region.bbox, image_width, image_height, padding)
         crop_bbox = _crop_bbox(region.bbox, image_width, image_height)
-        mask_path = stage_dir / f"{request.stage_run_id.replace(':', '_')}_mask_{index:04d}.png"
+        mask_path = stage_dir / f"{run_slug}_mask_{index:04d}.png"
         _write_mask(mask_path, expanded_bbox, region.polygon, region.bbox)
         mask_ref = (
             f"artifact://{request.pipeline_id}/{request.stage_name}/"
-            f"{request.stage_run_id.replace(':', '_')}/mask/{index:04d}"
+            f"{run_slug}/mask/{index:04d}"
         )
         artifacts[mask_ref] = ArtifactDescriptor(
             artifact_ref=mask_ref,
@@ -92,14 +92,14 @@ def run_mask_or_erase_planning(request: StageRequest) -> StageResponse:
         tasks=tasks,
         metadata={"region_count": len(text_regions.regions), "padding": padding},
     )
-    tasks_path = stage_dir / f"{request.stage_run_id.replace(':', '_')}_inpaint_tasks.json"
+    tasks_path = stage_dir / f"{run_slug}_inpaint_tasks.json"
     tasks_path.write_text(
         json.dumps(tasks_payload.to_dict(), ensure_ascii=True, indent=2),
         encoding="utf-8",
     )
     tasks_ref = (
         f"artifact://{request.pipeline_id}/{request.stage_name}/"
-        f"{request.stage_run_id.replace(':', '_')}/inpaint_tasks"
+        f"{run_slug}/inpaint_tasks"
     )
     artifacts[tasks_ref] = ArtifactDescriptor(
         artifact_ref=tasks_ref,
@@ -179,17 +179,6 @@ def _resolve_text_regions_artifact(request: StageRequest) -> ArtifactDescriptor:
         if artifact.kind == "text_regions":
             return artifact
     raise ValueError("mask_or_erase_planning requires a text_regions artifact")
-
-
-def _workspace_path(request: StageRequest) -> Path:
-    if request.runtime_context is None:
-        return Path("/tmp/towa/workspace")
-    parsed = urlparse(request.runtime_context.workspace_uri)
-    if parsed.scheme != "file":
-        raise RuntimeError("mask_or_erase_planning requires file:// workspace_uri")
-    return Path(parsed.path)
-
-
 def _file_path_from_uri(uri: str) -> Path:
     parsed = urlparse(uri)
     if parsed.scheme != "file":
