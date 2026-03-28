@@ -198,6 +198,7 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 
 - `Dockerfile`
 - `Dockerfile.inference`
+- `docker-compose.inference.yml`
 - `.dockerignore`
 - `requirements-base.txt`
 - `requirements-craft.txt`
@@ -206,6 +207,7 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 
 - Python 실행 가능한 최소 컨테이너 환경
 - 기본 개발/테스트 이미지와 추론용 이미지 분리
+- 추론 샘플 실행용 Docker Compose 추가
 - base/craft 의존성 파일 분리
 - `/app` 작업 디렉토리
 - `/workspace`, `/artifacts`, `/cache` 기본 경로 생성
@@ -325,6 +327,7 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - `stages/mask_or_erase_planning.py`
 - `builtin_models/nanobanana_inpaint.py`
 - `scripts/run_inpaint_sample.py`
+- `docker-compose.inference.yml`
 - `tests/test_nanobanana_inpaint.py`
 
 구현 내용:
@@ -336,6 +339,7 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - crop 단위 inpaint 결과를 별도 `layer_inpainting` bitmap으로 유지
 - provider 실패 시 partial bitmap + failure snapshot 보존
 - 샘플 이미지 실행용 end-to-end runner 추가
+- Compose 기반 샘플 실행 경로 추가
 
 현재 지원 규칙:
 

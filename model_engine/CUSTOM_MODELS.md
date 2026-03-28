@@ -172,6 +172,13 @@ python3 model_engine/scripts/run_craft_sample.py \
 
 - `model_engine/.runtime/transactions/pipe_craft_sample/text_detection/...`
 
+복잡한 명령 대신 Docker Compose로도 바로 실행할 수 있다.
+
+```bash
+cd model_engine
+docker compose -f docker-compose.inference.yml run --rm craft-sample
+```
+
 ### 10-2. Built-in Inpaint 실행
 
 `CRAFT -> mask_or_erase_planning -> nanobanana inpaint` 최소 흐름은 아래 스크립트로 실행한다.
@@ -192,6 +199,21 @@ python3 model_engine/scripts/run_inpaint_sample.py \
 - provider가 멈추거나 timeout이면 stage는 `failed`가 되고, partial bitmap + failure snapshot이 남는다.
 
 기본 API 키 환경 변수 이름은 `TOWA_NANOBANANA_API_KEY`이며, 필요하면 `--api-key-env`로 바꿀 수 있다.
+
+Compose로 실행하면 더 단순하다.
+
+```bash
+cd model_engine
+export TOWA_NANOBANANA_API_KEY="YOUR_API_KEY"
+docker compose -f docker-compose.inference.yml run --rm inpaint-sample
+```
+
+Compose 파일은 아래를 자동으로 처리한다.
+
+- `Dockerfile.inference` 빌드
+- `model_engine/.runtime -> /workspace_out` 마운트
+- `model_engine/.cache/models -> /cache/models` 마운트
+- 샘플 이미지 경로와 workspace 경로 전달
 
 ### 10-3. Custom Python 모델 실행 흐름
 
