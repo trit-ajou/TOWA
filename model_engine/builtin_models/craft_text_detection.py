@@ -296,6 +296,7 @@ def _detect_with_craft(image_path: str, config: dict[str, object]) -> dict[str, 
     try:
         from craft_text_detector import Craft
         from craft_text_detector import craft_utils as craft_utils_module
+        from craft_text_detector import predict as predict_module
     except ImportError as exc:
         raise RuntimeError(
             "Failed to import craft_text_detector.Craft. "
@@ -304,6 +305,7 @@ def _detect_with_craft(image_path: str, config: dict[str, object]) -> dict[str, 
         ) from exc
 
     _patch_craft_adjust_result_coordinates(craft_utils_module)
+    _patch_craft_predict_numpy(predict_module)
     detector = Craft(
         output_dir=None,
         cuda=bool(config.get("cuda", False)),
@@ -387,3 +389,26 @@ def _patch_craft_adjust_result_coordinates(craft_utils_module: object) -> None:
         return adjusted
 
     setattr(craft_utils_module, "adjustResultCoordinates", _safe_adjust_result_coordinates)
+
+
+def _patch_craft_predict_numpy(predict_module: object) -> None:
+    current = getattr(predict_module, "np", None)
+    if current is None or getattr(current, "__class__", type(None)).__name__ == "_SafeNumpyProxy":
+        return
+
+    class _SafeNumpyProxy:
+        def __init__(self, base_module: object) -> None:
+            self._base_module = base_module
+
+        def __getattr__(self, name: str) -> object:
+            return getattr(self._base_module, name)
+
+        def array(self, values: object, *args: object, **kwargs: object) -> object:
+            try:
+                return self._base_module.array(values, *args, **kwargs)
+            except ValueError as exc:
+                if "inhomogeneous shape" not in str(exc):
+                    raise
+                return self._base_module.array(values, dtype=object)
+
+    setattr(predict_module, "np", _SafeNumpyProxy(np))
