@@ -167,6 +167,14 @@ CRAFT를 쓰기로 한 건 좋지만, CRAFT가 내는 raw 결과를 다음 stage
 
 이걸 안 정하면 이후 OCR/번역/식자 단계가 흔들립니다.
 
+추가로 v1 방향을 아래로 고정합니다.
+
+* `text_regions`는 바로 provider에 넘기지 않음
+* `mask_or_erase_planning`이 `text_regions -> crop task` 변환 담당
+* 나노바나나 API는 crop 단위 inpaint만 수행
+* 결과는 항상 `inpainting layer`에만 합성
+* 원본 페이지 레이어는 직접 수정하지 않음
+
 ## 8. OCR/번역/식자용 text block schema가 아직 없습니다
 
 UI는 기본 편집 화면에서 “원문/번역문 쌍 + 레이어 토글”을 다루게 되어 있습니다. 즉 모델 엔진도 text block을 단순 문자열이 아니라 **문서 내 객체**로 다뤄야 합니다. 

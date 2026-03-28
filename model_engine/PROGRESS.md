@@ -307,6 +307,36 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - 실제 추론 런타임은 `craft-text-detector` 설치가 필요하다.
 - 현재 저장소 테스트는 fake detector로 계약과 artifact 생성을 검증한다.
 
+### 12. Rule-based mask_or_erase_planning + Nanobanana Inpaint
+
+구현 파일:
+
+- `contracts/inpaint_tasks.py`
+- `stages/mask_or_erase_planning.py`
+- `builtin_models/nanobanana_inpaint.py`
+- `tests/test_nanobanana_inpaint.py`
+
+구현 내용:
+
+- `inpaint_tasks` payload/dataclass 계약 추가
+- 규칙 기반 `mask_or_erase_planning` stage 구현
+- `text_regions -> erase_mask + inpaint_tasks` 변환
+- built-in `inpaint=nanobanana` manifest/adapter 등록 함수 추가
+- crop 단위 inpaint 결과를 `layer_inpainting`용 bitmap으로 composite
+
+현재 지원 규칙:
+
+- planner는 `text_regions`와 `bitmap`을 입력으로 받는다
+- planner는 `layer_inpainting` 대상 task와 mask artifact를 만든다
+- inpaint stage는 `layer_inpainting` 이외의 레이어를 거부한다
+- inpaint 결과는 새 bitmap artifact로 저장되고, 문서에는 `add_layer` 또는 `replace_source_ref` patch로 반영된다
+- nanobanana 호출 prompt는 stage config override가 없으면 기본 프롬프트를 사용한다
+
+비고:
+
+- 실제 Vertex AI 호출은 `google-genai` 런타임이 필요하다
+- 현재 저장소 테스트는 fake image edit 함수로 planner/composite 계약을 검증한다
+
 ## 테스트 상태
 
 테스트 파일:
@@ -318,6 +348,7 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - `tests/test_model_merge.py`
 - `tests/test_custom_models.py`
 - `tests/test_craft_text_detection.py`
+- `tests/test_nanobanana_inpaint.py`
 
 검증한 항목:
 
@@ -331,11 +362,12 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - manifest 기반 Python custom model 로드/실행
 - manifest 기반 HTTP API custom model 로드/실행
 - built-in CRAFT text detection artifact 생성/registry 실행
+- 규칙 기반 planner와 nanobanana inpaint composite 실행
 
 현재 상태:
 
 - `python3 -m unittest discover -s model_engine/tests -v`
-- 총 16개 테스트 통과
+- 총 19개 테스트 통과
 - subprocess child env로 credential secret 주입
 - manifest 기반 adapter selection
 - `preferred_model_id` override
