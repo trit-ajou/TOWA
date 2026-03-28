@@ -344,8 +344,9 @@ def _craft_detect_kwargs(
         if key in supported:
             kwargs[key] = value
 
-    for key in ("poly", "crop_type"):
-        if key in supported and key not in kwargs:
-            kwargs[key] = config.get(key, "poly" if key == "crop_type" else False)
+    if "poly" in supported and "poly" not in kwargs:
+        kwargs["poly"] = bool(config.get("poly", False))
+    if "crop_type" in supported and "crop_type" not in kwargs:
+        kwargs["crop_type"] = str(config.get("crop_type", "box"))
 
     return kwargs
