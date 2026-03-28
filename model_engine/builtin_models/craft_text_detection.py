@@ -295,7 +295,9 @@ def _detect_with_craft(image_path: str, config: dict[str, object]) -> dict[str, 
         from craft_text_detector import Craft
     except ImportError as exc:
         raise RuntimeError(
-            "craft-text-detector is not installed. Use Dockerfile.inference or install requirements-craft.txt."
+            "Failed to import craft_text_detector.Craft. "
+            "The package may be missing, or one of its transitive dependencies may have failed to import. "
+            f"Original import error: {exc!r}"
         ) from exc
 
     detector = Craft(
