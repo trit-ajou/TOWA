@@ -132,6 +132,7 @@ stage = AdapterBackedStage(
 - `allowed_credential_sources`가 local/SaaS 실행 방식과 맞는가
 - 반환값이 항상 `StageResponse`인가
 - patch/artifact/report가 README의 공통 계약을 따르는가
+- `inpaint` custom model이면 `inpaint_tasks`를 입력으로 받고 `inpainting layer`만 갱신하는가
 
 ## 9. 현재 범위와 한계
 
@@ -148,3 +149,64 @@ stage = AdapterBackedStage(
 - registry hot reload
 - provider별 재시도/서킷브레이커 정책
 - sandbox 격리된 third-party plugin 실행 환경
+
+## 10. 실행 방법
+
+기본 검증은 테스트 스위트부터 돌리는 것이 가장 안전하다.
+
+```bash
+PYTHONPYCACHEPREFIX=/tmp/pythoncache python3 -m unittest discover -s model_engine/tests -v
+```
+
+### 10-1. Built-in CRAFT 실행
+
+샘플 이미지로 `text_detection=CRAFT`만 실행하려면 아래 스크립트를 사용한다.
+
+```bash
+python3 model_engine/scripts/run_craft_sample.py \
+  --image model_engine/samples/images/sample_page.webp \
+  --workspace model_engine/.runtime
+```
+
+결과 `text_regions` artifact는 transaction 경로 아래에 생성된다.
+
+- `model_engine/.runtime/transactions/pipe_craft_sample/text_detection/...`
+
+### 10-2. Built-in Inpaint 실행
+
+`CRAFT -> mask_or_erase_planning -> nanobanana inpaint` 최소 흐름은 아래 스크립트로 실행한다.
+
+```bash
+export TOWA_NANOBANANA_API_KEY="YOUR_API_KEY"
+
+python3 model_engine/scripts/run_inpaint_sample.py \
+  --image model_engine/samples/images/sample_page.webp \
+  --workspace model_engine/.runtime
+```
+
+규칙:
+
+- API 키는 코드나 manifest에 쓰지 않고 환경 변수로만 넣는다.
+- `inpaint` 결과는 원본 페이지와 병합되지 않고 새 `inpainting layer` artifact로 남는다.
+- 생성 파일은 모두 transaction 경로 아래에 저장된다.
+- provider가 멈추거나 timeout이면 stage는 `failed`가 되고, partial bitmap + failure snapshot이 남는다.
+
+기본 API 키 환경 변수 이름은 `TOWA_NANOBANANA_API_KEY`이며, 필요하면 `--api-key-env`로 바꿀 수 있다.
+
+### 10-3. Custom Python 모델 실행 흐름
+
+1. manifest JSON을 만든다.
+2. `adapter_config.import_path`에 `module:symbol`을 적는다.
+3. `ModelRegistry.load_custom_model_directory(...)`로 manifest 디렉터리를 로드한다.
+4. `AdapterBackedStage(stage_kind=...)`로 stage를 실행한다.
+
+예시 코드는 `custom_models/demo.py`와 `tests/test_custom_models.py`를 기준으로 보면 된다.
+
+### 10-4. Custom HTTP API 모델 실행 흐름
+
+1. manifest JSON에 `adapter_type=http_api`를 적는다.
+2. `endpoint_url` 또는 `endpoint_url_env`를 설정한다.
+3. 필요하면 `auth_header_name`, `auth_header_prefix`, `credential_alias`를 설정한다.
+4. orchestrator가 해석한 credential은 헤더로만 전달되고, stage JSON 본문에는 raw secret이 들어가지 않는다.
+
+API custom model 예시는 `tests/test_custom_models.py`의 `custom.remote.inpaint` 케이스를 기준으로 보면 된다.

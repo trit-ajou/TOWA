@@ -473,6 +473,16 @@ artifact lifecycle 규칙:
 - 성공 경로에서 더 이상 참조되지 않는 artifact는 pipeline 종료 후 GC 후보가 된다.
 - rollback이 발생하면 rollback 이후 도달 불가능한 artifact는 `orphaned`로 표시하고 정리한다.
 
+로컬 파일 저장 규칙:
+
+- local artifact는 transaction 단위 경로 아래 저장한다.
+- 기본 경로 형식:
+  - `{workspace}/transactions/{pipeline_id}/{stage_name}/{stage_run_id}/`
+- stage는 이 경로 아래에서만 산출물을 만든다.
+- orchestrator는 transaction 종료 후 성공/실패 상태에 따라 정리 또는 보존을 결정한다.
+
+즉 local `file://` 저장은 허용하지만, transaction 범위를 벗어난 임의 경로 쓰기는 금지한다.
+
 전달 매체 기본 우선순위:
 
 - local 기본: `file://` 임시 파일
@@ -544,6 +554,12 @@ artifact lifecycle 규칙:
 - `metrics`는 stage 자유 확장을 허용하되, 공통 지표로 `latency_ms`는 권장한다.
 - `provider`는 raw secret이 아니라 provider/credential source/version/billing metadata만 담는다.
 - 실패 시 `error_code`는 machine-readable 해야 하고, `error_message`는 운영/디버깅용 사람이 읽을 수 있어야 한다.
+
+외부 provider stage 추가 규칙:
+
+- provider가 멈추거나 timeout/abort 상태로 끝나면 기본적으로 `failed`로 처리한다.
+- 이 경우 마지막 입력 snapshot, task snapshot, 이미 생성된 output artifact는 transaction 경로 아래에 남길 수 있다.
+- 즉 "조용한 partial 성공"보다 "명시적 실패 + snapshot 보존"이 기본 규칙이다.
 
 ## 12. Selection 및 Runtime Field 구분
 
@@ -1050,6 +1066,14 @@ CRAFT raw output은 다음 stage에 직접 넘기지 않는다.
 - 결과 `text_regions`는 workspace 아래 JSON artifact로 기록한다.
 - 샘플 실행은 `scripts/run_craft_sample.py`를 사용한다.
 
+권장 `stage_config`:
+
+- `input_artifact_ref`
+- `text_threshold`
+- `link_threshold`
+- `low_text`
+- `cuda`
+
 ## 19. Built-in Inpaint Strategy
 
 첫 built-in `inpaint` 구현체는 나노바나나 API를 기준으로 설계한다.
@@ -1088,6 +1112,8 @@ CRAFT raw output은 다음 stage에 직접 넘기지 않는다.
 - `inpainting layer`의 `source_ref`만 `inpaint` stage가 갱신한다.
 - 원본 레이어의 `source_ref`는 보존한다.
 - 결과적으로 UI에서는 원본과 인페인팅 결과를 분리해서 토글/검토할 수 있어야 한다.
+- inpaint 결과는 원본 페이지와 병합된 단일 bitmap으로 보존하지 않는다.
+- 항상 "새로운 inpainting layer 결과물"로 유지하고, 이후 전송도 레이어 단위로 한다.
 
 ### 19.3 Stage 분리
 
@@ -1152,9 +1178,17 @@ v1에서는 planner를 규칙 기반으로 시작한다.
 그 다음 orchestrator 또는 `inpaint` stage 내부 합성기가 아래를 수행한다.
 
 - 원래 crop 위치에 결과를 되돌려 붙인다.
-- 여러 crop 결과를 하나의 `inpainting layer` bitmap으로 병합한다.
-- 최종 bitmap을 새 artifact ref로 저장한다.
-- `replace_source_ref` 또는 `set_stage_meta`로 문서에 반영한다.
+- 여러 crop 결과를 "새로운 inpainting layer canvas"에만 반영한다.
+- 최종 결과는 새 `inpainting layer` artifact ref로 저장한다.
+- 원본 페이지 bitmap과는 병합하지 않는다.
+- 문서에는 `replace_source_ref` 또는 `add_layer`로 새 인페인팅 레이어 결과만 반영한다.
+
+현재 built-in adapter는 Vertex AI 경유 호출을 기준으로 한다.
+
+- provider name: `nanobanana`
+- runtime library: `google-genai`
+- authentication: Vertex AI express mode API key 또는 동일 형식의 provider key를 credential binding으로 주입
+- raw key는 코드, patch, artifact, stage_report에 남기지 않는다
 
 ### 19.6 Inpainting Layer 전용 적용 규칙
 
@@ -1163,10 +1197,21 @@ v1에서는 planner를 규칙 기반으로 시작한다.
 - `inpaint` stage는 `target_layer_id`가 `inpainting layer`가 아니면 실행하면 안 된다.
 - planner가 만든 task에도 `target_layer_id`를 명시한다.
 - 원본 레이어, OCR overlay, typesetting layer에는 inpaint를 적용하지 않는다.
+- provider output은 항상 독립 `inpainting layer` 결과로 들고 있어야 한다.
 
 즉 inpaint는 "문서를 직접 파괴하는 stage"가 아니라 "인페인팅 전용 레이어를 갱신하는 stage"다.
 
-### 19.7 v1 구현 결론
+### 19.7 Failure 및 Snapshot 규칙
+
+나노바나나 같은 외부 provider stage는 다음 규칙을 따른다.
+
+- provider가 멈추거나 timeout/abort로 끝나면 `failed`로 간주한다.
+- 이 경우 현재 transaction 경로 아래의 입력 crop, mask, task snapshot, 이미 생성된 결과물은 보존할 수 있다.
+- 기본 정책은 "실패 + snapshot 보존"이며, 성공으로 간주되는 `partial` 처리로 올리지 않는다.
+
+즉 운영상 재현과 디버깅을 우선하고, 묵시적 성공 처리로 넘기지 않는다.
+
+### 19.8 v1 구현 결론
 
 현재 v1 방향은 아래로 고정한다.
 
@@ -1174,8 +1219,10 @@ v1에서는 planner를 규칙 기반으로 시작한다.
 - `mask_or_erase_planning`은 규칙 기반
 - `inpaint`는 나노바나나 API
 - `text_regions`를 그대로 provider에 넘기지 않고 planner task로 변환
-- provider 결과는 crop 단위로 받아 `inpainting layer`에만 합성
+- provider 결과는 crop 단위로 받아 새 `inpainting layer` 결과물로만 유지
 - 원본 그림 손실 최소화가 기본 목표
+- provider hang/timeout은 `failed + snapshot 보존`
+- local file artifact는 transaction 경로 아래 저장
 
 현재 구현 범위:
 
@@ -1183,3 +1230,16 @@ v1에서는 planner를 규칙 기반으로 시작한다.
 - built-in `inpaint` adapter가 Vertex AI 경유 나노바나나 호출 형식을 따른다.
 - 나노바나나 prompt는 기본 프롬프트를 내장하되 stage config로 override 가능하다.
 - 실제 provider 호출은 `google-genai` 런타임이 준비된 환경에서 수행한다.
+
+권장 `stage_config`:
+
+- `inpaint_tasks_ref`
+- `prompt`
+- `model_name`
+
+권장 planner `stage_config`:
+
+- `input_artifact_ref`
+- `text_regions_artifact_ref`
+- `padding`
+- `target_layer_id`

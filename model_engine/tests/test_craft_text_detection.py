@@ -44,6 +44,10 @@ class CraftTextDetectionTests(unittest.TestCase):
             artifact = next(iter(response.artifacts.values()))
             self.assertEqual("text_regions", artifact.kind)
             artifact_path = Path(artifact.uri.removeprefix("file://"))
+            self.assertIn(
+                "/transactions/pipe_craft_test/text_detection/pipe_craft_test_text_detection_1/",
+                artifact_path.as_posix(),
+            )
             payload = json.loads(artifact_path.read_text(encoding="utf-8"))
             self.assertEqual("craft", payload["detector"])
             self.assertEqual(2, len(payload["regions"]))
@@ -83,6 +87,9 @@ class CraftTextDetectionTests(unittest.TestCase):
                 "preferred_model_id=builtin.craft.text_detection",
                 response.stage_report.metrics["selection_reason"],
             )
+            artifact = next(iter(response.artifacts.values()))
+            artifact_path = Path(artifact.uri.removeprefix("file://"))
+            self.assertIn("/transactions/pipe_craft_test/text_detection/", artifact_path.as_posix())
 
 
 def _stage_request(workspace_dir: Path, image_path: Path) -> StageRequest:

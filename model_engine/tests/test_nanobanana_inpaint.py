@@ -14,7 +14,7 @@ from model_engine.builtin_models.nanobanana_inpaint import (
     register_nanobanana_inpaint_model,
     run_nanobanana_inpaint,
 )
-from model_engine.contracts.artifacts import ArtifactDescriptor
+from model_engine.contracts.artifacts import ArtifactDescriptor, ArtifactStatus
 from model_engine.contracts.credentials import (
     BillingMode,
     CredentialBinding,
@@ -55,6 +55,11 @@ class NanobananaInpaintTests(unittest.TestCase):
             )
             self.assertEqual("layer_inpainting", payload["target_layer_id"])
             self.assertEqual(1, len(payload["tasks"]))
+            task_path = Path(task_artifacts[0].uri.removeprefix("file://"))
+            self.assertIn(
+                "/transactions/pipe_inpaint/mask_or_erase_planning/pipe_inpaint_mask_or_erase_planning_1/",
+                task_path.as_posix(),
+            )
 
     def test_nanobanana_inpaint_composites_only_task_region(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -70,8 +75,13 @@ class NanobananaInpaintTests(unittest.TestCase):
             bitmap_artifact = next(iter(response.artifacts.values()))
             output_image = Image.open(Path(bitmap_artifact.uri.removeprefix("file://"))).convert("RGBA")
             self.assertEqual((0, 255, 0, 255), output_image.getpixel((5, 5)))
-            self.assertEqual((0, 0, 255, 255), output_image.getpixel((0, 0)))
+            self.assertEqual((0, 0, 0, 0), output_image.getpixel((0, 0)))
             self.assertEqual("add_layer", response.patches[0].op.value)
+            output_path = Path(bitmap_artifact.uri.removeprefix("file://"))
+            self.assertIn(
+                "/transactions/pipe_inpaint/inpaint/pipe_inpaint_inpaint_1/",
+                output_path.as_posix(),
+            )
 
     def test_registry_runs_nanobanana_inpaint_stage(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -97,6 +107,43 @@ class NanobananaInpaintTests(unittest.TestCase):
                 "preferred_model_id=builtin.nanobanana.inpaint",
                 response.stage_report.metrics["selection_reason"],
             )
+
+    def test_nanobanana_inpaint_retains_failure_snapshot(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            planning_response = run_mask_or_erase_planning(_planning_request(Path(tmpdir)))
+            inpaint_request = _inpaint_request(Path(tmpdir), planning_response.artifacts)
+
+            response = run_nanobanana_inpaint(
+                inpaint_request,
+                generate_edit_fn=_failing_generate_edit,
+            )
+
+            self.assertEqual(StageStatus.FAILED, response.status)
+            self.assertEqual("provider_timeout", response.stage_report.error_code)
+            self.assertEqual("yes", response.stage_report.metrics["snapshot_retained"])
+            self.assertEqual(2, len(response.artifacts))
+
+            partial_bitmap = next(
+                descriptor
+                for descriptor in response.artifacts.values()
+                if descriptor.metadata.get("role") == "partial_inpainting_snapshot"
+            )
+            self.assertEqual(ArtifactStatus.FAILED, partial_bitmap.status)
+            partial_bitmap_image = Image.open(
+                Path(partial_bitmap.uri.removeprefix("file://"))
+            ).convert("RGBA")
+            self.assertEqual((0, 0, 0, 0), partial_bitmap_image.getpixel((0, 0)))
+
+            failure_snapshot = next(
+                descriptor
+                for descriptor in response.artifacts.values()
+                if descriptor.metadata.get("role") == "failure_snapshot"
+            )
+            snapshot_payload = json.loads(
+                Path(failure_snapshot.uri.removeprefix("file://")).read_text(encoding="utf-8")
+            )
+            self.assertEqual("provider_timeout", snapshot_payload["error_code"])
+            self.assertEqual(partial_bitmap.artifact_ref, snapshot_payload["partial_bitmap_ref"])
 
 
 def _planning_request(workspace_dir: Path) -> StageRequest:
@@ -224,6 +271,23 @@ def _fake_generate_edit(
     buffer = BytesIO()
     edited.save(buffer, format="PNG")
     return buffer.getvalue()
+
+
+def _failing_generate_edit(
+    crop_bytes: bytes,
+    crop_mime_type: str,
+    mask_bytes: bytes,
+    prompt: str,
+    model_name: str,
+    api_key: str,
+) -> bytes:
+    _ = crop_bytes
+    _ = crop_mime_type
+    _ = mask_bytes
+    _ = prompt
+    _ = model_name
+    _ = api_key
+    raise TimeoutError("provider stalled")
 
 
 if __name__ == "__main__":

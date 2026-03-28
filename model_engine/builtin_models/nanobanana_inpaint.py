@@ -10,7 +10,7 @@ from urllib.parse import urlparse
 from PIL import Image
 
 from ..adapters.callable import CallableModelAdapter
-from ..contracts.artifacts import ArtifactDescriptor
+from ..contracts.artifacts import ArtifactDescriptor, ArtifactStatus
 from ..contracts.models import ResourceProfile, StageKind, StageManifest
 from ..contracts.patches import PatchOperation
 from ..contracts.stages import (
@@ -22,6 +22,7 @@ from ..contracts.stages import (
 )
 from ..contracts.inpaint_tasks import inpaint_tasks_payload_from_mapping
 from ..models.registry import ModelRegistry
+from ..storage import stage_run_slug, stage_transaction_dir
 
 
 NANOBANANA_INPAINT_MODEL_ID = "builtin.nanobanana.inpaint"
@@ -85,7 +86,7 @@ def run_nanobanana_inpaint(
     request: StageRequest,
     *,
     generate_edit_fn: Optional[
-        Callable[[bytes, str, bytes, str, str], bytes]
+        Callable[[bytes, str, bytes, str, str, str], bytes]
     ] = None,
 ) -> StageResponse:
     started_at = datetime.now(timezone.utc)
@@ -102,7 +103,7 @@ def run_nanobanana_inpaint(
 
     base_artifact = request.artifacts[tasks_payload.source_artifact_ref]
     base_image = Image.open(_file_path_from_uri(base_artifact.uri)).convert("RGBA")
-    edited_image = base_image.copy()
+    edited_image = _initial_inpainting_canvas(request, base_image, target_layer_id)
 
     generate_edit_fn = generate_edit_fn or _generate_with_nanobanana_vertex
     request_provider = request.resolved_credentials.get("primary_provider")
@@ -116,24 +117,41 @@ def run_nanobanana_inpaint(
     model_name = str(request.stage_config.get("model_name", NANOBANANA_IMAGE_MODEL))
     prompt = str(prompt_override or NANOBANANA_DEFAULT_PROMPT)
 
-    for task in tasks_payload.tasks:
-        if task.target_layer_id != "layer_inpainting":
-            raise ValueError("Nanobanana inpaint task attempted to target a non-inpainting layer")
-        expanded_bbox = task.expanded_bbox
-        crop_box = (
-            expanded_bbox["x"],
-            expanded_bbox["y"],
-            expanded_bbox["x"] + expanded_bbox["width"],
-            expanded_bbox["y"] + expanded_bbox["height"],
+    try:
+        for task in tasks_payload.tasks:
+            if task.target_layer_id != "layer_inpainting":
+                raise ValueError("Nanobanana inpaint task attempted to target a non-inpainting layer")
+            expanded_bbox = task.expanded_bbox
+            crop_box = (
+                expanded_bbox["x"],
+                expanded_bbox["y"],
+                expanded_bbox["x"] + expanded_bbox["width"],
+                expanded_bbox["y"] + expanded_bbox["height"],
+            )
+            crop_image = base_image.crop(crop_box)
+            crop_bytes = _image_to_bytes(crop_image, format_hint="PNG")
+            mask_artifact = request.artifacts[task.mask_artifact_ref]
+            mask_path = _file_path_from_uri(mask_artifact.uri)
+            mask_bytes = mask_path.read_bytes()
+            generated_bytes = generate_edit_fn(
+                crop_bytes,
+                "image/png",
+                mask_bytes,
+                prompt,
+                model_name,
+                api_key,
+            )
+            generated_crop = Image.open(BytesIO(generated_bytes)).convert("RGBA")
+            edited_image.paste(generated_crop, (expanded_bbox["x"], expanded_bbox["y"]))
+    except Exception as exc:
+        return _failed_response(
+            request,
+            started_at=started_at,
+            edited_image=edited_image,
+            tasks_payload=tasks_payload,
+            model_name=model_name,
+            error=exc,
         )
-        crop_image = edited_image.crop(crop_box)
-        crop_bytes = _image_to_bytes(crop_image, format_hint="PNG")
-        mask_artifact = request.artifacts[task.mask_artifact_ref]
-        mask_path = _file_path_from_uri(mask_artifact.uri)
-        mask_bytes = mask_path.read_bytes()
-        generated_bytes = generate_edit_fn(crop_bytes, "image/png", mask_bytes, prompt, model_name, api_key)
-        generated_crop = Image.open(BytesIO(generated_bytes)).convert("RGBA")
-        edited_image.paste(generated_crop, (expanded_bbox["x"], expanded_bbox["y"]))
 
     output_artifact = _write_inpainted_bitmap(request, edited_image, target_layer_id)
     patches = _patches_for_inpainting_layer(request, output_artifact.artifact_ref, target_layer_id)
@@ -243,14 +261,13 @@ def _write_inpainted_bitmap(
     image: Image.Image,
     target_layer_id: str,
 ) -> ArtifactDescriptor:
-    workspace_dir = _workspace_path(request)
-    stage_dir = workspace_dir / request.pipeline_id / request.stage_name
-    stage_dir.mkdir(parents=True, exist_ok=True)
-    output_path = stage_dir / f"{request.stage_run_id.replace(':', '_')}_inpainting.png"
+    stage_dir = stage_transaction_dir(request)
+    run_slug = stage_run_slug(request.stage_run_id)
+    output_path = stage_dir / f"{run_slug}_inpainting.png"
     image.save(output_path)
     artifact_ref = (
         f"artifact://{request.pipeline_id}/{request.stage_name}/"
-        f"{request.stage_run_id.replace(':', '_')}/inpainting_bitmap"
+        f"{run_slug}/inpainting_bitmap"
     )
     return ArtifactDescriptor(
         artifact_ref=artifact_ref,
@@ -321,12 +338,128 @@ def _patches_for_inpainting_layer(
             },
         ),
     ]
+def _failed_response(
+    request: StageRequest,
+    *,
+    started_at: datetime,
+    edited_image: Image.Image,
+    tasks_payload: object,
+    model_name: str,
+    error: Exception,
+) -> StageResponse:
+    snapshot_artifacts = _write_failure_snapshot(
+        request,
+        edited_image=edited_image,
+        tasks_payload=tasks_payload,
+        model_name=model_name,
+        error=error,
+    )
+    report = StageReport(
+        stage_name=request.stage_name,
+        stage_run_id=request.stage_run_id,
+        status=StageStatus.FAILED,
+        input_refs=sorted(request.artifacts.keys()),
+        output_refs=sorted(snapshot_artifacts.keys()),
+        warnings=[],
+        metrics={
+            "provider": "nanobanana",
+            "model_name": model_name,
+            "task_count": len(getattr(tasks_payload, "tasks", []) or []),
+            "snapshot_retained": "yes",
+        },
+        provider=request.credential_bindings.get("primary_provider"),
+        error_code=_error_code_for_exception(error),
+        error_message=str(error),
+        started_at=started_at,
+        finished_at=datetime.now(timezone.utc),
+    )
+    return StageResponse(
+        schema_version=request.schema_version,
+        stage_name=request.stage_name,
+        stage_run_id=request.stage_run_id,
+        status=StageStatus.FAILED,
+        patches=[],
+        artifacts=snapshot_artifacts,
+        stage_report=report,
+    )
 
 
-def _workspace_path(request: StageRequest) -> Path:
-    if request.runtime_context is None:
-        return Path("/tmp/towa/workspace")
-    parsed = urlparse(request.runtime_context.workspace_uri)
-    if parsed.scheme != "file":
-        raise RuntimeError("Nanobanana inpaint requires file:// workspace_uri")
-    return Path(parsed.path)
+def _write_failure_snapshot(
+    request: StageRequest,
+    *,
+    edited_image: Image.Image,
+    tasks_payload: object,
+    model_name: str,
+    error: Exception,
+) -> dict[str, ArtifactDescriptor]:
+    stage_dir = stage_transaction_dir(request)
+    run_slug = stage_run_slug(request.stage_run_id)
+    partial_bitmap_path = stage_dir / f"{run_slug}_partial_inpainting.png"
+    edited_image.save(partial_bitmap_path)
+    partial_bitmap_ref = (
+        f"artifact://{request.pipeline_id}/{request.stage_name}/{run_slug}/partial_inpainting_bitmap"
+    )
+    snapshot_path = stage_dir / f"{run_slug}_failure_snapshot.json"
+    snapshot_path.write_text(
+        json.dumps(
+            {
+                "schema_version": request.schema_version,
+                "stage_name": request.stage_name,
+                "stage_run_id": request.stage_run_id,
+                "model_name": model_name,
+                "error_code": _error_code_for_exception(error),
+                "error_message": str(error),
+                "target_layer_id": getattr(tasks_payload, "target_layer_id", "layer_inpainting"),
+                "task_count": len(getattr(tasks_payload, "tasks", []) or []),
+                "partial_bitmap_ref": partial_bitmap_ref,
+            },
+            ensure_ascii=True,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    snapshot_ref = (
+        f"artifact://{request.pipeline_id}/{request.stage_name}/{run_slug}/failure_snapshot"
+    )
+    return {
+        partial_bitmap_ref: ArtifactDescriptor(
+            artifact_ref=partial_bitmap_ref,
+            kind="bitmap",
+            media_type="image/png",
+            uri=partial_bitmap_path.resolve().as_uri(),
+            width=edited_image.width,
+            height=edited_image.height,
+            byte_size=partial_bitmap_path.stat().st_size,
+            producer_stage=request.stage_name,
+            status=ArtifactStatus.FAILED,
+            metadata={"role": "partial_inpainting_snapshot"},
+        ),
+        snapshot_ref: ArtifactDescriptor(
+            artifact_ref=snapshot_ref,
+            kind="stage_snapshot",
+            media_type="application/json",
+            uri=snapshot_path.resolve().as_uri(),
+            byte_size=snapshot_path.stat().st_size,
+            producer_stage=request.stage_name,
+            metadata={"role": "failure_snapshot"},
+        ),
+    }
+
+
+def _error_code_for_exception(error: Exception) -> str:
+    if isinstance(error, TimeoutError):
+        return "provider_timeout"
+    return "provider_error"
+
+
+def _initial_inpainting_canvas(
+    request: StageRequest,
+    base_image: Image.Image,
+    target_layer_id: str,
+) -> Image.Image:
+    existing_layer = request.document.get_layer(target_layer_id)
+    if existing_layer and existing_layer.source_ref:
+        descriptor = request.artifacts.get(existing_layer.source_ref)
+        if descriptor is not None:
+            return Image.open(_file_path_from_uri(descriptor.uri)).convert("RGBA")
+    return Image.new("RGBA", base_image.size, color=(0, 0, 0, 0))

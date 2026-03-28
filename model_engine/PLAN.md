@@ -127,6 +127,12 @@
 * orchestrator가 registry commit/cleanup 담당
 * local은 `file://`, SaaS는 object storage URI를 기본 스킴으로 사용
 
+추가로 v1에서 아래를 고정합니다.
+
+* local file artifact는 transaction 단위 경로 아래 저장
+* 기본 경로 형식은 `{workspace}/transactions/{pipeline_id}/{stage_name}/{stage_run_id}/`
+* transaction 종료 전까지 산출물 정리는 orchestrator 책임
+
 ## 6. 나노바나나 API stage의 계약을 별도 정의해야 합니다
 
 인페인팅 모델이 “내부 로컬 모델”이 아니라 “외부 API”로 정해졌으니, 이 stage는 일반 로컬 worker와 성격이 다릅니다. 엔진 간 구조 문서도 모델 엔진이 외부 API를 직접 호출하는 경로를 전제합니다.
@@ -142,6 +148,12 @@
 * provider 응답 메타데이터를 얼마나 보존할지
 
 즉 **나노바나나 API adapter spec**이 필요합니다.
+
+현재 v1에서 아래를 고정합니다.
+
+* 나노바나나 결과는 원본과 병합하지 않고 새 `inpainting layer` 결과물로 유지
+* 결과물 전송도 레이어 단위 기준으로 간다
+* provider hang/timeout은 `failed`로 처리하고 snapshot은 남긴다
 
 ## 7. CRAFT stage 출력 포맷도 고정해야 합니다
 
@@ -218,6 +230,11 @@ UI는 기본 편집 화면에서 “원문/번역문 쌍 + 레이어 토글”�
 
 특히 외부 API가 낀 인페인팅은 timeout/partial failure가 자주 생길 수 있어서 이 부분이 중요합니다.
 
+현재 v1에서는 아래를 기본 규칙으로 고정합니다.
+
+* 나노바나나가 멈추면 `partial`이 아니라 `failed`
+* 대신 task/input/output snapshot은 transaction 경로 아래 보존 가능
+
 ## 11. Local/SaaS 공통 규칙은 좋지만, provider credential 모델은 더 정해야 합니다
 
 문서상 local에서는 사용자 개인 API 키를 모델 엔진에 넣고, SaaS에서는 TOWA 서비스의 API 키를 모델 엔진이 사용합니다. 이 큰 방향은 분명합니다.
@@ -263,18 +280,23 @@ UI는 기본 편집 화면에서 “원문/번역문 쌍 + 레이어 토글”�
 * inpainting은 **나노바나나 API**
 * local/SaaS는 내부 stage contract 동일
 
-## 이번에 바로 더 정해야 하는 것
+현재 이 확정 항목 중 이미 코드로 내려간 것:
+
+* built-in `text_detection=CRAFT`
+* 규칙 기반 `mask_or_erase_planning`
+* built-in `inpaint=나노바나나(Vertex AI 경유)`
+* crop 단위 inpaint 후 `inpainting layer` 합성
+
+## 현재도 더 정해야 하는 것
 
 * OCR 엔진과 OCR 출력 schema
-* CRAFT detection output normalization schema
 * translation/typesetting/postprocess stage 정의
 * Stage I/O JSON schema
 * IR patch op 목록
 * artifact registry lifecycle
 * failure/rollback/capture-release 정책
-* 나노바나나 API adapter contract
 * UI 반환용 최종 파일 포맷
 
 제가 한 줄로 정리하면 이겁니다.
 
-**지금은 “설계 방향 검토 단계”는 끝났고, “실행 스펙 동결 단계”로 넘어가야 하는 시점입니다.**
+**지금은 “공통 계약층 + 첫 built-in stage 구현”까지 왔고, 다음 핵심은 OCR/번역/식자와 실제 provider smoke run을 닫는 단계입니다.**
