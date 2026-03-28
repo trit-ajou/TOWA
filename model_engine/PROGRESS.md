@@ -225,6 +225,7 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - CRAFT 런타임의 `cv2.dnn.DictValue` 충돌을 피하기 위해 OpenCV는 `opencv-python==4.7.0.72`로 고정했다.
 - CRAFT의 구형 `model_urls` 참조를 수용하기 위해 torch stack은 `torch==1.12.1`, `torchvision==0.13.1`로 고정했다.
 - CRAFT 패키지의 ragged polygon 후처리 오류를 피하기 위해 `adjustResultCoordinates`를 안전 버전으로 monkey patch한다.
+- CRAFT `predict.py`의 ragged polygon `np.array(...)` 실패를 피하기 위해 모듈 전용 safe numpy proxy를 적용한다.
 - 아직 GPU 세팅은 넣지 않았다.
 - 현재 목적은 추론 런타임을 별도 이미지로 분리해 재현성과 확장성을 확보하는 것이다.
 
