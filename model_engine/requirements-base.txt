@@ -1,0 +1,4 @@
+# Base runtime for model_engine contract tests and lightweight adapters.
+numpy
+Pillow
+google-genai

@@ -1,0 +1,11 @@
+-r requirements-base.txt
+
+# Local inference dependencies for built-in text detection.
+# CRAFT/OpenCV dependency chain still expects the NumPy 1.x ABI.
+numpy<2
+# CRAFT still imports torchvision.models.vgg.model_urls, so keep a pre-0.14 torch stack.
+torch==1.12.1
+torchvision==0.13.1
+# Keep a single OpenCV wheel family installed to avoid cv2 typing/runtime conflicts.
+opencv-python==4.7.0.72
+craft-text-detector

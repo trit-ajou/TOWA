@@ -1,0 +1,58 @@
+services:
+  craft-sample:
+    build:
+      context: .
+      dockerfile: Dockerfile.inference
+    image: towa-model-engine-inference:latest
+    environment:
+      HOME: /cache/models
+      XDG_CACHE_HOME: /cache/models
+      TORCH_HOME: /cache/models/torch
+    volumes:
+      - ./.runtime:/workspace_out
+      - ./.cache/models:/cache/models
+    command:
+      - python3
+      - /app/model_engine/scripts/run_craft_sample.py
+      - --image
+      - /app/model_engine/samples/images/sample_page.webp
+      - --workspace
+      - /workspace_out
+
+  craft-preload:
+    build:
+      context: .
+      dockerfile: Dockerfile.inference
+    image: towa-model-engine-inference:latest
+    environment:
+      HOME: /cache/models
+      XDG_CACHE_HOME: /cache/models
+      TORCH_HOME: /cache/models/torch
+    volumes:
+      - ./.cache/models:/cache/models
+    command:
+      - python3
+      - /app/model_engine/scripts/preload_craft.py
+      - --cache-dir
+      - /cache/models
+
+  inpaint-sample:
+    build:
+      context: .
+      dockerfile: Dockerfile.inference
+    image: towa-model-engine-inference:latest
+    environment:
+      TOWA_NANOBANANA_API_KEY: ${TOWA_NANOBANANA_API_KEY:-}
+      HOME: /cache/models
+      XDG_CACHE_HOME: /cache/models
+      TORCH_HOME: /cache/models/torch
+    volumes:
+      - ./.runtime:/workspace_out
+      - ./.cache/models:/cache/models
+    command:
+      - python3
+      - /app/model_engine/scripts/run_inpaint_sample.py
+      - --image
+      - /app/model_engine/samples/images/sample_page.webp
+      - --workspace
+      - /workspace_out
