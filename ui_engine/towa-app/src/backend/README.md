@@ -30,6 +30,7 @@ Notes:
 - auth와 aiJobs는 독립적으로 `real` 또는 `emulated`를 고를 수 있다.
 - 기본값은 둘 다 `emulated`다.
 - `real` auth는 `service_engine`, `real` aiJobs는 `model_engine`을 직접 호출한다.
+- `emulated`도 `saas` job create/get에서 session-bound ownership과 idempotency mismatch를 재현한다.
 
 Live smoke reference:
 
@@ -43,3 +44,9 @@ Compatibility note:
 - 현재 `service_engine` usage enum은 `mask|translate|inpaint`만 받는다.
 - 그래서 `model_engine`은 billing 시 `detect`를 임시로 `mask`로 매핑한다.
 - UI SDK는 여전히 외부 계약상 `operationKind: 'detect'`를 그대로 사용하면 된다.
+
+API change note:
+
+- `saas`의 `aiJobs.getJob(...)`는 create와 같은 session key로만 polling 가능하다.
+- 같은 session scope에서 같은 `idempotencyKey`를 다른 payload로 재사용하면 `model_job_conflict`를 반환한다.
+- `real` adapter는 network failure와 malformed JSON도 `BackendError`로 정규화한다.

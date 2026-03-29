@@ -19,7 +19,11 @@ from app.modules.billing.credits import (
     InvalidCreditHoldStateError,
     MissingCreditAccountError,
 )
-from app.modules.billing.service import UsageJobConflictError, UsageJobNotFoundError
+from app.modules.billing.service import (
+    IdempotencyPayloadMismatchError,
+    UsageJobConflictError,
+    UsageJobNotFoundError,
+)
 
 
 @dataclass(slots=True)
@@ -182,6 +186,13 @@ def raise_usage_http_error(exc: Exception) -> None:
             code="missing_credit_account",
             message=str(exc),
         ) from exc
+    if isinstance(exc, IdempotencyPayloadMismatchError):
+        raise APIError(
+            status_code=status.HTTP_409_CONFLICT,
+            code="usage_conflict",
+            message=str(exc),
+            details={"reason": "idempotency_payload_mismatch"},
+        ) from exc
     if isinstance(exc, (InvalidCreditHoldStateError, UsageJobConflictError, CreditServiceError)):
         raise APIError(
             status_code=status.HTTP_409_CONFLICT,
@@ -202,4 +213,3 @@ def raise_usage_http_error(exc: Exception) -> None:
             message=str(exc),
         ) from exc
     raise_auth_http_error(exc)
-

@@ -10,6 +10,9 @@ import type {
   EngineError,
   LoginInput,
   LoginResult,
+  TransportArtifactDescriptor,
+  TransportDocument,
+  TransportStageReport,
 } from './contracts'
 import { BackendError, ensureSessionKey } from './errors'
 
@@ -90,10 +93,20 @@ async function requestJson(url: string, init: RequestInit): Promise<JsonObject> 
   }
   headers.set('Accept', 'application/json')
 
-  const response = await fetch(url, {
-    ...init,
-    headers,
-  })
+  let response: Response
+  try {
+    response = await fetch(url, {
+      ...init,
+      headers,
+    })
+  } catch (error) {
+    throw new BackendError({
+      code: 'backend_unreachable',
+      message: error instanceof Error ? error.message : 'Network request failed',
+      retryable: true,
+      details: null,
+    })
+  }
   const rawText = await response.text()
   const payload = parseJsonObject(rawText)
   if (!response.ok) {
@@ -106,7 +119,17 @@ function parseJsonObject(rawText: string): JsonObject {
   if (!rawText.trim()) {
     return {}
   }
-  const parsed = JSON.parse(rawText) as unknown
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(rawText) as unknown
+  } catch {
+    throw new BackendError({
+      code: 'invalid_response',
+      message: 'Expected a JSON object response',
+      retryable: true,
+      details: null,
+    })
+  }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
     throw new BackendError({
       code: 'invalid_response',
@@ -188,10 +211,10 @@ function toAiJobSnapshot(payload: JsonObject): AiJobSnapshot {
     status: String(payload.status) as AiJobSnapshot['status'],
     operationKind: String(payload.operation_kind) as AiJobSnapshot['operationKind'],
     requestRef: String(payload.request_ref),
-    document: asObject(payload.document, 'document'),
-    artifacts: asObject(payload.artifacts, 'artifacts') as Record<string, Record<string, unknown>>,
+    document: asObject(payload.document, 'document') as TransportDocument,
+    artifacts: asObject(payload.artifacts, 'artifacts') as Record<string, TransportArtifactDescriptor>,
     stageReports: Array.isArray(payload.stage_reports)
-      ? payload.stage_reports.map((item) => asObject(item, 'stage_reports'))
+      ? payload.stage_reports.map((item) => asObject(item, 'stage_reports') as TransportStageReport)
       : [],
     error: payload.error && typeof payload.error === 'object' && !Array.isArray(payload.error)
       ? extractError({ error: payload.error as JsonObject }, 'backend_error')

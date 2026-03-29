@@ -78,9 +78,15 @@ def create_app(
             )
 
     @application.get("/v1/jobs/{job_id}", tags=["jobs"])
-    def get_job(job_id: str) -> JSONResponse:
+    def get_job(
+        job_id: str,
+        authorization: Annotated[str | None, Header()] = None,
+    ) -> JSONResponse:
         try:
-            return JSONResponse(status_code=status.HTTP_200_OK, content=job_manager.get_job(job_id))
+            return JSONResponse(
+                status_code=status.HTTP_200_OK,
+                content=job_manager.get_job(job_id, authorization=authorization),
+            )
         except ModelJobError as exc:
             return _error_response(
                 status_code=exc.status_code,

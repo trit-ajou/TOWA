@@ -129,6 +129,38 @@ describe('real backend adapters', () => {
       },
     })
   })
+
+  it('wraps malformed JSON responses as BackendError', async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response('not-json', { status: 200, headers: { 'Content-Type': 'application/json' } }),
+    )
+
+    const backend = createRealAppBackend({
+      serviceEngineUrl: 'http://localhost:8000',
+      modelEngineUrl: 'http://localhost:8100',
+    })
+
+    await expect(backend.auth.devLogin({ email: 'user@example.com' })).rejects.toMatchObject({
+      payload: {
+        code: 'invalid_response',
+      },
+    })
+  })
+
+  it('wraps network failures as BackendError', async () => {
+    vi.mocked(fetch).mockRejectedValue(new TypeError('fetch failed'))
+
+    const backend = createRealAppBackend({
+      serviceEngineUrl: 'http://localhost:8000',
+      modelEngineUrl: 'http://localhost:8100',
+    })
+
+    await expect(backend.auth.devLogin({ email: 'user@example.com' })).rejects.toMatchObject({
+      payload: {
+        code: 'backend_unreachable',
+      },
+    })
+  })
 })
 
 describe('emulated backend adapters', () => {
@@ -139,16 +171,19 @@ describe('emulated backend adapters', () => {
 
     expect(currentUser.user.email).toBe('user@example.com')
 
-    const created = await backend.aiJobs.createJob({
-      idempotencyKey: 'project:proj-1:page:001:op:translate:v:1',
-      operationKind: 'translate',
-      requestRef: 'project/proj-1/page/001',
-      document: { id: 'doc-1', stage_meta: {} },
-      artifacts: {},
-      runtimeContext: { mode: 'saas', workspace_uri: 'workspace://project/proj-1/page/001' },
-    })
-    const running = await backend.aiJobs.getJob(created.jobId)
-    const terminal = await backend.aiJobs.getJob(created.jobId)
+    const created = await backend.aiJobs.createJob(
+      {
+        idempotencyKey: 'project:proj-1:page:001:op:translate:v:1',
+        operationKind: 'translate',
+        requestRef: 'project/proj-1/page/001',
+        document: { id: 'doc-1', stage_meta: {} },
+        artifacts: {},
+        runtimeContext: { mode: 'saas', workspace_uri: 'workspace://project/proj-1/page/001' },
+      },
+      { sessionKey: login.sessionKey },
+    )
+    const running = await backend.aiJobs.getJob(created.jobId, { sessionKey: login.sessionKey })
+    const terminal = await backend.aiJobs.getJob(created.jobId, { sessionKey: login.sessionKey })
 
     expect(created.status).toBe('queued')
     expect(running.status).toBe('running')
@@ -156,6 +191,50 @@ describe('emulated backend adapters', () => {
     expect(terminal.document.stage_meta).toMatchObject({
       translation: {
         executor: 'emulated',
+      },
+    })
+  })
+
+  it('scopes emulated saas jobs to the creating session and rejects mismatch payloads', async () => {
+    const backend = createEmulatedAppBackend()
+    const firstLogin = await backend.auth.devLogin({ email: 'first@example.com' })
+    const secondLogin = await backend.auth.devLogin({ email: 'second@example.com' })
+
+    const created = await backend.aiJobs.createJob(
+      {
+        idempotencyKey: 'project:proj-1:page:001:op:detect:v:1',
+        operationKind: 'detect',
+        requestRef: 'project/proj-1/page/001',
+        document: { id: 'doc-1', stage_meta: {} },
+        artifacts: {},
+        runtimeContext: { mode: 'saas', workspace_uri: 'workspace://project/proj-1/page/001' },
+      },
+      { sessionKey: firstLogin.sessionKey },
+    )
+
+    await expect(
+      backend.aiJobs.getJob(created.jobId, { sessionKey: secondLogin.sessionKey }),
+    ).rejects.toMatchObject({
+      payload: {
+        code: 'model_job_not_found',
+      },
+    })
+
+    await expect(
+      backend.aiJobs.createJob(
+        {
+          idempotencyKey: 'project:proj-1:page:001:op:detect:v:1',
+          operationKind: 'translate',
+          requestRef: 'project/proj-1/page/001',
+          document: { id: 'doc-1', stage_meta: {} },
+          artifacts: {},
+          runtimeContext: { mode: 'saas', workspace_uri: 'workspace://project/proj-1/page/001' },
+        },
+        { sessionKey: firstLogin.sessionKey },
+      ),
+    ).rejects.toMatchObject({
+      payload: {
+        code: 'model_job_conflict',
       },
     })
   })

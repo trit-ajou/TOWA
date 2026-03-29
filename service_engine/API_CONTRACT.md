@@ -170,8 +170,10 @@ Authorization: Bearer <session_key>
 - `estimated_units`는 0보다 커야 한다
 - `estimated_units`는 `model engine`이 계산해서 보낸다
 - 같은 유저가 같은 `idempotency_key`로 다시 호출하면 같은 `job_id`를 돌려준다
+- 같은 유저가 같은 `idempotency_key`를 다른 payload로 재사용하면
+  `409 usage_conflict`와 `details.reason=idempotency_payload_mismatch`를 반환한다
 - 사용 가능한 credit이 부족하면 `409 insufficient_credits`
-- hold 만료 검사는 usage 요청 시점에 lazy cleanup으로 같이 수행된다
+- stale hold 정리는 authenticated user 범위에서만 수행한다
 
 ### `POST /usage/jobs/{job_id}/capture`
 
@@ -209,6 +211,7 @@ Authorization: Bearer <session_key>
 - 실제 차감량은 현재 `estimated_units`와 동일하다
 - 이미 `succeeded`인 job에 다시 capture하면 같은 성공 상태를 반환한다
 - 이미 `failed`인 job에 capture하면 `409 usage_conflict`
+- hold가 만료된 뒤 capture하면 먼저 release 처리되고 `409 usage_conflict`를 반환한다
 
 ### `POST /usage/jobs/{job_id}/release`
 

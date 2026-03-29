@@ -95,6 +95,8 @@ X-Towa-Request-Id: <client-generated-request-id>
 - `service engine`의 usage create는 body의 `idempotency_key`를 authoritative key로 사용한다
 - `model engine`의 작업 create도 body에 `idempotency_key`를 둔다
 - UI는 "한 번의 사용자 의도"마다 stable key를 생성해야 한다
+- replay는 "같은 caller + 같은 payload"만 허용한다
+- 같은 key를 다른 payload로 재사용하면 `409 conflict`로 처리한다
 
 권장 형식:
 
@@ -202,6 +204,7 @@ service 책임:
 - 현재 service usage enum은 `mask|translate|inpaint`만 받는다
 - 그래서 model의 `detect` 작업은 usage create 시 임시로 `mask`로 매핑한다
 - UI와 model 사이 외부 계약은 계속 `detect`를 사용한다
+- usage create idempotency는 user scope다
 
 ## Current Model Bridge
 
@@ -332,12 +335,24 @@ Content-Type: application/json
 
 권장 상태 코드는 `202 Accepted`다.
 
+추가 규칙:
+
+- `saas` job idempotency는 caller scope다
+- 같은 caller가 같은 `idempotency_key`를 다른 payload로 재사용하면 `409 model_job_conflict`
+
 ### Get Job
 
 ```http
 GET /v1/jobs/{job_id}
 Authorization: Bearer <session_key>   # cloud only
 ```
+
+규칙:
+
+- `saas`에서는 create에 사용한 것과 같은 bearer로만 조회 가능
+- auth 누락은 `401 session_key_required`
+- 다른 caller가 조회하면 `404 model_job_not_found`
+- `local`에서는 auth 없이 조회 가능
 
 응답 예시:
 

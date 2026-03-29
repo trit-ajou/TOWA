@@ -4,6 +4,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
+import hashlib
+import json
 from threading import Lock, Thread
 import time
 from typing import Any, Callable, Optional
@@ -74,6 +76,7 @@ class JobSubmission:
     idempotency_key: str
     operation_kind: str
     request_ref: str
+    request_fingerprint: str
     document: DocumentIR
     artifacts: dict[str, ArtifactDescriptor]
     runtime_context: StageRuntimeContext
@@ -104,7 +107,9 @@ class JobExecutionResult:
 class ModelJobRecord:
     job_id: str
     pipeline_id: str
+    owner_scope: str
     idempotency_key: str
+    request_fingerprint: str
     schema_version: str
     operation_kind: str
     request_ref: str
@@ -179,7 +184,7 @@ class ModelJobManager:
         self._service_client_factory = service_client_factory
         self._lock = Lock()
         self._jobs_by_id: dict[str, ModelJobRecord] = {}
-        self._job_ids_by_idempotency: dict[str, str] = {}
+        self._job_ids_by_idempotency: dict[tuple[str, str], str] = {}
 
     def create_job(
         self,
@@ -188,11 +193,14 @@ class ModelJobManager:
         authorization: str | None = None,
     ) -> tuple[int, dict[str, Any]]:
         self._validate_submission(submission, authorization=authorization)
+        owner_scope = self._owner_scope(submission, authorization=authorization)
+        idempotency_scope = (owner_scope, submission.idempotency_key)
 
         with self._lock:
-            existing_id = self._job_ids_by_idempotency.get(submission.idempotency_key)
+            existing_id = self._job_ids_by_idempotency.get(idempotency_scope)
             if existing_id is not None:
                 existing = self._jobs_by_id[existing_id]
+                self._assert_matching_idempotent_replay(existing, submission)
                 status_code = 200 if existing.status in TERMINAL_JOB_STATUSES else 202
                 return status_code, self._create_response(existing)
 
@@ -200,7 +208,9 @@ class ModelJobManager:
         record = ModelJobRecord(
             job_id=f"job_{uuid4().hex}",
             pipeline_id=f"pipe_{uuid4().hex}",
+            owner_scope=owner_scope,
             idempotency_key=submission.idempotency_key,
+            request_fingerprint=submission.request_fingerprint,
             schema_version=submission.schema_version,
             operation_kind=submission.operation_kind,
             request_ref=submission.request_ref,
@@ -211,13 +221,14 @@ class ModelJobManager:
         )
 
         with self._lock:
-            existing_id = self._job_ids_by_idempotency.get(submission.idempotency_key)
+            existing_id = self._job_ids_by_idempotency.get(idempotency_scope)
             if existing_id is not None:
                 existing = self._jobs_by_id[existing_id]
+                self._assert_matching_idempotent_replay(existing, submission)
                 status_code = 200 if existing.status in TERMINAL_JOB_STATUSES else 202
                 return status_code, self._create_response(existing)
             self._jobs_by_id[record.job_id] = record
-            self._job_ids_by_idempotency[record.idempotency_key] = record.job_id
+            self._job_ids_by_idempotency[idempotency_scope] = record.job_id
             create_response = self._create_response(record)
 
         Thread(
@@ -227,7 +238,7 @@ class ModelJobManager:
         ).start()
         return 202, create_response
 
-    def get_job(self, job_id: str) -> dict[str, Any]:
+    def get_job(self, job_id: str, *, authorization: str | None = None) -> dict[str, Any]:
         with self._lock:
             record = self._jobs_by_id.get(job_id)
             if record is None:
@@ -236,6 +247,7 @@ class ModelJobManager:
                     code="model_job_not_found",
                     message=f"Unknown job_id: {job_id}",
                 )
+            self._assert_job_read_access(record, authorization=authorization)
             return self._detail_response(record)
 
     def _run_job(self, job_id: str, authorization: str | None) -> None:
@@ -357,6 +369,58 @@ class ModelJobManager:
                 message="Authorization header is required for saas mode",
             )
 
+    def _assert_job_read_access(
+        self,
+        record: ModelJobRecord,
+        *,
+        authorization: str | None,
+    ) -> None:
+        if record.runtime_context.mode is not ExecutionMode.SAAS:
+            return
+        if not authorization:
+            raise ModelJobError(
+                status_code=401,
+                code="session_key_required",
+                message="Authorization header is required for saas mode",
+            )
+        if record.owner_scope != _saas_owner_scope(authorization):
+            raise ModelJobError(
+                status_code=404,
+                code="model_job_not_found",
+                message=f"Unknown job_id: {record.job_id}",
+            )
+
+    def _assert_matching_idempotent_replay(
+        self,
+        record: ModelJobRecord,
+        submission: JobSubmission,
+    ) -> None:
+        if record.request_fingerprint == submission.request_fingerprint:
+            return
+        raise ModelJobError(
+            status_code=409,
+            code="model_job_conflict",
+            message="idempotency_key cannot be reused with a different request payload",
+            details={"reason": "idempotency_payload_mismatch"},
+        )
+
+    def _owner_scope(
+        self,
+        submission: JobSubmission,
+        *,
+        authorization: str | None,
+    ) -> str:
+        if submission.runtime_context.mode is ExecutionMode.SAAS:
+            if not authorization:
+                raise ModelJobError(
+                    status_code=401,
+                    code="session_key_required",
+                    message="Authorization header is required for saas mode",
+                )
+            return _saas_owner_scope(authorization)
+        requested_by = (submission.runtime_context.requested_by or "").strip()
+        return f"local:{requested_by}" if requested_by else "local"
+
     def _authorize_usage_hold(
         self,
         submission: JobSubmission,
@@ -425,6 +489,16 @@ def submission_from_api_payload(payload: ModelJobCreateRequest) -> JobSubmission
         idempotency_key=payload.idempotency_key,
         operation_kind=payload.operation_kind,
         request_ref=payload.request_ref,
+        request_fingerprint=_request_fingerprint(
+            {
+                "schema_version": payload.schema_version,
+                "operation_kind": payload.operation_kind,
+                "request_ref": payload.request_ref,
+                "document": payload.document,
+                "artifacts": payload.artifacts,
+                "runtime_context": payload.runtime_context,
+            }
+        ),
         document=document_from_data(payload.document),
         artifacts={
             artifact_ref: artifact_descriptor_from_api_data(descriptor)
@@ -517,6 +591,16 @@ def _merge_error_payload(
         "retryable": bool(primary.get("retryable", False)),
         "details": details,
     }
+
+
+def _request_fingerprint(payload: dict[str, Any]) -> str:
+    raw = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _saas_owner_scope(authorization: str) -> str:
+    normalized = authorization.strip()
+    return f"saas:{hashlib.sha256(normalized.encode('utf-8')).hexdigest()}"
 
 
 def _parse_datetime(value: Any) -> Optional[datetime]:

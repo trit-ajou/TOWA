@@ -58,7 +58,11 @@ class ModelJobAPITests(unittest.TestCase):
         )
 
         self.assertEqual(202, response.status_code)
-        detail = _wait_for_terminal_job(client, response.json()["job_id"])
+        detail = _wait_for_terminal_job(
+            client,
+            response.json()["job_id"],
+            headers={"Authorization": "Bearer demo-session"},
+        )
 
         self.assertEqual("succeeded", detail["status"])
         self.assertEqual(
@@ -68,6 +72,11 @@ class ModelJobAPITests(unittest.TestCase):
         self.assertEqual("Bearer demo-session", fake_service.calls[0]["authorization"])
         self.assertEqual("translate", fake_service.calls[0]["body"]["operation_kind"])
         self.assertEqual(20, fake_service.calls[0]["body"]["estimated_units"])
+        saas_detail = client.get(
+            f"/v1/jobs/{response.json()['job_id']}",
+            headers={"Authorization": "Bearer demo-session"},
+        )
+        self.assertEqual(200, saas_detail.status_code)
 
     def test_detect_jobs_are_mapped_to_mask_usage_for_service_engine(self) -> None:
         fake_service = _FakeServiceClient()
@@ -86,7 +95,11 @@ class ModelJobAPITests(unittest.TestCase):
         )
 
         self.assertEqual(202, response.status_code)
-        _wait_for_terminal_job(client, response.json()["job_id"])
+        _wait_for_terminal_job(
+            client,
+            response.json()["job_id"],
+            headers={"Authorization": "Bearer demo-session"},
+        )
         self.assertEqual("mask", fake_service.calls[0]["body"]["operation_kind"])
         self.assertEqual(5, fake_service.calls[0]["body"]["estimated_units"])
 
@@ -107,7 +120,11 @@ class ModelJobAPITests(unittest.TestCase):
         )
 
         self.assertEqual(202, response.status_code)
-        detail = _wait_for_terminal_job(client, response.json()["job_id"])
+        detail = _wait_for_terminal_job(
+            client,
+            response.json()["job_id"],
+            headers={"Authorization": "Bearer demo-session"},
+        )
 
         self.assertEqual("failed", detail["status"])
         self.assertEqual(
@@ -163,6 +180,88 @@ class ModelJobAPITests(unittest.TestCase):
         self.assertEqual(200, response.status_code)
         self.assertEqual("http://localhost:5173", response.headers["access-control-allow-origin"])
 
+    def test_saas_job_requires_matching_authorization_for_polling(self) -> None:
+        fake_service = _FakeServiceClient()
+        app = create_app(
+            job_manager=ModelJobManager(
+                executor=PlaceholderJobExecutor(sleep_seconds=0.0),
+                service_client_factory=lambda: fake_service,
+            )
+        )
+        client = TestClient(app)
+
+        created = client.post(
+            "/v1/jobs",
+            json=_job_payload(operation_kind="detect", mode="saas"),
+            headers={"Authorization": "Bearer demo-session"},
+        )
+        self.assertEqual(202, created.status_code)
+        job_id = created.json()["job_id"]
+
+        missing_auth = client.get(f"/v1/jobs/{job_id}")
+        wrong_auth = client.get(
+            f"/v1/jobs/{job_id}",
+            headers={"Authorization": "Bearer different-session"},
+        )
+        own_auth = client.get(
+            f"/v1/jobs/{job_id}",
+            headers={"Authorization": "Bearer demo-session"},
+        )
+
+        self.assertEqual(401, missing_auth.status_code)
+        self.assertEqual("session_key_required", missing_auth.json()["error"]["code"])
+        self.assertEqual(404, wrong_auth.status_code)
+        self.assertEqual("model_job_not_found", wrong_auth.json()["error"]["code"])
+        self.assertEqual(200, own_auth.status_code)
+
+    def test_saas_jobs_scope_idempotency_by_authorization(self) -> None:
+        fake_service = _FakeServiceClient()
+        app = create_app(
+            job_manager=ModelJobManager(
+                executor=PlaceholderJobExecutor(sleep_seconds=0.0),
+                service_client_factory=lambda: fake_service,
+            )
+        )
+        client = TestClient(app)
+        payload = _job_payload(operation_kind="detect", mode="saas")
+
+        first = client.post(
+            "/v1/jobs",
+            json=payload,
+            headers={"Authorization": "Bearer first-session"},
+        )
+        second = client.post(
+            "/v1/jobs",
+            json=payload,
+            headers={"Authorization": "Bearer second-session"},
+        )
+
+        self.assertEqual(202, first.status_code)
+        self.assertEqual(202, second.status_code)
+        self.assertNotEqual(first.json()["job_id"], second.json()["job_id"])
+
+    def test_job_create_rejects_idempotency_payload_mismatch(self) -> None:
+        app = create_app(
+            job_manager=ModelJobManager(
+                executor=PlaceholderJobExecutor(sleep_seconds=0.0),
+            )
+        )
+        client = TestClient(app)
+        first_payload = _job_payload(operation_kind="detect", mode="local")
+        second_payload = _job_payload(operation_kind="translate", mode="local")
+        second_payload["idempotency_key"] = first_payload["idempotency_key"]
+
+        first = client.post("/v1/jobs", json=first_payload)
+        second = client.post("/v1/jobs", json=second_payload)
+
+        self.assertEqual(202, first.status_code)
+        self.assertEqual(409, second.status_code)
+        self.assertEqual("model_job_conflict", second.json()["error"]["code"])
+        self.assertEqual(
+            "idempotency_payload_mismatch",
+            second.json()["error"]["details"]["reason"],
+        )
+
 
 class _FailingExecutor(JobExecutor):
     def execute(self, request: JobExecutionRequest) -> JobExecutionResult:
@@ -202,10 +301,15 @@ class _FakeServiceClient:
         return {"status": "ok"}
 
 
-def _wait_for_terminal_job(client: TestClient, job_id: str) -> dict[str, object]:
+def _wait_for_terminal_job(
+    client: TestClient,
+    job_id: str,
+    *,
+    headers: dict[str, str] | None = None,
+) -> dict[str, object]:
     deadline = time.time() + 2.0
     while time.time() < deadline:
-        response = client.get(f"/v1/jobs/{job_id}")
+        response = client.get(f"/v1/jobs/{job_id}", headers=headers or {})
         if response.status_code != 200:
             raise AssertionError(f"Unexpected status while polling job {job_id}: {response.status_code}")
         payload = response.json()

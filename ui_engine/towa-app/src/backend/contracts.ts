@@ -37,14 +37,62 @@ export interface AuthRequestOptions {
   sessionKey?: string
 }
 
+export interface TransportDocument {
+  id: string
+  name?: string
+  width?: number
+  height?: number
+  layers?: unknown[]
+  text_blocks?: unknown[]
+  stage_meta?: Record<string, unknown>
+  [key: string]: unknown
+}
+
+export interface TransportArtifactDescriptor {
+  artifact_ref: string
+  kind: string
+  media_type: string
+  uri: string
+  width?: number
+  height?: number
+  byte_size?: number
+  checksum?: string
+  version?: number
+  producer_stage?: string
+  status?: string
+  expires_at?: string
+  metadata?: Record<string, unknown>
+  [key: string]: unknown
+}
+
+export interface TransportRuntimeContext {
+  mode: 'saas' | 'local'
+  workspace_uri: string
+  requested_by?: string
+  cancellation_token?: string
+  target_regions?: unknown[]
+  selected_layer_ids?: string[]
+  [key: string]: unknown
+}
+
+export interface TransportStageReport {
+  stage_name: string
+  stage_run_id: string
+  status: string
+  metrics?: Record<string, unknown>
+  started_at?: string
+  finished_at?: string
+  [key: string]: unknown
+}
+
 export interface AiJobCreateInput {
   schemaVersion?: string
   idempotencyKey: string
   operationKind: AiOperationKind
   requestRef: string
-  document: Record<string, unknown>
-  artifacts: Record<string, Record<string, unknown>>
-  runtimeContext: Record<string, unknown>
+  document: TransportDocument
+  artifacts: Record<string, TransportArtifactDescriptor>
+  runtimeContext: TransportRuntimeContext
 }
 
 export interface AiJobCreateResult {
@@ -62,9 +110,9 @@ export interface AiJobSnapshot {
   status: AiJobStatus
   operationKind: AiOperationKind
   requestRef: string
-  document: Record<string, unknown>
-  artifacts: Record<string, Record<string, unknown>>
-  stageReports: Array<Record<string, unknown>>
+  document: TransportDocument
+  artifacts: Record<string, TransportArtifactDescriptor>
+  stageReports: TransportStageReport[]
   error: EngineError | null
 }
 
