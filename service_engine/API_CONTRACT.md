@@ -2,6 +2,7 @@
 
 현재 `service_engine`의 merge 전 기준 계약 문서다.
 이 문서는 지금 구현된 `dev login + single session_key + credit hold/capture/release` 흐름만 다룬다.
+세 엔진 전체 기준 계약은 [INTER_ENGINE_HTTP.md](/home/user/dev/TOWA/INTER_ENGINE_HTTP.md)에서 함께 본다.
 
 ## Scope
 
@@ -303,4 +304,3 @@ Authorization: Bearer <session_key>
 - 별도 runtime session이나 reconnect 정책
 - 외부 결제 시스템
 - cloud launch / exchange / heartbeat
-
