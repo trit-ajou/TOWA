@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 import app.modules  # noqa: F401
@@ -13,6 +14,12 @@ from app.core.settings import get_settings
 def create_app() -> FastAPI:
     settings = get_settings()
     application = FastAPI(title=settings.app_name)
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origins(),
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
     application.add_exception_handler(APIError, handle_api_error)
     application.add_exception_handler(RequestValidationError, handle_validation_error)
     application.add_exception_handler(StarletteHTTPException, handle_http_exception)

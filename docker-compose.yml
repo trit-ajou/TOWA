@@ -22,6 +22,7 @@ services:
     environment:
       APP_ENV: docker
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-towa}:${POSTGRES_PASSWORD:-towa}@db:5432/${POSTGRES_DB:-towa}
+      SERVICE_ENGINE_CORS_ALLOW_ORIGINS: ${SERVICE_ENGINE_CORS_ALLOW_ORIGINS:-http://localhost:5173}
     depends_on:
       db:
         condition: service_healthy
@@ -50,6 +51,7 @@ services:
       APP_ENV: docker
       TOWA_SERVICE_ENGINE_URL: ${TOWA_SERVICE_ENGINE_URL:-http://service-engine:8000}
       TOWA_SERVICE_ENGINE_TIMEOUT_SECONDS: ${TOWA_SERVICE_ENGINE_TIMEOUT_SECONDS:-10}
+      MODEL_ENGINE_CORS_ALLOW_ORIGINS: ${MODEL_ENGINE_CORS_ALLOW_ORIGINS:-http://localhost:5173}
     depends_on:
       service-engine:
         condition: service_healthy
@@ -75,6 +77,8 @@ services:
       VITE_DEPLOYMENT_MODE: ${VITE_DEPLOYMENT_MODE:-cloud}
       VITE_SERVICE_ENGINE_URL: ${VITE_SERVICE_ENGINE_URL:-http://localhost:8000}
       VITE_MODEL_ENGINE_URL: ${VITE_MODEL_ENGINE_URL:-http://localhost:8100}
+      VITE_UI_AUTH_BACKEND: ${VITE_UI_AUTH_BACKEND:-emulated}
+      VITE_UI_AI_BACKEND: ${VITE_UI_AI_BACKEND:-emulated}
     depends_on:
       service-engine:
         condition: service_healthy

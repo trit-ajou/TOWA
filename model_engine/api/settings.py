@@ -21,6 +21,13 @@ class Settings(BaseSettings):
         default=10.0,
         validation_alias="TOWA_SERVICE_ENGINE_TIMEOUT_SECONDS",
     )
+    cors_allow_origins: str = Field(
+        default="http://localhost:5173",
+        validation_alias="MODEL_ENGINE_CORS_ALLOW_ORIGINS",
+    )
+
+    def cors_origins(self) -> list[str]:
+        return [origin.strip() for origin in self.cors_allow_origins.split(",") if origin.strip()]
 
 
 @lru_cache
