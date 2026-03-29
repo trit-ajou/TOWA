@@ -21,6 +21,14 @@
 - built-in `text_detection=CRAFT`
 - 규칙 기반 `mask_or_erase_planning`
 - built-in `inpaint=nanobanana`
+- placeholder `job API`
+  - `POST /v1/jobs`
+  - `GET /v1/jobs/{job_id}`
+  - in-memory job lifecycle
+  - swappable executor interface
+- `service_engine` 연동 smoke billing
+  - `saas` 모드 hold/capture/release
+  - CORS 허용
 
 ## 2. 현재 동작하는 built-in pipeline
 
@@ -98,12 +106,53 @@
 - inpaint sample
   - `docker compose -f docker-compose.inference.yml run --rm inpaint-sample`
 
-## 6. 테스트 상태
+## 6. Placeholder Job API
+
+현재 통신 smoke 목적의 placeholder job API가 추가되어 있다.
+
+- `POST /v1/jobs`
+- `GET /v1/jobs/{job_id}`
+
+의도는 다음과 같다.
+
+- `UI engine`과 실제 HTTP contract를 먼저 맞춘다.
+- 내부 실행부는 placeholder로 두되, 나중에 실제 orchestrator로 교체하기 쉽게 만든다.
+
+현재 구현 포인트:
+
+- `JobExecutor` 인터페이스를 두고 기본 구현은 `PlaceholderJobExecutor`를 사용한다.
+- job 저장소는 in-memory다.
+- lifecycle은 `queued -> running -> succeeded|failed|partial`이다.
+- operation별 placeholder stage는 아래처럼 고정했다.
+  - `detect` -> `text_detection`
+  - `inpaint` -> `text_detection`, `mask_or_erase_planning`, `inpaint`
+  - `translate` -> `text_detection`, `ocr`, `translation`
+  - `pipeline` -> 현재 `422 model_validation_error`
+- placeholder 결과는 문서와 artifact shape를 최대한 유지하고, `stage_reports`와 상태 전이만 채운다.
+
+## 7. Service Billing 연동 메모
+
+`runtime_context.mode=saas`인 경우 `model_engine`은 실제 `service_engine` billing API를 호출한다.
+
+순서는 아래와 같다.
+
+1. `POST /usage/jobs`
+2. 성공 시 `POST /usage/jobs/{job_id}/capture`
+3. 실패 시 `POST /usage/jobs/{job_id}/release`
+
+현재 `service_engine` usage enum은 `mask|translate|inpaint`만 받는다.
+그래서 `model_engine`의 `detect` 작업은 service billing 호출 시 임시로 `mask`로 매핑한다.
+
+이 매핑은 2026-03-29 라이브 smoke test에서 실제 `422`를 확인한 뒤 반영한 런타임 호환 규칙이다.
+service 쪽 public enum이 바뀌면 이 임시 매핑은 제거 가능하다.
+
+## 8. 테스트 상태
 
 현재 검증 상태:
 
 - `python3 -m unittest discover -s model_engine/tests -v`
-- 총 `23` tests passed
+- `python3 -m unittest model_engine.tests.test_job_api -v`
+- 총 `32` tests passed
 
 주요 검증 항목:
 
@@ -118,8 +167,18 @@
 - nanobanana 전체 페이지 출력 + 로컬 mask 합성
 - provider output resize normalization
 - failure snapshot 보존
+- placeholder job lifecycle
+- `saas` billing capture/release
+- CORS preflight
+- `detect -> mask` billing 매핑
 
-## 7. 아직 미구현인 범위
+추가 live smoke 결과:
+
+- `service_engine` dev login 후 `saas detect` job을 생성하면 `queued -> succeeded`까지 완료된다.
+- 실제 credit은 `1000 -> 995`로 차감되는 것을 확인했다.
+- `local translate`도 `queued -> succeeded`로 완료된다.
+
+## 9. 아직 미구현인 범위
 
 현재 아직 남아 있는 주요 항목은 아래다.
 
@@ -128,5 +187,5 @@
 - typesetting stage
 - postprocess stage
 - durable artifact backend
-- service_engine / ui_engine 연동 마감
+- UI 컴포넌트 실제 wiring
 - provider별 운영 정책 고도화

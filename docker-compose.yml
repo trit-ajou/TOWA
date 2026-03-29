@@ -1,0 +1,91 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-towa}
+      POSTGRES_USER: ${POSTGRES_USER:-towa}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-towa}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-towa} -d ${POSTGRES_DB:-towa}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  service-engine:
+    build:
+      context: ./service_engine
+      dockerfile: Dockerfile
+    environment:
+      APP_ENV: docker
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-towa}:${POSTGRES_PASSWORD:-towa}@db:5432/${POSTGRES_DB:-towa}
+      SERVICE_ENGINE_CORS_ALLOW_ORIGINS: ${SERVICE_ENGINE_CORS_ALLOW_ORIGINS:-http://localhost:5173}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${SERVICE_ENGINE_PORT:-8000}:8000"
+    command: >
+      sh -c "python -m app.cli.dev_admin migrate &&
+             uvicorn main:app --host 0.0.0.0 --port 8000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python3",
+          "-c",
+          "from urllib.request import urlopen; raise SystemExit(0 if urlopen('http://127.0.0.1:8000/healthz').status == 200 else 1)",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  model-engine:
+    build:
+      context: ./model_engine
+      dockerfile: Dockerfile.api
+    environment:
+      APP_ENV: docker
+      TOWA_SERVICE_ENGINE_URL: ${TOWA_SERVICE_ENGINE_URL:-http://service-engine:8000}
+      TOWA_SERVICE_ENGINE_TIMEOUT_SECONDS: ${TOWA_SERVICE_ENGINE_TIMEOUT_SECONDS:-10}
+      MODEL_ENGINE_CORS_ALLOW_ORIGINS: ${MODEL_ENGINE_CORS_ALLOW_ORIGINS:-http://localhost:5173}
+    depends_on:
+      service-engine:
+        condition: service_healthy
+    ports:
+      - "${MODEL_ENGINE_PORT:-8100}:8100"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python3",
+          "-c",
+          "from urllib.request import urlopen; raise SystemExit(0 if urlopen('http://127.0.0.1:8100/healthz').status == 200 else 1)",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  ui-engine:
+    build:
+      context: ./ui_engine/towa-app
+      dockerfile: Dockerfile
+    environment:
+      VITE_DEPLOYMENT_MODE: ${VITE_DEPLOYMENT_MODE:-cloud}
+      VITE_SERVICE_ENGINE_URL: ${VITE_SERVICE_ENGINE_URL:-http://localhost:8000}
+      VITE_MODEL_ENGINE_URL: ${VITE_MODEL_ENGINE_URL:-http://localhost:8100}
+      VITE_UI_AUTH_BACKEND: ${VITE_UI_AUTH_BACKEND:-emulated}
+      VITE_UI_AI_BACKEND: ${VITE_UI_AI_BACKEND:-emulated}
+    depends_on:
+      service-engine:
+        condition: service_healthy
+      model-engine:
+        condition: service_healthy
+    ports:
+      - "${UI_ENGINE_PORT:-5173}:5173"
+
+volumes:
+  postgres-data:

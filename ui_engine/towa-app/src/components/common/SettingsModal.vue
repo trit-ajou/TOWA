@@ -5,6 +5,7 @@ import { Settings, Monitor, Brain, Palette, User, Bug } from 'lucide-vue-next'
 import BaseModal from './BaseModal.vue'
 import { useDeploymentMode, type ModeTag } from '@/composables/useDeploymentMode'
 import { DEPLOYMENT_MODE, setDeploymentMode, type DeploymentMode } from '@/config/deployment'
+import { MODEL_ENGINE_URL } from '@/config/engines'
 
 const store = useStore()
 const currentTheme = computed(() => store.getters['editor/theme'])
@@ -46,7 +47,7 @@ const settings = ref({
   },
   inference: {
     mode: 'cloud' as 'local' | 'cloud',
-    serverUrl: 'https://api.towa.ai',
+    serverUrl: MODEL_ENGINE_URL,
     apiKey: '',
     maxConcurrent: 3,
     timeout: 60,
