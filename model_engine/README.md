@@ -313,6 +313,9 @@ custom stage는 입력 포트를 조정할 수 있다.
 - custom model은 manifest JSON으로 registry에 로드된다.
 - built-in 모델과 custom 모델은 모두 `StageManifest + ModelAdapter` 계약으로 합류한다.
 - OCR capability의 공통 규격은 `OCR_CAPABILITY.md`를 source of truth로 본다.
+- capability와 runtime은 분리해서 본다.
+- custom model은 장기적으로 같은 Python 프로세스 import보다 격리 runtime 실행을 기본값으로 한다.
+- 같은 capability를 만족해도 runtime family가 다르면 별도 worker/image로 분리하는 쪽을 우선한다.
 
 ## 8. Stage I/O Schema
 
@@ -988,6 +991,50 @@ selector는 최소한 아래를 기준으로 필터링해야 한다.
 - custom model도 built-in과 같은 patch/artifact/report 계약을 지켜야 한다.
 - 향후 실제 CRAFT, 나노바나나, 사용자 custom model은 모두 같은 registry 계층에 등록한다.
 
+### 14.8 Runtime Isolation Strategy
+
+custom model이 늘어날수록 가장 큰 문제는 capability contract보다 runtime 충돌이다.
+
+대표 사례:
+
+- 서로 다른 `torch` 버전
+- 서로 다른 `transformers` 버전
+- CUDA / cuDNN ABI 차이
+- Python minor version 차이
+- OpenCV / NumPy / system package 충돌
+
+따라서 앞으로는 아래를 기본 원칙으로 삼는다.
+
+- pipeline은 capability 기준으로 유지한다.
+- 모델은 manifest로 고르되, 실제 실행은 가능하면 격리된 runtime worker에서 수행한다.
+- stage 경계는 `StageRequest/StageResponse + artifact`로만 넘긴다.
+- in-memory object 공유를 전제로 여러 모델을 한 프로세스에 함께 올리지 않는다.
+
+권장 backend 계층:
+
+- `inprocess`
+  - built-in의 가벼운 pure-Python 또는 이미 검증된 최소 모델만 허용
+- `http_api`
+  - 가장 보수적이고 안전한 기본 선택지
+- `subprocess_ipc`
+  - 같은 머신의 별도 Python 환경 또는 별도 launcher에서 실행
+- `container_worker`
+  - GPU/CUDA/torch 계열 충돌을 가장 강하게 분리하는 방식
+
+권장 runtime family 예:
+
+- `craft-py310-cpu`
+- `manga-ocr-py310-cpu`
+- `gemini-http-light`
+- `hy-mt-cu124`
+- `diffusion-cu121`
+
+정책:
+
+- custom model은 `shared-runtime-safe`가 명확히 검증되지 않으면 같은 프로세스 실행을 기본값으로 잡지 않는다.
+- 모델마다 이미지 1개씩 만드는 대신, ABI와 의존성이 같은 것끼리 runtime family를 묶는다.
+- "모델을 플러그인으로 import"하는 것보다 "runtime worker를 호출"하는 쪽을 기본 설계로 본다.
+
 ## 15. SaaS / Local 공통 규칙
 
 SaaS와 local의 차이는 인증/정산 레이어에만 있다.
@@ -1037,6 +1084,7 @@ SaaS와 local의 차이는 인증/정산 레이어에만 있다.
   - 로컬 추론 이미지
   - CRAFT 같은 built-in 모델 의존성을 담는다
   - 이후 OCR/local model/GPU 런타임도 이 계열에서 확장한다
+  - 단, 모든 custom model을 여기에 계속 합치지 않고 runtime family별 이미지로 분화하는 것을 우선한다
 
 의존성 파일도 같은 원칙으로 분리한다.
 
@@ -1047,6 +1095,11 @@ SaaS와 local의 차이는 인증/정산 레이어에만 있다.
   - base 위에 CRAFT text detection 의존성을 추가
 
 즉 기본 개발 환경은 가볍게 유지하고, 실제 로컬 추론은 별도 inference 이미지로 확장한다.
+
+장기 방향:
+
+- CPU/GPU/torch/CUDA 조합이 다른 모델은 별도 runtime image로 분리한다.
+- custom model 기본 통합 방식은 "같은 이미지에 계속 의존성을 추가"가 아니라 "맞는 runtime family에 배치"다.
 
 ## 18. Built-in Text Detection
 

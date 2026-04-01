@@ -515,6 +515,17 @@ PYTHONPYCACHEPREFIX=/tmp/pythoncache python3 -m unittest discover -s model_engin
 
 이 항목들은 `PLAN.md` 기준으로 아직 스펙이 덜 닫혀 있거나, 외부 provider 계약이 필요하다.
 
+## 최근 설계 결정
+
+- custom model 충돌 회피 전략으로 `runtime isolation` 원칙을 명시했다.
+- 앞으로 custom model의 장기 기본 실행 방식은 같은 Python 프로세스 import가 아니라 격리 worker runtime이다.
+- capability와 runtime을 분리해서 본다.
+  - capability 예: `translation`, `ocr`, `inpaint`
+  - runtime family 예: `craft-py310-cpu`, `gemini-http-light`, `hy-mt-cu124`
+- `python_callable`은 계속 지원하지만 개발/실험용 우선 경로로 본다.
+- 장기 기본 backend 후보는 `http_api`, `subprocess_ipc`, `container_worker`다.
+- 같은 runtime image에 모든 모델 의존성을 누적하는 방식은 피하고, ABI/의존성이 같은 것끼리 runtime family로 묶는 쪽을 기준으로 한다.
+
 ## 다음 구현 후보
 
 현재 코드에서 다음 단계로 자연스러운 순서는 아래다.
@@ -534,3 +545,4 @@ PYTHONPYCACHEPREFIX=/tmp/pythoncache python3 -m unittest discover -s model_engin
 - 수정 범위는 `model_engine/` 내부로 제한했다.
 - 현재 Dockerfile은 CPU 개발용 최소 이미지다.
 - 실제 provider key는 코드/저장소에 하드코딩하지 않고 credential binding 경로로만 주입한다.
+- custom model 통합은 "모델 import"보다 "runtime worker 호출"을 기본 방향으로 기억한다.
