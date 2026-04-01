@@ -266,6 +266,26 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - 아직 GPU 세팅은 넣지 않았다.
 - 현재 목적은 추론 런타임을 별도 이미지로 분리해 재현성과 확장성을 확보하는 것이다.
 
+### 9-1. Job Executor Stage Composition
+
+구현 파일:
+
+- `api/jobs.py`
+- `tests/test_job_executor.py`
+
+구현 내용:
+
+- 기본 `ModelJobManager` executor를 placeholder에서 orchestrator 기반 executor로 전환
+- `detect`는 built-in `CRAFT text_detection` stage 조합 사용
+- `translate`는 `text_detection -> ocr -> translation placeholder` 조합 사용
+- `inpaint`는 `text_detection -> mask_or_erase_planning -> inpaint` 조합 사용
+- planner 함수를 job executor 안에서 재사용할 수 있도록 경량 function-stage 래퍼 추가
+
+비고:
+
+- `translation` stage는 아직 미구현이라, 현재는 OCR 결과를 만든 뒤 placeholder stage report/meta만 채운다.
+- 즉 실제 `/v1/jobs` 경로에서도 `ocr` stage가 더 이상 샘플 전용이 아니라 기본 실행 경로 일부가 된다.
+
 ### 10. Model Merge / Adapter Registry
 
 구현 파일:

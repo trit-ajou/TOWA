@@ -8,19 +8,35 @@ import hashlib
 import json
 from threading import Lock, Thread
 import time
-from typing import Any, Callable, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional
 from uuid import uuid4
 
+from ..builtin_models import (
+    CRAFT_TEXT_DETECTION_MODEL_ID,
+    MANGA_OCR_MODEL_ID,
+    NANOBANANA_INPAINT_MODEL_ID,
+    register_craft_text_detection_model,
+    register_manga_ocr_model,
+    register_nanobanana_inpaint_model,
+)
 from ..contracts.artifacts import ArtifactDescriptor, ArtifactStatus
 from ..contracts.document_ir import DocumentIR
+from ..contracts.models import StageKind
+from ..contracts.patches import PatchOp, PatchOperation
 from ..contracts.stages import ExecutionMode, StageReport, StageRuntimeContext, StageStatus
 from ..ipc.serde import document_from_data, document_to_data, stage_report_to_data
-from .schemas import ModelJobCreateRequest
+from ..models import ModelRegistry
+from ..orchestrator import PipelineOrchestrator
+from ..stages import AdapterBackedStage, Stage, StaticStage, run_mask_or_erase_planning
+from ..stages.base import Stage as StageProtocol
 from .service_bridge import (
     ServiceEngineBridgeClient,
     ServiceEngineHTTPError,
     ServiceEngineUnavailableError,
 )
+
+if TYPE_CHECKING:
+    from .schemas import ModelJobCreateRequest
 
 
 class ModelJobStatus(str, Enum):
@@ -173,6 +189,35 @@ class PlaceholderJobExecutor(JobExecutor):
         )
 
 
+class OrchestratedJobExecutor(JobExecutor):
+    def __init__(
+        self,
+        *,
+        registry: ModelRegistry | None = None,
+        orchestrator: PipelineOrchestrator | None = None,
+    ) -> None:
+        self._registry = registry or _build_builtin_registry()
+        self._orchestrator = orchestrator or PipelineOrchestrator()
+
+    def execute(self, request: JobExecutionRequest) -> JobExecutionResult:
+        stages = _build_operation_stages(request, registry=self._registry)
+        result = self._orchestrator.run(
+            document=request.document,
+            stages=stages,
+            runtime_context=request.runtime_context,
+            initial_artifacts=request.artifacts,
+            job_id=request.job_id,
+            pipeline_id=request.pipeline_id,
+        )
+        return JobExecutionResult(
+            status=_job_status_from_stage_status(result.status),
+            document=result.document,
+            artifacts=result.artifacts,
+            stage_reports=result.stage_reports,
+            error=_error_from_stage_reports(result.stage_reports),
+        )
+
+
 class ModelJobManager:
     def __init__(
         self,
@@ -180,7 +225,7 @@ class ModelJobManager:
         executor: JobExecutor | None = None,
         service_client_factory: Callable[[], ServiceEngineBridgeClient] | None = None,
     ) -> None:
-        self._executor = executor or PlaceholderJobExecutor()
+        self._executor = executor or OrchestratedJobExecutor()
         self._service_client_factory = service_client_factory
         self._lock = Lock()
         self._jobs_by_id: dict[str, ModelJobRecord] = {}
@@ -482,7 +527,7 @@ class ModelJobManager:
         }
 
 
-def submission_from_api_payload(payload: ModelJobCreateRequest) -> JobSubmission:
+def submission_from_api_payload(payload: "ModelJobCreateRequest") -> JobSubmission:
     runtime_context = runtime_context_from_api_data(payload.runtime_context)
     return JobSubmission(
         schema_version=payload.schema_version,
@@ -611,3 +656,164 @@ def _parse_datetime(value: Any) -> Optional[datetime]:
     if value is None:
         return None
     return datetime.fromisoformat(str(value))
+
+
+class _FunctionStage(StageProtocol):
+    """Wrap planner-like stage functions so the executor can compose them uniformly."""
+
+    def __init__(
+        self,
+        stage_name: str,
+        handler: Callable[[Any], Any],
+        *,
+        config: dict[str, object] | None = None,
+    ) -> None:
+        self._stage_name = stage_name
+        self._handler = handler
+        self._config = dict(config or {})
+
+    @property
+    def stage_name(self) -> str:
+        return self._stage_name
+
+    def stage_config(self) -> dict[str, object]:
+        return dict(self._config)
+
+    def run(self, request: Any) -> Any:
+        return self._handler(request)
+
+
+def _build_builtin_registry() -> ModelRegistry:
+    registry = ModelRegistry()
+    register_craft_text_detection_model(registry)
+    register_manga_ocr_model(registry)
+    register_nanobanana_inpaint_model(registry)
+    return registry
+
+
+def _build_operation_stages(
+    request: JobExecutionRequest,
+    *,
+    registry: ModelRegistry,
+) -> list[Stage]:
+    input_artifact_ref = _resolve_primary_bitmap_artifact_ref(request.artifacts)
+    common_detection_config = {
+        "input_artifact_ref": input_artifact_ref,
+        "text_threshold": 0.7,
+        "link_threshold": 0.4,
+        "low_text": 0.4,
+    }
+
+    if request.operation_kind == "detect":
+        return [
+            AdapterBackedStage(
+                "text_detection",
+                stage_kind=StageKind.TEXT_DETECTION,
+                registry=registry,
+                preferred_model_id=CRAFT_TEXT_DETECTION_MODEL_ID,
+                config=common_detection_config,
+            )
+        ]
+
+    if request.operation_kind == "translate":
+        return [
+            AdapterBackedStage(
+                "text_detection",
+                stage_kind=StageKind.TEXT_DETECTION,
+                registry=registry,
+                preferred_model_id=CRAFT_TEXT_DETECTION_MODEL_ID,
+                config=common_detection_config,
+            ),
+            AdapterBackedStage(
+                "ocr",
+                stage_kind=StageKind.OCR,
+                registry=registry,
+                preferred_model_id=MANGA_OCR_MODEL_ID,
+                config={
+                    "input_artifact_ref": input_artifact_ref,
+                    "writing_mode_hint": "vertical",
+                    "region_padding": 0,
+                },
+            ),
+            StaticStage(
+                "translation",
+                patches=[
+                    PatchOperation(
+                        op=PatchOp.SET_STAGE_META,
+                        payload={
+                            "key": "translation",
+                            "value": {
+                                "status": "pending",
+                                "executor": "placeholder",
+                                "reason": "translation_stage_not_implemented",
+                                "source_block_count": len(request.document.text_blocks),
+                            },
+                        },
+                    )
+                ],
+                metrics={
+                    "executor": "placeholder",
+                    "reason": "translation_stage_not_implemented",
+                },
+                warnings=["translation stage is still a placeholder"],
+                config={"skip_provider_resolution": True},
+            ),
+        ]
+
+    if request.operation_kind == "inpaint":
+        return [
+            AdapterBackedStage(
+                "text_detection",
+                stage_kind=StageKind.TEXT_DETECTION,
+                registry=registry,
+                preferred_model_id=CRAFT_TEXT_DETECTION_MODEL_ID,
+                config=common_detection_config,
+            ),
+            _FunctionStage(
+                "mask_or_erase_planning",
+                run_mask_or_erase_planning,
+                config={
+                    "input_artifact_ref": input_artifact_ref,
+                    "padding": 12,
+                    "target_layer_id": "layer_inpainting",
+                },
+            ),
+            AdapterBackedStage(
+                "inpaint",
+                stage_kind=StageKind.INPAINT,
+                registry=registry,
+                preferred_model_id=NANOBANANA_INPAINT_MODEL_ID,
+                config={
+                    "input_artifact_ref": input_artifact_ref,
+                    "target_layer_id": "layer_inpainting",
+                },
+            ),
+        ]
+
+    raise ValueError(f"Unsupported operation_kind: {request.operation_kind}")
+
+
+def _resolve_primary_bitmap_artifact_ref(artifacts: dict[str, ArtifactDescriptor]) -> str:
+    for artifact_ref, descriptor in artifacts.items():
+        if descriptor.kind == "bitmap":
+            return artifact_ref
+    raise ValueError("Model jobs require at least one bitmap artifact")
+
+
+def _job_status_from_stage_status(status: StageStatus) -> ModelJobStatus:
+    if status is StageStatus.SUCCEEDED:
+        return ModelJobStatus.SUCCEEDED
+    if status is StageStatus.PARTIAL:
+        return ModelJobStatus.PARTIAL
+    return ModelJobStatus.FAILED
+
+
+def _error_from_stage_reports(stage_reports: list[StageReport]) -> dict[str, Any] | None:
+    for report in reversed(stage_reports):
+        if report.status is StageStatus.FAILED:
+            return _error_payload(
+                code=report.error_code or "model_stage_failed",
+                message=report.error_message or f"{report.stage_name} failed",
+                details={"stage_name": report.stage_name},
+            )
+    return None
