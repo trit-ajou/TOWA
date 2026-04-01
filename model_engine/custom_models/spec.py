@@ -5,13 +5,20 @@ from enum import Enum
 from typing import Any
 
 from ..contracts.credentials import BillingMode, CredentialSource
-from ..contracts.models import ResourceProfile, StageKind, StageManifest
+from ..contracts.models import (
+    ExecutionBackend,
+    ResourceProfile,
+    RuntimeMount,
+    StageKind,
+    StageManifest,
+)
 from ..contracts.stages import ExecutionMode
 
 
 class CustomAdapterType(str, Enum):
     PYTHON_CALLABLE = "python_callable"
     HTTP_API = "http_api"
+    CONTAINER_WORKER = "container_worker"
 
 
 @dataclass
@@ -68,6 +75,22 @@ def custom_model_definition_from_data(payload: dict[str, Any]) -> CustomModelDef
         priority=int(payload.get("priority", 0)),
         display_name=str(payload.get("display_name", "")),
         tags=[str(item) for item in payload.get("tags", [])],
+        execution_backend=_execution_backend_for_payload(payload, adapter_type),
+        runtime_family=str(payload.get("runtime_family", "default")),
+        runtime_image=str(payload.get("runtime_image", "")),
+        runtime_command=[str(item) for item in payload.get("runtime_command", [])],
+        python_version=str(payload.get("python_version", "")),
+        cuda_version=str(payload.get("cuda_version", "")),
+        dependency_lock_ref=str(payload.get("dependency_lock_ref", "")),
+        cache_mounts=[
+            RuntimeMount(
+                host_path=str(item["host_path"]),
+                container_path=str(item["container_path"]),
+                read_only=bool(item.get("read_only", False)),
+            )
+            for item in payload.get("cache_mounts", [])
+        ],
+        network_policy=str(payload.get("network_policy", "default")),
     )
     return CustomModelDefinition(
         schema_version=schema_version,
@@ -75,3 +98,18 @@ def custom_model_definition_from_data(payload: dict[str, Any]) -> CustomModelDef
         manifest=manifest,
         adapter_config=dict(payload.get("adapter_config", {})),
     )
+
+
+def _execution_backend_for_payload(
+    payload: dict[str, Any],
+    adapter_type: CustomAdapterType,
+) -> ExecutionBackend:
+    explicit = payload.get("execution_backend")
+    if explicit is not None:
+        return ExecutionBackend(str(explicit))
+
+    if adapter_type is CustomAdapterType.HTTP_API:
+        return ExecutionBackend.HTTP_API
+    if adapter_type is CustomAdapterType.CONTAINER_WORKER:
+        return ExecutionBackend.CONTAINER_WORKER
+    return ExecutionBackend.INPROCESS

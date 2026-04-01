@@ -1,0 +1,39 @@
+services:
+  orchestrator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: towa-model-engine-orchestrator:latest
+    profiles: ["orchestrator"]
+    volumes:
+      - ./.runtime:/workspace_out
+      - ./.cache/models:/cache/models
+
+  runtime-craft-py310-cpu:
+    build:
+      context: .
+      dockerfile: Dockerfile.inference
+    image: towa-runtime-craft-py310-cpu:latest
+    profiles: ["runtime-images"]
+
+  runtime-manga-ocr-py310-cpu:
+    build:
+      context: .
+      dockerfile: Dockerfile.inference
+    image: towa-runtime-manga-ocr-py310-cpu:latest
+    profiles: ["runtime-images"]
+
+  runtime-gemini-http-light:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: towa-runtime-gemini-http-light:latest
+    profiles: ["runtime-images"]
+
+  runtime-hy-mt-cu124:
+    image: towa-runtime-hy-mt-cu124:latest
+    profiles: ["runtime-images"]
+
+  runtime-diffusion-cu121:
+    image: towa-runtime-diffusion-cu121:latest
+    profiles: ["runtime-images"]

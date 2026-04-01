@@ -17,7 +17,7 @@
 
 ## 2. 지원 방식
 
-현재 지원하는 custom adapter 타입은 두 가지다.
+현재 지원하는 custom adapter 타입은 세 가지다.
 
 - `python_callable`
   - 같은 Python 환경 안에서 함수를 직접 호출한다.
@@ -27,6 +27,10 @@
 - `http_api`
   - JSON 기반 stage request를 HTTP POST로 전송한다.
   - 외부 inference 서버, SaaS provider, 사내 API 래퍼에 적합하다.
+
+- `container_worker`
+  - 격리된 컨테이너 runtime에서 stage handler를 실행한다.
+  - torch/transformers/CUDA/Python 충돌을 피해야 하는 custom model에 적합하다.
 
 앞으로 기본 권장 경로:
 
@@ -41,11 +45,12 @@
 - `container_worker`
   - 모델별 또는 runtime family별 전용 컨테이너에서 실행하는 방식
   - GPU/CUDA/torch/transformers 충돌을 피하는 가장 강한 격리 방식이다.
+  - 현재 baseline adapter가 구현되어 있다.
 
 정리:
 
 - built-in의 가벼운 모델만 `python_callable`을 유지할 수 있다.
-- custom model은 기본적으로 `http_api`, `subprocess_ipc`, `container_worker` 같은 격리 실행 경로를 우선한다.
+- custom model은 기본적으로 `http_api` 또는 `container_worker` 같은 격리 실행 경로를 우선한다.
 
 ## 3. 등록 절차
 
@@ -113,7 +118,19 @@
 - `cache_mounts`
 - `network_policy`
 
-이 필드는 아직 코드에 전부 구현된 것은 아니지만, custom model 통합 방향은 이 축을 기준으로 잡는다.
+현재 baseline 구현 범위:
+
+- `execution_backend`
+- `runtime_family`
+- `runtime_image`
+- `runtime_command`
+- `python_version`
+- `cuda_version`
+- `dependency_lock_ref`
+- `cache_mounts`
+- `network_policy`
+
+`container_worker` adapter는 위 필드 중 `runtime_image`, `runtime_command`, `cache_mounts`, `network_policy`를 실제 실행에 사용한다.
 
 ## 5. Python Callable 모델
 
@@ -207,6 +224,15 @@ custom model 지원이 늘어날수록 가장 큰 리스크는 capability 계약
 - 반대로 모든 모델을 하나의 inference 이미지에 넣는 방식은 피한다.
 - custom model은 `shared-runtime-safe`가 명확히 입증되지 않으면 기본적으로 격리 실행으로 본다.
 
+현재 baseline `container_worker` 동작:
+
+- orchestrator가 manifest를 통해 runtime image를 선택한다.
+- worker는 `docker run --rm -i`로 1회성 실행된다.
+- `StageRequest`는 stdin JSON IPC로 전달한다.
+- credential secret은 기존 subprocess IPC와 동일하게 env로 주입한다.
+- workspace는 writable mount, 추가 path/cache는 read-only 또는 지정 mount로 전달한다.
+- `StageResponse`는 stdout JSON IPC로 반환한다.
+
 ## 8. 로딩 예시
 
 ```python
@@ -243,6 +269,7 @@ stage = AdapterBackedStage(
 - manifest JSON 기반 custom model 로딩
 - Python callable custom model
 - HTTP API custom model
+- container worker custom model
 - capability/credential/schema 호환성 기반 선택
 
 아직 없는 것:

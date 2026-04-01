@@ -309,7 +309,7 @@ custom stage는 입력 포트를 조정할 수 있다.
 추가 규칙:
 
 - custom model의 등록 방식은 `CUSTOM_MODELS.md`를 따른다.
-- 현재 지원하는 custom adapter 타입은 `python_callable`, `http_api`다.
+- 현재 지원하는 custom adapter 타입은 `python_callable`, `http_api`, `container_worker`다.
 - custom model은 manifest JSON으로 registry에 로드된다.
 - built-in 모델과 custom 모델은 모두 `StageManifest + ModelAdapter` 계약으로 합류한다.
 - OCR capability의 공통 규격은 `OCR_CAPABILITY.md`를 source of truth로 본다.
@@ -1020,6 +1020,7 @@ custom model이 늘어날수록 가장 큰 문제는 capability contract보다 r
   - 같은 머신의 별도 Python 환경 또는 별도 launcher에서 실행
 - `container_worker`
   - GPU/CUDA/torch 계열 충돌을 가장 강하게 분리하는 방식
+  - 현재 baseline adapter가 구현되어 있다.
 
 권장 runtime family 예:
 
@@ -1034,6 +1035,7 @@ custom model이 늘어날수록 가장 큰 문제는 capability contract보다 r
 - custom model은 `shared-runtime-safe`가 명확히 검증되지 않으면 같은 프로세스 실행을 기본값으로 잡지 않는다.
 - 모델마다 이미지 1개씩 만드는 대신, ABI와 의존성이 같은 것끼리 runtime family를 묶는다.
 - "모델을 플러그인으로 import"하는 것보다 "runtime worker를 호출"하는 쪽을 기본 설계로 본다.
+- 현재 `container_worker` baseline은 `docker run --rm -i + stdin/stdout JSON IPC + workspace/cache mount` 방식으로 동작한다.
 
 ## 15. SaaS / Local 공통 규칙
 
@@ -1085,6 +1087,10 @@ SaaS와 local의 차이는 인증/정산 레이어에만 있다.
   - CRAFT 같은 built-in 모델 의존성을 담는다
   - 이후 OCR/local model/GPU 런타임도 이 계열에서 확장한다
   - 단, 모든 custom model을 여기에 계속 합치지 않고 runtime family별 이미지로 분화하는 것을 우선한다
+
+- `docker-compose.runtime.yml`
+  - runtime family별 worker image를 정리하는 초안 파일
+  - orchestrator와 worker 이미지를 한꺼번에 관리할 때 기준으로 사용한다
 
 의존성 파일도 같은 원칙으로 분리한다.
 

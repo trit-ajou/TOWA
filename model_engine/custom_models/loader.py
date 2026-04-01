@@ -7,7 +7,12 @@ from typing import Mapping, Optional
 
 from ..adapters.base import ModelAdapter
 from ..adapters.callable import CallableModelAdapter
+from ..adapters.container_worker import (
+    ContainerWorkerModelAdapter,
+    default_container_worker_command,
+)
 from ..adapters.http_api import HttpApiModelAdapter
+from ..contracts.models import RuntimeMount
 from ..models.registry import ModelRegistry
 from .spec import CustomAdapterType, CustomModelDefinition, custom_model_definition_from_data
 
@@ -67,6 +72,47 @@ class CustomModelLoader:
                 credential_alias=str(
                     definition.adapter_config.get("credential_alias", "primary_provider")
                 ),
+            )
+
+        if definition.adapter_type is CustomAdapterType.CONTAINER_WORKER:
+            image = definition.manifest.runtime_image or str(definition.adapter_config.get("image", ""))
+            if not image:
+                raise ValueError("container_worker adapter requires runtime_image or adapter_config.image")
+
+            command = [str(item) for item in definition.manifest.runtime_command]
+            if not command:
+                handler = _optional_string(definition.adapter_config.get("handler"))
+                if handler:
+                    command = default_container_worker_command(handler)
+                else:
+                    command = [str(item) for item in definition.adapter_config.get("runtime_command", [])]
+            if not command:
+                raise ValueError(
+                    "container_worker adapter requires runtime_command or adapter_config.handler"
+                )
+
+            return ContainerWorkerModelAdapter(
+                definition.manifest,
+                image=image,
+                command=command,
+                docker_executable=str(
+                    definition.adapter_config.get("docker_executable", "docker")
+                ),
+                workspace_mount_path=str(
+                    definition.adapter_config.get("workspace_mount_path", "/workspace_out")
+                ),
+                path_mappings=[
+                    RuntimeMount(
+                        host_path=str(item["host_path"]),
+                        container_path=str(item["container_path"]),
+                        read_only=bool(item.get("read_only", True)),
+                    )
+                    for item in definition.adapter_config.get("path_mappings", [])
+                ],
+                environment={
+                    str(key): str(value)
+                    for key, value in dict(definition.adapter_config.get("environment", {})).items()
+                },
             )
 
         raise ValueError(f"Unsupported adapter_type: {definition.adapter_type.value}")

@@ -526,6 +526,26 @@ PYTHONPYCACHEPREFIX=/tmp/pythoncache python3 -m unittest discover -s model_engin
 - 장기 기본 backend 후보는 `http_api`, `subprocess_ipc`, `container_worker`다.
 - 같은 runtime image에 모든 모델 의존성을 누적하는 방식은 피하고, ABI/의존성이 같은 것끼리 runtime family로 묶는 쪽을 기준으로 한다.
 
+## 이번 구현
+
+- `StageManifest`에 runtime isolation 관련 필드를 추가했다.
+  - `execution_backend`
+  - `runtime_family`
+  - `runtime_image`
+  - `runtime_command`
+  - `python_version`
+  - `cuda_version`
+  - `dependency_lock_ref`
+  - `cache_mounts`
+  - `network_policy`
+- custom model spec/loader가 `container_worker` adapter type을 지원한다.
+- baseline `ContainerWorkerModelAdapter`를 추가했다.
+  - `docker run --rm -i`로 worker를 1회성 실행
+  - `StageRequest`/`StageResponse`는 stdin/stdout JSON IPC 사용
+  - workspace와 path mapping, cache mount를 컨테이너로 전달
+  - credential secret은 기존 subprocess IPC와 같은 env 주입 경로를 재사용
+- stage selection 결과 메타데이터에 `execution_backend`, `runtime_family`를 기본으로 남기도록 했다.
+
 ## 다음 구현 후보
 
 현재 코드에서 다음 단계로 자연스러운 순서는 아래다.
