@@ -312,6 +312,7 @@ custom stage는 입력 포트를 조정할 수 있다.
 - 현재 지원하는 custom adapter 타입은 `python_callable`, `http_api`다.
 - custom model은 manifest JSON으로 registry에 로드된다.
 - built-in 모델과 custom 모델은 모두 `StageManifest + ModelAdapter` 계약으로 합류한다.
+- OCR capability의 공통 규격은 `OCR_CAPABILITY.md`를 source of truth로 본다.
 
 ## 8. Stage I/O Schema
 
@@ -408,6 +409,7 @@ patch 포맷은 고정한다. stage 간 호환을 위해 자유형 patch는 허�
 - `set_layer_filters`
 - `set_document_selection`
 - `append_text_blocks`
+- `replace_text_blocks`
 - `set_stage_meta`
 - `attach_artifact`
 - `detach_artifact`
@@ -421,6 +423,7 @@ patch 포맷은 고정한다. stage 간 호환을 위해 자유형 patch는 허�
 - `set_layer_text`: text stage가 생산한 텍스트 payload를 반영한다.
 - `set_document_selection`: selection 관련 상태를 문서에 반영한다.
 - `append_text_blocks`: OCR/번역 결과를 stage 메타 또는 별도 overlay layer 준비 데이터로 추가한다.
+- `replace_text_blocks`: OCR stage가 현재 문서의 canonical text block 집합을 새 결과로 교체한다.
 - `set_stage_meta`: `document.stage_meta` 또는 pipeline 메타를 갱신한다.
 
 patch 공통 규칙:

@@ -26,6 +26,7 @@ class PatchOp(str, Enum):
     SET_LAYER_FILTERS = "set_layer_filters"
     SET_DOCUMENT_SELECTION = "set_document_selection"
     APPEND_TEXT_BLOCKS = "append_text_blocks"
+    REPLACE_TEXT_BLOCKS = "replace_text_blocks"
     SET_STAGE_META = "set_stage_meta"
     ATTACH_ARTIFACT = "attach_artifact"
     DETACH_ARTIFACT = "detach_artifact"
@@ -144,6 +145,14 @@ def apply_patch(document: DocumentIR, patch: PatchOperation) -> None:
         for block in blocks:
             normalized = text_block_from_mapping(block) if isinstance(block, dict) else block
             document.text_blocks.append(normalized)
+        return
+
+    if op is PatchOp.REPLACE_TEXT_BLOCKS:
+        blocks = patch.payload.get("text_blocks", [])
+        document.text_blocks = [
+            text_block_from_mapping(block) if isinstance(block, dict) else block
+            for block in blocks
+        ]
         return
 
     if op is PatchOp.SET_STAGE_META:

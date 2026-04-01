@@ -5,6 +5,7 @@
 - `README.md`: 현재 `model_engine` 내부 구현 기준서
 - `PLAN.md`: 확정/미확정 범위 판단 기준
 - `IMPLEMENTATION_SUMMARY.md`: 현재 실제 구현 완료 범위 요약
+- `OCR_CAPABILITY.md`: OCR capability 공통 계약 초안
 - `SPEC.md`, `API_CONTRACT.md`: 외부 엔진 경계와 SaaS/local 계약 참고
 
 ## 이번에 구현한 범위
@@ -14,6 +15,7 @@
 이미 구현된 capability:
 
 - built-in `text_detection=CRAFT`
+- built-in `ocr=manga-ocr` skeleton
 - 규칙 기반 `mask_or_erase_planning`
 - built-in `inpaint=nanobanana(Vertex AI 경유)`
 
@@ -65,6 +67,7 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - `set_layer_filters`
 - `set_document_selection`
 - `append_text_blocks`
+- `replace_text_blocks`
 - `set_stage_meta`
 - `attach_artifact`
 - `detach_artifact`
