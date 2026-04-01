@@ -45,6 +45,9 @@ class OrchestratedJobExecutorTests(unittest.TestCase):
             ), patch(
                 "model_engine.builtin_models.manga_ocr._recognize_with_manga_ocr",
                 side_effect=_fake_recognize_text,
+            ), patch(
+                "model_engine.builtin_models.vertex_translation._translate_blocks_with_vertex",
+                side_effect=_fake_translate_blocks,
             ):
                 result = executor.execute(request)
 
@@ -55,8 +58,12 @@ class OrchestratedJobExecutorTests(unittest.TestCase):
             )
             self.assertEqual(1, len(result.document.text_blocks))
             self.assertEqual("縦書きテキスト", result.document.text_blocks[0].source_lang_text)
+            self.assertEqual("세로쓰기 텍스트", result.document.text_blocks[0].translated_text)
             self.assertEqual("manga_ocr", result.document.stage_meta["ocr"]["engine"])
-            self.assertEqual("placeholder", result.document.stage_meta["translation"]["executor"])
+            self.assertEqual(
+                "vertex_gemini_translation",
+                result.document.stage_meta["translation"]["engine"],
+            )
 
     def test_model_job_manager_defaults_to_orchestrated_executor(self) -> None:
         manager = ModelJobManager()
@@ -87,6 +94,10 @@ def _job_request(workspace_dir: Path, *, operation_kind: str) -> JobExecutionReq
             mode=ExecutionMode.LOCAL,
             workspace_uri=workspace_dir.resolve().as_uri(),
             requested_by="test_job_executor",
+            session_provider_secrets={
+                "translation_provider": "test-translation-key",
+                "nanobanana": "test-nanobanana-key",
+            },
         ),
     )
 
@@ -112,6 +123,12 @@ def _fake_recognize_text(image, config: dict[str, object]) -> str:
     _ = image
     _ = config
     return "縦書きテキスト"
+
+
+def _fake_translate_blocks(blocks, config: dict[str, object], api_key: str) -> list[dict[str, str]]:
+    _ = config
+    _ = api_key
+    return [{"block_id": block.block_id, "translated_text": "세로쓰기 텍스트"} for block in blocks]
 
 
 if __name__ == "__main__":

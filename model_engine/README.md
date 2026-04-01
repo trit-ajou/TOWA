@@ -1247,3 +1247,40 @@ v1에서는 planner를 규칙 기반으로 시작한다.
 - `text_regions_artifact_ref`
 - `padding`
 - `target_layer_id`
+
+## 20. Built-in Translation Strategy
+
+현재 built-in `translation` adapter는 Vertex AI 경유 호출을 기준으로 한다.
+
+- provider name: `translation_provider`
+- runtime library: `google-genai`
+- authentication: Vertex AI express mode API key 또는 동일 형식의 provider key를 credential binding으로 주입
+- raw key는 코드, patch, artifact, stage_report에 남기지 않는다
+
+입력 규칙:
+
+- 입력은 `DocumentIR.text_blocks`다.
+- `translation` stage는 OCR이 만든 `source_lang_text`를 읽고 `translated_text`만 채운다.
+- geometry, reading order, writing mode, region ref는 번역 stage에서 바꾸지 않는다.
+
+출력 규칙:
+
+- canonical artifact kind: `translated_text_blocks`
+- canonical patch: `replace_text_blocks`
+- stage meta key: `translation`
+
+기본 구현 결론:
+
+- built-in `translation`은 Vertex Gemini text model을 사용한다.
+- 기본 모델 이름은 `gemini-2.5-flash`다.
+- 응답은 JSON으로 강제하고, `block_id -> translated_text` 매핑으로 다시 병합한다.
+- `block_id`가 빠진 응답은 입력 순서 fallback을 허용하되 warning을 남긴다.
+- 일부 block이 비면 stage는 `partial`로 기록할 수 있다.
+
+권장 `stage_config`:
+
+- `provider`
+- `model_name`
+- `source_language`
+- `target_language`
+- `temperature`

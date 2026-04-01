@@ -15,19 +15,20 @@ from ..builtin_models import (
     CRAFT_TEXT_DETECTION_MODEL_ID,
     MANGA_OCR_MODEL_ID,
     NANOBANANA_INPAINT_MODEL_ID,
+    VERTEX_TRANSLATION_MODEL_ID,
     register_craft_text_detection_model,
     register_manga_ocr_model,
     register_nanobanana_inpaint_model,
+    register_vertex_translation_model,
 )
 from ..contracts.artifacts import ArtifactDescriptor, ArtifactStatus
 from ..contracts.document_ir import DocumentIR
 from ..contracts.models import StageKind
-from ..contracts.patches import PatchOp, PatchOperation
 from ..contracts.stages import ExecutionMode, StageReport, StageRuntimeContext, StageStatus
 from ..ipc.serde import document_from_data, document_to_data, stage_report_to_data
 from ..models import ModelRegistry
 from ..orchestrator import PipelineOrchestrator
-from ..stages import AdapterBackedStage, Stage, StaticStage, run_mask_or_erase_planning
+from ..stages import AdapterBackedStage, Stage, run_mask_or_erase_planning
 from ..stages.base import Stage as StageProtocol
 from .service_bridge import (
     ServiceEngineBridgeClient,
@@ -688,6 +689,7 @@ def _build_builtin_registry() -> ModelRegistry:
     register_craft_text_detection_model(registry)
     register_manga_ocr_model(registry)
     register_nanobanana_inpaint_model(registry)
+    register_vertex_translation_model(registry)
     return registry
 
 
@@ -735,28 +737,16 @@ def _build_operation_stages(
                     "region_padding": 0,
                 },
             ),
-            StaticStage(
+            AdapterBackedStage(
                 "translation",
-                patches=[
-                    PatchOperation(
-                        op=PatchOp.SET_STAGE_META,
-                        payload={
-                            "key": "translation",
-                            "value": {
-                                "status": "pending",
-                                "executor": "placeholder",
-                                "reason": "translation_stage_not_implemented",
-                                "source_block_count": len(request.document.text_blocks),
-                            },
-                        },
-                    )
-                ],
-                metrics={
-                    "executor": "placeholder",
-                    "reason": "translation_stage_not_implemented",
+                stage_kind=StageKind.TRANSLATION,
+                registry=registry,
+                preferred_model_id=VERTEX_TRANSLATION_MODEL_ID,
+                config={
+                    "provider": "translation_provider",
+                    "source_language": "Japanese",
+                    "target_language": "Korean",
                 },
-                warnings=["translation stage is still a placeholder"],
-                config={"skip_provider_resolution": True},
             ),
         ]
 

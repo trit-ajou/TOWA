@@ -15,11 +15,12 @@
 이미 구현된 capability:
 
 - built-in `text_detection=CRAFT`
-- built-in `ocr=manga-ocr` skeleton
+- built-in `ocr=manga-ocr`
 - 규칙 기반 `mask_or_erase_planning`
 - built-in `inpaint=nanobanana(Vertex AI 경유)`
+- built-in `translation=Vertex Gemini`
 
-아직 미구현인 영역은 OCR/번역/식자/postprocess와 실제 billable provider smoke run이다.
+아직 미구현인 영역은 식자/postprocess와 실제 billable provider smoke run이다.
 
 README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage IPC, artifact lifecycle, credential binding/key management 규칙을 README에 먼저 고정하고 그 범위까지만 구현했다.
 
@@ -277,14 +278,35 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 
 - 기본 `ModelJobManager` executor를 placeholder에서 orchestrator 기반 executor로 전환
 - `detect`는 built-in `CRAFT text_detection` stage 조합 사용
-- `translate`는 `text_detection -> ocr -> translation placeholder` 조합 사용
+- `translate`는 `text_detection -> ocr -> translation` 조합 사용
 - `inpaint`는 `text_detection -> mask_or_erase_planning -> inpaint` 조합 사용
 - planner 함수를 job executor 안에서 재사용할 수 있도록 경량 function-stage 래퍼 추가
 
 비고:
 
-- `translation` stage는 아직 미구현이라, 현재는 OCR 결과를 만든 뒤 placeholder stage report/meta만 채운다.
-- 즉 실제 `/v1/jobs` 경로에서도 `ocr` stage가 더 이상 샘플 전용이 아니라 기본 실행 경로 일부가 된다.
+- 실제 `/v1/jobs` 경로에서도 `ocr`와 `translation` stage가 더 이상 샘플 전용이 아니라 기본 실행 경로 일부가 된다.
+
+### 9-2. Built-in Vertex Translation
+
+구현 파일:
+
+- `contracts/translated_text_blocks.py`
+- `builtin_models/vertex_translation.py`
+- `tests/test_vertex_translation.py`
+- `scripts/run_translation_sample.py`
+- `docker-compose.inference.yml`
+
+구현 내용:
+
+- built-in `translation` capability를 Vertex Gemini adapter로 구현
+- 입력은 `DocumentIR.text_blocks`, 출력은 `translated_text_blocks` artifact와 `replace_text_blocks` patch
+- local/SaaS 모두 `user_personal_*` 또는 `platform_managed` credential binding을 사용
+- provider 호출은 `nanobanana`와 같은 `google-genai` / Vertex API key 경로를 재사용
+
+비고:
+
+- 기본 모델은 `gemini-2.5-flash`
+- 결과 응답은 JSON으로 강제하고, block id 또는 순서 기준으로 번역 결과를 원문 block에 다시 병합한다.
 
 ### 10. Model Merge / Adapter Registry
 
@@ -479,8 +501,6 @@ PYTHONPYCACHEPREFIX=/tmp/pythoncache python3 -m unittest discover -s model_engin
 
 아래는 의도적으로 보류했다.
 
-- OCR stage 구현
-- translation stage 구현
 - typesetting/layout stage 구현
 - postprocess stage 구현
 - durable artifact backend
@@ -497,14 +517,13 @@ PYTHONPYCACHEPREFIX=/tmp/pythoncache python3 -m unittest discover -s model_engin
 
 현재 코드에서 다음 단계로 자연스러운 순서는 아래다.
 
-1. OCR stage와 OCR 출력 schema 구현
-2. `text_regions` / `text_blocks` 연결 규칙을 더 닫기
-3. translation stage 구현
-4. orchestrator에 optional stage / partial failure 정책 추가
-5. capability contract test를 adapter별 공통 테스트로 분리
-6. 실제 Vertex AI smoke run과 error mapping 검증
-7. 장기적으로 subprocess IPC와 별개로 socket/queue transport가 필요한지 판단
-8. session credential을 실제 login/session 경로와 연결
+1. `text_regions` / `text_blocks` 연결 규칙을 더 닫기
+2. typesetting/layout stage 구현
+3. orchestrator에 optional stage / partial failure 정책 추가
+4. capability contract test를 adapter별 공통 테스트로 분리
+5. 실제 Vertex AI smoke run과 error mapping 검증
+6. 장기적으로 subprocess IPC와 별개로 socket/queue transport가 필요한지 판단
+7. session credential을 실제 login/session 경로와 연결
 
 ## 메모
 

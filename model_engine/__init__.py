@@ -19,6 +19,10 @@ from .contracts.stages import (
 from .contracts.inpaint_tasks import InpaintTask, InpaintTasksPayload
 from .contracts.ocr_text_blocks import OcrTextBlocksPayload, ocr_text_blocks_payload_from_mapping
 from .contracts.text_regions import TextRegion, TextRegionsPayload
+from .contracts.translated_text_blocks import (
+    TranslatedTextBlocksPayload,
+    translated_text_blocks_payload_from_mapping,
+)
 from .credentials import CredentialResolutionError, CredentialResolver, DefaultCredentialResolver
 from .custom_models import CustomModelLoader, load_custom_models_into_registry
 from .ipc.process_stage import ProcessStage
@@ -45,18 +49,25 @@ _OPTIONAL_BUILTIN_EXPORTS = {
     "NANOBANANA_DEFAULT_PROMPT": "NANOBANANA_DEFAULT_PROMPT",
     "NANOBANANA_IMAGE_MODEL": "NANOBANANA_IMAGE_MODEL",
     "NANOBANANA_INPAINT_MODEL_ID": "NANOBANANA_INPAINT_MODEL_ID",
+    "VERTEX_TRANSLATION_DEFAULT_MODEL": "VERTEX_TRANSLATION_DEFAULT_MODEL",
+    "VERTEX_TRANSLATION_MODEL_ID": "VERTEX_TRANSLATION_MODEL_ID",
     "build_craft_text_detection_adapter": "build_craft_text_detection_adapter",
     "build_craft_text_detection_manifest": "build_craft_text_detection_manifest",
     "build_manga_ocr_adapter": "build_manga_ocr_adapter",
     "build_manga_ocr_manifest": "build_manga_ocr_manifest",
     "build_nanobanana_inpaint_adapter": "build_nanobanana_inpaint_adapter",
     "build_nanobanana_inpaint_manifest": "build_nanobanana_inpaint_manifest",
+    "build_vertex_translation_adapter": "build_vertex_translation_adapter",
+    "build_vertex_translation_manifest": "build_vertex_translation_manifest",
     "craft_text_detection_handler": "craft_text_detection_handler",
     "manga_ocr_handler": "manga_ocr_handler",
     "nanobanana_inpaint_handler": "nanobanana_inpaint_handler",
+    "register_vertex_translation_model": "register_vertex_translation_model",
     "register_craft_text_detection_model": "register_craft_text_detection_model",
     "register_manga_ocr_model": "register_manga_ocr_model",
     "register_nanobanana_inpaint_model": "register_nanobanana_inpaint_model",
+    "run_vertex_translation": "run_vertex_translation",
+    "vertex_translation_handler": "vertex_translation_handler",
 }
 _OPTIONAL_STAGE_EXPORTS = {
     "run_mask_or_erase_planning": "run_mask_or_erase_planning",
@@ -83,6 +94,8 @@ __all__ = [
     "NANOBANANA_DEFAULT_PROMPT",
     "NANOBANANA_IMAGE_MODEL",
     "NANOBANANA_INPAINT_MODEL_ID",
+    "VERTEX_TRANSLATION_DEFAULT_MODEL",
+    "VERTEX_TRANSLATION_MODEL_ID",
     "CustomModelLoader",
     "HttpApiModelAdapter",
     "ModelAdapter",
@@ -99,6 +112,7 @@ __all__ = [
     "InpaintTask",
     "InpaintTasksPayload",
     "OcrTextBlocksPayload",
+    "TranslatedTextBlocksPayload",
     "LayerIR",
     "StageKind",
     "StageManifest",
@@ -143,15 +157,21 @@ __all__ = [
     "build_manga_ocr_manifest",
     "build_nanobanana_inpaint_adapter",
     "build_nanobanana_inpaint_manifest",
+    "build_vertex_translation_adapter",
+    "build_vertex_translation_manifest",
     "craft_text_detection_handler",
     "manga_ocr_handler",
     "nanobanana_inpaint_handler",
+    "register_vertex_translation_model",
     "register_craft_text_detection_model",
     "register_manga_ocr_model",
     "register_nanobanana_inpaint_model",
+    "run_vertex_translation",
+    "vertex_translation_handler",
     "run_mask_or_erase_planning",
     "Stage",
     "StaticStage",
     "load_custom_models_into_registry",
     "ocr_text_blocks_payload_from_mapping",
+    "translated_text_blocks_payload_from_mapping",
 ]

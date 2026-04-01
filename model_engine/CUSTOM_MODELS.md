@@ -302,6 +302,36 @@ Compose 파일은 OCR 실행 시 아래 cache를 재사용한다.
 - `ocr-preload`는 `kha-white/manga-ocr-base` 모델 파일을 host-mounted `model_engine/.cache/models/` 아래로 미리 받아둔다.
 - CRAFT가 `torchvision.models.vgg.model_urls`를 직접 참조하므로, 추론 이미지는 `torch==1.12.1`, `torchvision==0.13.1` 조합으로 고정한다.
 
+### 10-4. Built-in Translation 실행
+
+`CRAFT -> manga-ocr -> Vertex translation` 최소 흐름은 아래 스크립트로 실행한다.
+
+```bash
+export TOWA_TRANSLATION_PROVIDER_API_KEY="YOUR_API_KEY"
+python3 model_engine/scripts/run_translation_sample.py \
+  --image model_engine/samples/images/sample_page.webp \
+  --workspace model_engine/.runtime
+```
+
+규칙:
+
+- `translation` stage는 `DocumentIR.text_blocks`를 읽고 `translated_text`만 채운다.
+- canonical translation artifact는 `translated_text_blocks` JSON이다.
+- Vertex 호출 credential 경로는 `nanobanana`와 동일한 `google-genai` / API key binding 방식을 재사용한다.
+
+Compose로 실행하면 더 단순하다.
+
+```bash
+cd model_engine
+docker compose -f docker-compose.inference.yml run --rm translation-sample
+```
+
+권장 순서:
+
+1. `docker compose -f docker-compose.inference.yml run --rm craft-preload`
+2. `docker compose -f docker-compose.inference.yml run --rm ocr-preload`
+3. `docker compose -f docker-compose.inference.yml run --rm translation-sample`
+
 ### 10-3. Custom Python 모델 실행 흐름
 
 1. manifest JSON을 만든다.
