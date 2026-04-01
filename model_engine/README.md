@@ -1107,6 +1107,13 @@ SaaS와 local의 차이는 인증/정산 레이어에만 있다.
 - CPU/GPU/torch/CUDA 조합이 다른 모델은 별도 runtime image로 분리한다.
 - custom model 기본 통합 방식은 "같은 이미지에 계속 의존성을 추가"가 아니라 "맞는 runtime family에 배치"다.
 
+현재 runtime example:
+
+- `towa-runtime-hy-mt:latest`
+  - `Dockerfile.hy_mt_runtime`
+  - `requirements-hy-mt.txt`
+  - `Tencent HY-MT1.5-1.8B` translation worker용 baseline image
+
 ## 18. Built-in Text Detection
 
 첫 built-in `text_detection` 구현체는 CRAFT로 고정한다.

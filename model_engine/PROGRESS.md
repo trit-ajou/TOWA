@@ -545,6 +545,13 @@ PYTHONPYCACHEPREFIX=/tmp/pythoncache python3 -m unittest discover -s model_engin
   - workspace와 path mapping, cache mount를 컨테이너로 전달
   - credential secret은 기존 subprocess IPC와 같은 env 주입 경로를 재사용
 - stage selection 결과 메타데이터에 `execution_backend`, `runtime_family`를 기본으로 남기도록 했다.
+- `Tencent HY-MT1.5-1.8B`를 첫 local `container_worker` translation model 예시로 추가했다.
+  - `model_engine/custom_model_specs/hy_mt_translation_1_8b.json`
+  - `model_engine/custom_models/hy_mt_translation.py`
+  - `Dockerfile.hy_mt_runtime`
+  - `requirements-hy-mt.txt`
+  - `docker-compose.runtime.yml`의 `runtime-hy-mt`, `hy-mt-preload`
+  - `scripts/run_hy_mt_translation_sample.py`
 
 ## 다음 구현 후보
 

@@ -233,6 +233,14 @@ custom model 지원이 늘어날수록 가장 큰 리스크는 capability 계약
 - workspace는 writable mount, 추가 path/cache는 read-only 또는 지정 mount로 전달한다.
 - `StageResponse`는 stdout JSON IPC로 반환한다.
 
+예: `Tencent HY-MT1.5-1.8B`
+
+- stage capability: `translation`
+- adapter type: `container_worker`
+- runtime image: `towa-runtime-hy-mt:latest`
+- handler: `model_engine.custom_models.hy_mt_translation:hy_mt_translation_handler`
+- manifest 예시는 `model_engine/custom_model_specs/hy_mt_translation_1_8b.json`을 따른다.
+
 ## 8. 로딩 예시
 
 ```python

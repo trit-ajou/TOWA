@@ -1,0 +1,42 @@
+{
+  "schema_version": "v1",
+  "adapter_type": "container_worker",
+  "model_id": "custom.tencent.hy_mt_1_8b.translation",
+  "adapter_id": "adapter.custom.tencent.hy_mt_1_8b.translation",
+  "stage_kind": "translation",
+  "input_contract_version": "v1",
+  "output_contract_version": "v1",
+  "required_artifact_kinds": [],
+  "produced_artifact_kinds": ["translated_text_blocks"],
+  "supported_modes": ["local"],
+  "allowed_credential_sources": ["none"],
+  "billing_modes": ["none"],
+  "resource_profile": {
+    "cpu_threads": 4,
+    "memory_mb": 16384,
+    "gpu_required": false,
+    "gpu_memory_mb": 0,
+    "latency_tier": "local"
+  },
+  "custom_model": true,
+  "priority": 40,
+  "display_name": "Tencent HY-MT1.5 1.8B",
+  "tags": ["custom", "translation", "hy-mt", "local"],
+  "execution_backend": "container_worker",
+  "runtime_family": "hy-mt-py311-transformers",
+  "runtime_image": "towa-runtime-hy-mt:latest",
+  "python_version": "3.11",
+  "dependency_lock_ref": "requirements-hy-mt.txt",
+  "cache_mounts": [
+    {
+      "host_path": "../.cache/models/hy-mt",
+      "container_path": "/cache/models",
+      "read_only": false
+    }
+  ],
+  "network_policy": "default",
+  "adapter_config": {
+    "handler": "model_engine.custom_models.hy_mt_translation:hy_mt_translation_handler",
+    "workspace_mount_path": "/workspace_out"
+  }
+}

@@ -128,6 +128,7 @@ class CustomModelLoaderTests(unittest.TestCase):
 
     def test_container_worker_manifest_loads_and_runs(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
             manifest_path = Path(tmpdir) / "container_translation.json"
             manifest_path.write_text(
                 json.dumps(
@@ -152,7 +153,7 @@ class CustomModelLoaderTests(unittest.TestCase):
                         "dependency_lock_ref": "requirements-hy-mt.txt",
                         "cache_mounts": [
                             {
-                                "host_path": "/tmp/model-cache",
+                                "host_path": "../model-cache",
                                 "container_path": "/cache/models",
                                 "read_only": False
                             }
@@ -163,7 +164,7 @@ class CustomModelLoaderTests(unittest.TestCase):
                             "workspace_mount_path": "/workspace_out",
                             "path_mappings": [
                                 {
-                                    "host_path": "/tmp/towa",
+                                    "host_path": "../inputs",
                                     "container_path": "/inputs",
                                     "read_only": True
                                 }
@@ -194,13 +195,15 @@ class CustomModelLoaderTests(unittest.TestCase):
                 check: bool,
                 env: dict[str, str],
             ) -> subprocess.CompletedProcess[str]:
+                expected_cache_mount = f"{(tmpdir_path.parent / 'model-cache').resolve()}:/cache/models"
+                expected_inputs_mount = f"{(tmpdir_path.parent / 'inputs').resolve()}:/inputs:ro"
                 self.assertEqual("docker", command[0])
                 self.assertIn("towa-runtime-hy-mt-cu124:latest", command)
                 self.assertIn("--network", command)
                 self.assertIn("none", command)
                 self.assertIn("/tmp/towa/custom-models:/workspace_out", command)
-                self.assertIn("/tmp/towa:/inputs:ro", command)
-                self.assertIn("/tmp/model-cache:/cache/models", command)
+                self.assertIn(expected_inputs_mount, command)
+                self.assertIn(expected_cache_mount, command)
                 self.assertEqual("hy-mt-cu124", env["TOWA_RUNTIME_FAMILY"])
                 self.assertEqual("custom-secret", env["TOWA_STAGE_SECRET_API_KEY"])
 
@@ -211,7 +214,7 @@ class CustomModelLoaderTests(unittest.TestCase):
                     stage_request.runtime_context.workspace_uri,
                 )
                 self.assertEqual(
-                    "file:///inputs/page.png",
+                    "file:///tmp/towa/page.png",
                     stage_request.artifacts["artifact://page"].uri,
                 )
                 response = {

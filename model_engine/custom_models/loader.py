@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from dataclasses import replace
 from pathlib import Path
 from typing import Mapping, Optional
 
@@ -34,9 +35,10 @@ class CustomModelLoader:
         return adapters
 
     def load_file(self, path: str | Path) -> ModelAdapter:
-        payload = json.loads(Path(path).read_text())
+        resolved_path = Path(path)
+        payload = json.loads(resolved_path.read_text())
         definition = custom_model_definition_from_data(payload)
-        return self._build_adapter(definition)
+        return self._build_adapter(definition, manifest_path=resolved_path)
 
     def load_into_registry(self, registry: ModelRegistry, directory: str | Path) -> list[str]:
         manifests: list[str] = []
@@ -45,7 +47,13 @@ class CustomModelLoader:
             manifests.append(adapter.manifest.model_id)
         return manifests
 
-    def _build_adapter(self, definition: CustomModelDefinition) -> ModelAdapter:
+    def _build_adapter(
+        self,
+        definition: CustomModelDefinition,
+        *,
+        manifest_path: Optional[Path] = None,
+    ) -> ModelAdapter:
+        definition = self._normalize_definition_paths(definition, manifest_path=manifest_path)
         if definition.adapter_type is CustomAdapterType.PYTHON_CALLABLE:
             import_path = str(definition.adapter_config["import_path"])
             return CallableModelAdapter.from_import_path(
@@ -117,6 +125,42 @@ class CustomModelLoader:
 
         raise ValueError(f"Unsupported adapter_type: {definition.adapter_type.value}")
 
+    def _normalize_definition_paths(
+        self,
+        definition: CustomModelDefinition,
+        *,
+        manifest_path: Optional[Path],
+    ) -> CustomModelDefinition:
+        if manifest_path is None:
+            return definition
+
+        base_dir = manifest_path.parent
+        normalized_manifest = replace(
+            definition.manifest,
+            cache_mounts=[
+                RuntimeMount(
+                    host_path=_resolve_host_path(base_dir, item.host_path),
+                    container_path=item.container_path,
+                    read_only=item.read_only,
+                )
+                for item in definition.manifest.cache_mounts
+            ],
+        )
+        adapter_config = dict(definition.adapter_config)
+        if "path_mappings" in adapter_config:
+            adapter_config["path_mappings"] = [
+                {
+                    **dict(item),
+                    "host_path": _resolve_host_path(base_dir, str(item["host_path"])),
+                }
+                for item in adapter_config.get("path_mappings", [])
+            ]
+        return replace(
+            definition,
+            manifest=normalized_manifest,
+            adapter_config=adapter_config,
+        )
+
     def _resolve_endpoint_url(self, adapter_config: dict[str, object]) -> str:
         endpoint_url = _optional_string(adapter_config.get("endpoint_url"))
         if endpoint_url:
@@ -148,3 +192,10 @@ def _optional_string(value: object) -> Optional[str]:
     if value is None:
         return None
     return str(value)
+
+
+def _resolve_host_path(base_dir: Path, raw_path: str) -> str:
+    candidate = Path(raw_path)
+    if candidate.is_absolute():
+        return str(candidate)
+    return str((base_dir / candidate).resolve())
