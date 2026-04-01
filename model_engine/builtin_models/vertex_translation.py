@@ -18,7 +18,7 @@ from ..storage import stage_run_slug, stage_transaction_dir
 
 
 VERTEX_TRANSLATION_MODEL_ID = "builtin.vertex.translation"
-VERTEX_TRANSLATION_DEFAULT_MODEL = "gemini-2.5-flash"
+VERTEX_TRANSLATION_DEFAULT_MODEL = "gemini-3.1-flash-lite-preview"
 _TRANSLATED_TEXT_BLOCKS_MEDIA_TYPE = "application/json"
 
 

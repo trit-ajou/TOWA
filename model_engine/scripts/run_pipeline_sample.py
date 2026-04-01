@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import sys
+from typing import Callable, Optional
 
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -14,23 +15,50 @@ from PIL import Image
 from model_engine.builtin_models import (
     CRAFT_TEXT_DETECTION_MODEL_ID,
     MANGA_OCR_MODEL_ID,
+    NANOBANANA_INPAINT_MODEL_ID,
     VERTEX_TRANSLATION_MODEL_ID,
     register_craft_text_detection_model,
     register_manga_ocr_model,
+    register_nanobanana_inpaint_model,
     register_vertex_translation_model,
 )
 from model_engine.contracts.artifacts import ArtifactDescriptor
 from model_engine.contracts.document_ir import DocumentIR
 from model_engine.contracts.models import StageKind
-from model_engine.contracts.stages import ExecutionMode, StageRuntimeContext
+from model_engine.contracts.stages import ExecutionMode, StageRequest, StageResponse, StageRuntimeContext
 from model_engine.models import ModelRegistry
 from model_engine.orchestrator import PipelineOrchestrator
-from model_engine.stages import AdapterBackedStage, Stage
+from model_engine.stages import AdapterBackedStage, Stage, run_mask_or_erase_planning
+
+
+class FunctionStage(Stage):
+    """Wrap planner-like handlers so we can compose them with the orchestrator."""
+
+    def __init__(
+        self,
+        stage_name: str,
+        handler: Callable[[StageRequest], StageResponse],
+        *,
+        config: Optional[dict[str, object]] = None,
+    ) -> None:
+        self._stage_name = stage_name
+        self._handler = handler
+        self._config = dict(config or {})
+
+    @property
+    def stage_name(self) -> str:
+        return self._stage_name
+
+    def stage_config(self) -> dict[str, object]:
+        return dict(self._config)
+
+    def run(self, request: StageRequest) -> StageResponse:
+        return self._handler(request)
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Run built-in CRAFT -> manga-ocr -> Vertex translation on a sample image."
+        description="Run built-in CRAFT -> OCR -> translation -> planner -> inpaint on a sample image."
     )
     parser.add_argument(
         "--image",
@@ -43,9 +71,24 @@ def main() -> int:
         help="Directory used for generated stage artifacts.",
     )
     parser.add_argument(
-        "--api-key-env",
+        "--translation-api-key-env",
         default="TOWA_TRANSLATION_PROVIDER_API_KEY",
         help="Environment variable that contains the Vertex translation API key.",
+    )
+    parser.add_argument(
+        "--inpaint-api-key-env",
+        default="TOWA_NANOBANANA_API_KEY",
+        help="Environment variable that contains the nanobanana API key.",
+    )
+    parser.add_argument(
+        "--translation-model-name",
+        default="gemini-3.1-flash-lite-preview",
+        help="Vertex Gemini translation model name.",
+    )
+    parser.add_argument(
+        "--inpaint-model-name",
+        default="gemini-3.1-flash-image-preview",
+        help="Nanobanana image model name.",
     )
     parser.add_argument(
         "--source-language",
@@ -56,11 +99,6 @@ def main() -> int:
         "--target-language",
         default="Korean",
         help="Target language label passed to the translation stage.",
-    )
-    parser.add_argument(
-        "--model-name",
-        default="gemini-3.1-flash-lite-preview",
-        help="Vertex Gemini model name.",
     )
     parser.add_argument(
         "--text-threshold",
@@ -85,12 +123,26 @@ def main() -> int:
         default="vertical",
         help="Default writing mode hint passed to the OCR stage.",
     )
+    parser.add_argument(
+        "--padding",
+        type=int,
+        default=12,
+        help="Pixel padding added around each detected text region before inpaint.",
+    )
     args = parser.parse_args()
 
-    api_key = os.environ.get(args.api_key_env)
-    if not api_key:
+    translation_api_key = os.environ.get(args.translation_api_key_env)
+    if not translation_api_key:
         raise RuntimeError(
-            f"Missing translation API key. Set the environment variable {args.api_key_env} before running."
+            "Missing translation API key. "
+            f"Set the environment variable {args.translation_api_key_env} before running."
+        )
+
+    inpaint_api_key = os.environ.get(args.inpaint_api_key_env)
+    if not inpaint_api_key:
+        raise RuntimeError(
+            "Missing nanobanana API key. "
+            f"Set the environment variable {args.inpaint_api_key_env} before running."
         )
 
     image_path = Path(args.image).resolve()
@@ -123,6 +175,7 @@ def main() -> int:
     register_craft_text_detection_model(registry)
     register_manga_ocr_model(registry)
     register_vertex_translation_model(registry)
+    register_nanobanana_inpaint_model(registry)
 
     stages: list[Stage] = [
         AdapterBackedStage(
@@ -155,9 +208,29 @@ def main() -> int:
             preferred_model_id=VERTEX_TRANSLATION_MODEL_ID,
             config={
                 "provider": "translation_provider",
-                "model_name": args.model_name,
+                "model_name": args.translation_model_name,
                 "source_language": args.source_language,
                 "target_language": args.target_language,
+            },
+        ),
+        FunctionStage(
+            "mask_or_erase_planning",
+            run_mask_or_erase_planning,
+            config={
+                "input_artifact_ref": input_artifact.artifact_ref,
+                "padding": args.padding,
+                "target_layer_id": "layer_inpainting",
+            },
+        ),
+        AdapterBackedStage(
+            "inpaint",
+            stage_kind=StageKind.INPAINT,
+            registry=registry,
+            preferred_model_id=NANOBANANA_INPAINT_MODEL_ID,
+            config={
+                "input_artifact_ref": input_artifact.artifact_ref,
+                "model_name": args.inpaint_model_name,
+                "target_layer_id": "layer_inpainting",
             },
         ),
     ]
@@ -169,13 +242,17 @@ def main() -> int:
         runtime_context=StageRuntimeContext(
             mode=ExecutionMode.LOCAL,
             workspace_uri=workspace_path.as_uri(),
-            requested_by="run_translation_sample",
-            session_provider_secrets={"translation_provider": api_key},
+            requested_by="run_pipeline_sample",
+            session_provider_secrets={
+                "translation_provider": translation_api_key,
+                "nanobanana": inpaint_api_key,
+            },
         ),
         initial_artifacts={input_artifact.artifact_ref: input_artifact},
-        job_id="job_translation_sample",
-        pipeline_id="pipe_translation_sample",
+        job_id="job_pipeline_sample",
+        pipeline_id="pipe_pipeline_sample",
     )
+
     summary = {
         "status": result.status.value,
         "text_blocks": [
@@ -188,6 +265,15 @@ def main() -> int:
                 "source_region_ref": block.source_region_ref,
             }
             for block in result.document.text_blocks
+        ],
+        "document_layers": [
+            {
+                "id": layer.id,
+                "name": layer.name,
+                "source_ref": layer.source_ref,
+                "props": layer.props,
+            }
+            for layer in result.document.layers
         ],
         "stage_meta": result.document.stage_meta,
         "stage_reports": [
@@ -205,6 +291,7 @@ def main() -> int:
             artifact_ref: {
                 "kind": artifact.kind,
                 "uri": artifact.uri,
+                "status": artifact.status.value,
                 "metadata": artifact.metadata,
             }
             for artifact_ref, artifact in result.artifacts.items()

@@ -332,6 +332,33 @@ docker compose -f docker-compose.inference.yml run --rm translation-sample
 2. `docker compose -f docker-compose.inference.yml run --rm ocr-preload`
 3. `docker compose -f docker-compose.inference.yml run --rm translation-sample`
 
+### 10-5. Built-in Pipeline 실행
+
+전체 샘플 파이프라인은 `pipeline` 서비스로 실행한다.
+
+흐름:
+
+- `text_detection`
+- `ocr`
+- `translation`
+- `mask_or_erase_planning`
+- `inpaint`
+
+실행:
+
+```bash
+cd model_engine
+export TOWA_TRANSLATION_PROVIDER_API_KEY="YOUR_API_KEY"
+export TOWA_NANOBANANA_API_KEY="YOUR_API_KEY"
+docker compose -f docker-compose.inference.yml run --rm pipeline
+```
+
+결과 위치:
+
+- `model_engine/.runtime/transactions/pipe_pipeline_sample/`
+- 번역 결과: `.../translation/..._translated_text_blocks.json`
+- 인페인트 결과: `.../inpaint/..._inpainting.png`
+
 ### 10-3. Custom Python 모델 실행 흐름
 
 1. manifest JSON을 만든다.

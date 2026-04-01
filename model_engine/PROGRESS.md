@@ -294,6 +294,7 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - `builtin_models/vertex_translation.py`
 - `tests/test_vertex_translation.py`
 - `scripts/run_translation_sample.py`
+- `scripts/run_pipeline_sample.py`
 - `docker-compose.inference.yml`
 
 구현 내용:
@@ -302,10 +303,11 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - 입력은 `DocumentIR.text_blocks`, 출력은 `translated_text_blocks` artifact와 `replace_text_blocks` patch
 - local/SaaS 모두 `user_personal_*` 또는 `platform_managed` credential binding을 사용
 - provider 호출은 `nanobanana`와 같은 `google-genai` / Vertex API key 경로를 재사용
+- 전체 샘플 흐름을 `pipeline` compose 서비스로 묶어 `translation + inpaint`를 한 번에 실행 가능하게 함
 
 비고:
 
-- 기본 모델은 `gemini-2.5-flash`
+- 기본 모델은 `gemini-3.1-flash-lite-preview`
 - 결과 응답은 JSON으로 강제하고, block id 또는 순서 기준으로 번역 결과를 원문 block에 다시 병합한다.
 
 ### 10. Model Merge / Adapter Registry

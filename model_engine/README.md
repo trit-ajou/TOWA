@@ -1272,7 +1272,7 @@ v1에서는 planner를 규칙 기반으로 시작한다.
 기본 구현 결론:
 
 - built-in `translation`은 Vertex Gemini text model을 사용한다.
-- 기본 모델 이름은 `gemini-2.5-flash`다.
+- 기본 모델 이름은 `gemini-3.1-flash-lite-preview`다.
 - 응답은 JSON으로 강제하고, `block_id -> translated_text` 매핑으로 다시 병합한다.
 - `block_id`가 빠진 응답은 입력 순서 fallback을 허용하되 warning을 남긴다.
 - 일부 block이 비면 stage는 `partial`로 기록할 수 있다.
