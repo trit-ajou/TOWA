@@ -13,6 +13,7 @@ from ..builtin_models.translation_common import (
 )
 
 
+HY_MT_TRANSLATION_MODEL_ID = "custom.tencent.hy_mt_1_8b.translation"
 HY_MT_TRANSLATION_DEFAULT_MODEL = "tencent/HY-MT1.5-1.8B"
 
 _MODEL_CACHE: dict[str, tuple[object, object]] = {}

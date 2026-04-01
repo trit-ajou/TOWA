@@ -1114,6 +1114,16 @@ SaaS와 local의 차이는 인증/정산 레이어에만 있다.
   - `requirements-hy-mt.txt`
   - `Tencent HY-MT1.5-1.8B` translation worker용 baseline image
 
+현재 pipeline sample translation backend:
+
+- `vertex`
+  - 기존 방식
+  - `docker compose -f docker-compose.inference.yml run --rm pipeline`에서 사용
+- `hy_mt`
+  - `container_worker` custom model
+  - host에서 `run_pipeline_sample.py --translation-backend hy_mt`로 실행
+  - 번역 stage만 `towa-runtime-hy-mt:latest` worker 컨테이너를 호출
+
 ## 18. Built-in Text Detection
 
 첫 built-in `text_detection` 구현체는 CRAFT로 고정한다.

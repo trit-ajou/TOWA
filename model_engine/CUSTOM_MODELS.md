@@ -240,6 +240,7 @@ custom model 지원이 늘어날수록 가장 큰 리스크는 capability 계약
 - runtime image: `towa-runtime-hy-mt:latest`
 - handler: `model_engine.custom_models.hy_mt_translation:hy_mt_translation_handler`
 - manifest 예시는 `model_engine/custom_model_specs/hy_mt_translation_1_8b.json`을 따른다.
+- 전체 추론 샘플과 함께 시험할 때는 host에서 `run_pipeline_sample.py --translation-backend hy_mt`를 사용한다.
 
 ## 8. 로딩 예시
 

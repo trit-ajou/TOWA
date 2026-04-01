@@ -26,6 +26,7 @@ from model_engine.contracts.artifacts import ArtifactDescriptor
 from model_engine.contracts.document_ir import DocumentIR
 from model_engine.contracts.models import StageKind
 from model_engine.contracts.stages import ExecutionMode, StageRequest, StageResponse, StageRuntimeContext
+from model_engine.custom_models.hy_mt_translation import HY_MT_TRANSLATION_MODEL_ID
 from model_engine.models import ModelRegistry
 from model_engine.orchestrator import PipelineOrchestrator
 from model_engine.stages import AdapterBackedStage, Stage, run_mask_or_erase_planning
@@ -69,6 +70,17 @@ def main() -> int:
         "--workspace",
         default="model_engine/.runtime",
         help="Directory used for generated stage artifacts.",
+    )
+    parser.add_argument(
+        "--translation-backend",
+        choices=("vertex", "hy_mt"),
+        default="vertex",
+        help="Translation backend used in the pipeline.",
+    )
+    parser.add_argument(
+        "--custom-model-dir",
+        default="model_engine/custom_model_specs",
+        help="Directory that contains custom model manifests.",
     )
     parser.add_argument(
         "--translation-api-key-env",
@@ -132,7 +144,7 @@ def main() -> int:
     args = parser.parse_args()
 
     translation_api_key = os.environ.get(args.translation_api_key_env)
-    if not translation_api_key:
+    if args.translation_backend == "vertex" and not translation_api_key:
         raise RuntimeError(
             "Missing translation API key. "
             f"Set the environment variable {args.translation_api_key_env} before running."
@@ -176,6 +188,16 @@ def main() -> int:
     register_manga_ocr_model(registry)
     register_vertex_translation_model(registry)
     register_nanobanana_inpaint_model(registry)
+    if args.translation_backend == "hy_mt":
+        registry.load_custom_model_directory(str(Path(args.custom_model_dir).resolve()))
+
+    translation_stage = _build_translation_stage(
+        registry=registry,
+        backend=args.translation_backend,
+        model_name=args.translation_model_name,
+        source_language=args.source_language,
+        target_language=args.target_language,
+    )
 
     stages: list[Stage] = [
         AdapterBackedStage(
@@ -201,18 +223,7 @@ def main() -> int:
                 "region_padding": 0,
             },
         ),
-        AdapterBackedStage(
-            "translation",
-            stage_kind=StageKind.TRANSLATION,
-            registry=registry,
-            preferred_model_id=VERTEX_TRANSLATION_MODEL_ID,
-            config={
-                "provider": "translation_provider",
-                "model_name": args.translation_model_name,
-                "source_language": args.source_language,
-                "target_language": args.target_language,
-            },
-        ),
+        translation_stage,
         FunctionStage(
             "mask_or_erase_planning",
             run_mask_or_erase_planning,
@@ -243,10 +254,11 @@ def main() -> int:
             mode=ExecutionMode.LOCAL,
             workspace_uri=workspace_path.as_uri(),
             requested_by="run_pipeline_sample",
-            session_provider_secrets={
-                "translation_provider": translation_api_key,
-                "nanobanana": inpaint_api_key,
-            },
+            session_provider_secrets=_session_provider_secrets(
+                translation_backend=args.translation_backend,
+                translation_api_key=translation_api_key,
+                inpaint_api_key=inpaint_api_key,
+            ),
         ),
         initial_artifacts={input_artifact.artifact_ref: input_artifact},
         job_id="job_pipeline_sample",
@@ -308,6 +320,54 @@ def _media_type_for_suffix(suffix: str) -> str:
     if normalized == ".webp":
         return "image/webp"
     return "image/png"
+
+
+def _build_translation_stage(
+    *,
+    registry: ModelRegistry,
+    backend: str,
+    model_name: str,
+    source_language: str,
+    target_language: str,
+) -> AdapterBackedStage:
+    if backend == "hy_mt":
+        return AdapterBackedStage(
+            "translation",
+            stage_kind=StageKind.TRANSLATION,
+            registry=registry,
+            preferred_model_id=HY_MT_TRANSLATION_MODEL_ID,
+            config={
+                "skip_provider_resolution": True,
+                "model_name": model_name,
+                "source_language": source_language,
+                "target_language": target_language,
+            },
+        )
+
+    return AdapterBackedStage(
+        "translation",
+        stage_kind=StageKind.TRANSLATION,
+        registry=registry,
+        preferred_model_id=VERTEX_TRANSLATION_MODEL_ID,
+        config={
+            "provider": "translation_provider",
+            "model_name": model_name,
+            "source_language": source_language,
+            "target_language": target_language,
+        },
+    )
+
+
+def _session_provider_secrets(
+    *,
+    translation_backend: str,
+    translation_api_key: Optional[str],
+    inpaint_api_key: str,
+) -> dict[str, str]:
+    secrets = {"nanobanana": inpaint_api_key}
+    if translation_backend == "vertex" and translation_api_key:
+        secrets["translation_provider"] = translation_api_key
+    return secrets
 
 
 if __name__ == "__main__":

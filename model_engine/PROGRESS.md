@@ -552,6 +552,7 @@ PYTHONPYCACHEPREFIX=/tmp/pythoncache python3 -m unittest discover -s model_engin
   - `requirements-hy-mt.txt`
   - `docker-compose.runtime.yml`의 `runtime-hy-mt`, `hy-mt-preload`
   - `scripts/run_hy_mt_translation_sample.py`
+  - `scripts/run_pipeline_sample.py --translation-backend hy_mt`로 전체 pipeline 샘플에서 선택 가능
 
 ## 다음 구현 후보
 
