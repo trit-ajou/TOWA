@@ -6,7 +6,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     TOWA_MODEL_CACHE_DIR=/cache/models \
     HOME=/cache/models \
     XDG_CACHE_HOME=/cache/models \
-    TORCH_HOME=/cache/models/torch
+    TORCH_HOME=/cache/models/torch \
+    HF_HOME=/cache/models/huggingface \
+    TRANSFORMERS_CACHE=/cache/models/huggingface/transformers
 
 WORKDIR /app
 
@@ -27,7 +29,7 @@ COPY requirements-craft.txt /app/model_engine/requirements-craft.txt
 
 # CRAFT currently pulls an older dependency stack that is not compatible with Python 3.11.
 # Keep the inference image on Python 3.10 until the detector package is replaced or upgraded.
-# This image is the local inference runtime for built-in text detection and later OCR workers.
+# This image is the local inference runtime for built-in text detection, OCR, and later workers.
 RUN python3 -m pip install --no-cache-dir -r /app/model_engine/requirements-craft.txt
 
 COPY . /app/model_engine
