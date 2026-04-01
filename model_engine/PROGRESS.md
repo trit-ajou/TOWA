@@ -238,6 +238,7 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - `requirements-base.txt`
 - `requirements-craft.txt`
 - `scripts/preload_craft.py`
+- `scripts/preload_manga_ocr.py`
 
 구현 내용:
 
@@ -245,6 +246,7 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - 기본 개발/테스트 이미지와 추론용 이미지 분리
 - 추론 샘플 실행용 Docker Compose 추가
 - CRAFT weight 사전 다운로드용 preload runner 추가
+- `manga-ocr` Hugging Face weight 사전 다운로드용 preload runner 추가
 - base/craft 의존성 파일 분리
 - `/app` 작업 디렉토리
 - `/workspace`, `/artifacts`, `/cache` 기본 경로 생성

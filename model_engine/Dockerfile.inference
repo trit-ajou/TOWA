@@ -12,7 +12,14 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-RUN mkdir -p /workspace /artifacts /cache /cache/models /cache/models/torch
+RUN mkdir -p \
+    /workspace \
+    /artifacts \
+    /cache \
+    /cache/models \
+    /cache/models/torch \
+    /cache/models/huggingface \
+    /cache/models/huggingface/transformers
 
 # Keep system packages here so the base Dockerfile remains lean for tests and contracts.
 RUN apt-get update \

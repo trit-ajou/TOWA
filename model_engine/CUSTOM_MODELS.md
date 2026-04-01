@@ -273,7 +273,7 @@ python3 model_engine/scripts/run_ocr_sample.py \
 
 - `ocr` stage는 `text_regions`를 입력으로 받아 `DocumentIR.text_blocks`를 교체한다.
 - canonical OCR artifact는 `ocr_text_blocks` JSON이다.
-- `manga-ocr`는 첫 실행 시 Hugging Face model cache를 내려받을 수 있다.
+- `manga-ocr`는 Hugging Face / Transformers cache를 사용한다.
 
 결과물을 보는 위치:
 
@@ -292,12 +292,14 @@ docker compose -f docker-compose.inference.yml run --rm ocr-sample
 권장 순서:
 
 1. `docker compose -f docker-compose.inference.yml run --rm craft-preload`
-2. `docker compose -f docker-compose.inference.yml run --rm ocr-sample`
+2. `docker compose -f docker-compose.inference.yml run --rm ocr-preload`
+3. `docker compose -f docker-compose.inference.yml run --rm ocr-sample`
 
 Compose 파일은 OCR 실행 시 아래 cache를 재사용한다.
 
 - `torch` cache
 - Hugging Face / Transformers cache
+- `ocr-preload`는 `kha-white/manga-ocr-base` 모델 파일을 host-mounted `model_engine/.cache/models/` 아래로 미리 받아둔다.
 - CRAFT가 `torchvision.models.vgg.model_urls`를 직접 참조하므로, 추론 이미지는 `torch==1.12.1`, `torchvision==0.13.1` 조합으로 고정한다.
 
 ### 10-3. Custom Python 모델 실행 흐름
