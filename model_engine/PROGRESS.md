@@ -21,6 +21,13 @@
 
 README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage IPC, artifact lifecycle, credential binding/key management 규칙을 README에 먼저 고정하고 그 범위까지만 구현했다.
 
+최근 추가된 wiring:
+
+- `service_engine` client/errors/models 패키지 추가
+- `ServiceBackedPipelineRunner` 추가
+- `StageRuntimeContext`에 SaaS usage wiring 필드 추가
+- service usage hold/capture/release 테스트 추가
+
 ### 1. Canonical IR
 
 구현 파일:
@@ -193,7 +200,31 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - subprocess worker에는 env로만 주입한다.
 - session credential source는 타입과 런타임 필드만 열어두고, 실제 세션 주입 흐름은 아직 미구현이다.
 
-### 8. Container Bootstrap
+### 8. SaaS Usage Wiring
+
+구현 파일:
+
+- `service_engine/client.py`
+- `service_engine/errors.py`
+- `service_engine/models.py`
+- `orchestrator.py`
+- `contracts/stages.py`
+- `ipc/serde.py`
+
+구현 내용:
+
+- `service_engine` error envelope를 내부 예외로 매핑하는 client 계층
+- `StageRuntimeContext.service_session_key`, `service_base_url`, `service_request_ref`
+- 순수 `PipelineOrchestrator` 위에 얹는 `ServiceBackedPipelineRunner`
+- SaaS 실행 시 `POST /usage/jobs` -> pipeline 실행 -> `capture` 또는 `release`
+- release 사유를 마지막 실패 stage 기준으로 정리하는 기본 매핑
+
+비고:
+
+- 현재 `text_detection` 계열 실행은 service usage enum 호환을 위해 `mask`로 매핑한다.
+- 기존 `/v1/jobs` API 브리지는 유지하고, core orchestrator wiring을 별도로 닫았다.
+
+### 9. Container Bootstrap
 
 구현 파일:
 
@@ -230,7 +261,7 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - 아직 GPU 세팅은 넣지 않았다.
 - 현재 목적은 추론 런타임을 별도 이미지로 분리해 재현성과 확장성을 확보하는 것이다.
 
-### 9. Model Merge / Adapter Registry
+### 10. Model Merge / Adapter Registry
 
 구현 파일:
 

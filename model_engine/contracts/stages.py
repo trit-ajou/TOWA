@@ -32,6 +32,9 @@ class StageRuntimeContext:
     target_regions: list[str] = field(default_factory=list)
     selected_layer_ids: list[str] = field(default_factory=list)
     session_provider_secrets: dict[str, str] = field(default_factory=dict)
+    service_session_key: Optional[str] = None
+    service_base_url: Optional[str] = None
+    service_request_ref: Optional[str] = None
 
 
 @dataclass

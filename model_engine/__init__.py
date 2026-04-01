@@ -22,7 +22,19 @@ from .credentials import CredentialResolutionError, CredentialResolver, DefaultC
 from .custom_models import CustomModelLoader, load_custom_models_into_registry
 from .ipc.process_stage import ProcessStage
 from .models.registry import ModelRegistry, ModelSelection, ModelSelectionError
-from .orchestrator import PipelineOrchestrator, PipelineRunResult
+from .orchestrator import PipelineOrchestrator, PipelineRunResult, ServiceBackedPipelineRunner
+from .service_engine import (
+    CurrentUserPayload,
+    ServiceEngineAuthError,
+    ServiceEngineClient,
+    ServiceEngineConflictError,
+    ServiceEngineCreditError,
+    ServiceEngineError,
+    ServiceEngineNotFoundError,
+    ServiceEngineTransportError,
+    UsageJobCreatePayload,
+    UsageJobPayload,
+)
 from .stages.adapter_stage import AdapterBackedStage
 from .stages.base import Stage, StaticStage
 
@@ -105,6 +117,17 @@ __all__ = [
     "ModelSelectionError",
     "PipelineOrchestrator",
     "PipelineRunResult",
+    "ServiceBackedPipelineRunner",
+    "CurrentUserPayload",
+    "ServiceEngineAuthError",
+    "ServiceEngineClient",
+    "ServiceEngineConflictError",
+    "ServiceEngineCreditError",
+    "ServiceEngineError",
+    "ServiceEngineNotFoundError",
+    "ServiceEngineTransportError",
+    "UsageJobCreatePayload",
+    "UsageJobPayload",
     "AdapterBackedStage",
     "build_craft_text_detection_adapter",
     "build_craft_text_detection_manifest",

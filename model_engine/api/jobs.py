@@ -61,7 +61,7 @@ OPERATION_META_KEYS = {
 }
 
 
-@dataclass(slots=True)
+@dataclass
 class ModelJobError(Exception):
     status_code: int
     code: str
@@ -70,7 +70,7 @@ class ModelJobError(Exception):
     details: dict[str, Any] | None = None
 
 
-@dataclass(slots=True)
+@dataclass
 class JobSubmission:
     schema_version: str
     idempotency_key: str
@@ -82,7 +82,7 @@ class JobSubmission:
     runtime_context: StageRuntimeContext
 
 
-@dataclass(slots=True)
+@dataclass
 class JobExecutionRequest:
     job_id: str
     pipeline_id: str
@@ -94,7 +94,7 @@ class JobExecutionRequest:
     runtime_context: StageRuntimeContext
 
 
-@dataclass(slots=True)
+@dataclass
 class JobExecutionResult:
     status: ModelJobStatus
     document: DocumentIR
@@ -516,6 +516,10 @@ def runtime_context_from_api_data(payload: dict[str, Any]) -> StageRuntimeContex
         cancellation_token=payload.get("cancellation_token"),
         target_regions=list(payload.get("target_regions", [])),
         selected_layer_ids=list(payload.get("selected_layer_ids", [])),
+        session_provider_secrets=dict(payload.get("session_provider_secrets", {})),
+        service_session_key=payload.get("service_session_key"),
+        service_base_url=payload.get("service_base_url"),
+        service_request_ref=payload.get("service_request_ref"),
     )
 
 
