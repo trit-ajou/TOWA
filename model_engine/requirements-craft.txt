@@ -11,3 +11,5 @@ opencv-python==4.7.0.72
 craft-text-detector
 # Official PyPI release published on January 1, 2025.
 manga-ocr==0.1.14
+# Newer transformers releases require PyTorch >= 2.4, which conflicts with the CRAFT stack pinned above.
+transformers==4.37.2
