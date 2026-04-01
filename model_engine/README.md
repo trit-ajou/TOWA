@@ -1037,6 +1037,41 @@ custom model이 늘어날수록 가장 큰 문제는 capability contract보다 r
 - "모델을 플러그인으로 import"하는 것보다 "runtime worker를 호출"하는 쪽을 기본 설계로 본다.
 - 현재 `container_worker` baseline은 `docker run --rm -i + stdin/stdout JSON IPC + workspace/cache mount` 방식으로 동작한다.
 
+### 14.9 Stage Migration Policy
+
+모든 stage를 무조건 같은 방식으로 분리하지는 않는다. 기준은 "모델 의존성 충돌 가능성"과 "실행 성격"이다.
+
+worker 또는 remote backend로 우선 보내는 대상:
+
+- `text_detection`
+  - CRAFT 같은 모델 의존성이 무겁고 Python/runtime 제약이 크다.
+  - 장기 기본값은 `container_worker`.
+- `ocr`
+  - `manga-ocr`, PaddleOCR 등은 torch/transformers 충돌 가능성이 있다.
+  - 장기 기본값은 `container_worker`.
+- `translation`
+  - 외부 API 계열은 `http_api`, 로컬 대형 모델은 `container_worker`.
+  - 예: Vertex Gemini는 `http_api` 계열, HY-MT는 `container_worker`.
+- `inpaint`
+  - 외부 API 계열은 `http_api`, 로컬 diffusion 계열은 `container_worker`.
+
+in-process로 남겨도 되는 대상:
+
+- `mask_or_erase_planning`
+  - rule-based stage이고 dependency 충돌 위험이 작다.
+  - 당분간 `inprocess` 유지.
+
+조건부 대상:
+
+- `typesetting`
+  - 초기 pure-Python/layout 단계는 `inprocess` 가능
+  - 폰트/graphics/runtime stack이 무거워지면 `container_worker`로 이동
+- `postprocess`
+  - 단순 후처리는 `inprocess`
+  - upscaler/diffusion 같은 모델이 붙으면 `container_worker`
+
+즉 장기 방향은 "모든 모델 stage는 worker 또는 remote backend로, 순수 계획/조합 stage만 in-process로" 가져간다.
+
 ## 15. SaaS / Local 공통 규칙
 
 SaaS와 local의 차이는 인증/정산 레이어에만 있다.

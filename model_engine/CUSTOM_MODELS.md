@@ -224,6 +224,12 @@ custom model 지원이 늘어날수록 가장 큰 리스크는 capability 계약
 - 반대로 모든 모델을 하나의 inference 이미지에 넣는 방식은 피한다.
 - custom model은 `shared-runtime-safe`가 명확히 입증되지 않으면 기본적으로 격리 실행으로 본다.
 
+stage별 기본 판단 기준:
+
+- `text_detection`, `ocr`, `translation`, `inpaint`처럼 실제 모델 추론이 들어가는 stage는 worker 또는 remote backend를 우선한다.
+- `mask_or_erase_planning`처럼 pure-Python rule stage는 당분간 in-process로 둔다.
+- `typesetting`, `postprocess`는 실제 의존성 무게에 따라 `inprocess`에서 시작하고 필요 시 worker로 올린다.
+
 현재 baseline `container_worker` 동작:
 
 - orchestrator가 manifest를 통해 runtime image를 선택한다.

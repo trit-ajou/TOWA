@@ -525,6 +525,10 @@ PYTHONPYCACHEPREFIX=/tmp/pythoncache python3 -m unittest discover -s model_engin
 - `python_callable`은 계속 지원하지만 개발/실험용 우선 경로로 본다.
 - 장기 기본 backend 후보는 `http_api`, `subprocess_ipc`, `container_worker`다.
 - 같은 runtime image에 모든 모델 의존성을 누적하는 방식은 피하고, ABI/의존성이 같은 것끼리 runtime family로 묶는 쪽을 기준으로 한다.
+- stage migration 기준도 고정했다.
+  - `text_detection`, `ocr`, `translation`, `inpaint`는 장기적으로 worker 또는 remote backend 우선
+  - `mask_or_erase_planning`은 당분간 in-process 유지
+  - `typesetting`, `postprocess`는 실제 의존성 무게에 따라 단계적으로 분리
 
 ## 이번 구현
 
