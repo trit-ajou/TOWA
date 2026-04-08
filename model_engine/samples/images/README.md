@@ -14,7 +14,7 @@
 로컬 실행:
 
 ```bash
-python3 model_engine/scripts/run_craft_sample.py --image model_engine/samples/images/sample_page.webp
+python3 model_engine/scripts/run_craft_sample.py --image model_engine/samples/dlsite/sample.jpg
 ```
 
 도커 추론 이미지 실행 예:
@@ -24,5 +24,5 @@ cd model_engine
 docker build -f Dockerfile.inference -t towa-model-engine-inference .
 docker run --rm -v "$(pwd)/samples:/app/model_engine/samples" towa-model-engine-inference \
   python3 /app/model_engine/scripts/run_craft_sample.py \
-  --image /app/model_engine/samples/images/sample_page.webp
+  --image /app/model_engine/samples/dlsite/sample.jpg
 ```

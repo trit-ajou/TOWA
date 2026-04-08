@@ -146,11 +146,11 @@ class CustomModelLoaderTests(unittest.TestCase):
                         "custom_model": True,
                         "priority": 80,
                         "execution_backend": "container_worker",
-                        "runtime_family": "hy-mt-cu124",
-                        "runtime_image": "towa-runtime-hy-mt-cu124:latest",
+                        "runtime_family": "custom-translation-cu124",
+                        "runtime_image": "towa-runtime-custom-translation-cu124:latest",
                         "python_version": "3.11",
                         "cuda_version": "12.4",
-                        "dependency_lock_ref": "requirements-hy-mt.txt",
+                        "dependency_lock_ref": "requirements-custom-translation.txt",
                         "cache_mounts": [
                             {
                                 "host_path": "../model-cache",
@@ -170,7 +170,7 @@ class CustomModelLoaderTests(unittest.TestCase):
                                 }
                             ],
                             "environment": {
-                                "TOWA_RUNTIME_FAMILY": "hy-mt-cu124"
+                                "TOWA_RUNTIME_FAMILY": "custom-translation-cu124"
                             }
                         }
                     }
@@ -198,13 +198,13 @@ class CustomModelLoaderTests(unittest.TestCase):
                 expected_cache_mount = f"{(tmpdir_path.parent / 'model-cache').resolve()}:/cache/models"
                 expected_inputs_mount = f"{(tmpdir_path.parent / 'inputs').resolve()}:/inputs:ro"
                 self.assertEqual("docker", command[0])
-                self.assertIn("towa-runtime-hy-mt-cu124:latest", command)
+                self.assertIn("towa-runtime-custom-translation-cu124:latest", command)
                 self.assertIn("--network", command)
                 self.assertIn("none", command)
                 self.assertIn("/tmp/towa/custom-models:/workspace_out", command)
                 self.assertIn(expected_inputs_mount, command)
                 self.assertIn(expected_cache_mount, command)
-                self.assertEqual("hy-mt-cu124", env["TOWA_RUNTIME_FAMILY"])
+                self.assertEqual("custom-translation-cu124", env["TOWA_RUNTIME_FAMILY"])
                 self.assertEqual("custom-secret", env["TOWA_STAGE_SECRET_API_KEY"])
 
                 payload = json.loads(input)
@@ -270,7 +270,7 @@ class CustomModelLoaderTests(unittest.TestCase):
                 response.stage_report.metrics["execution_backend"],
             )
             self.assertEqual(
-                "hy-mt-cu124",
+                "custom-translation-cu124",
                 response.stage_report.metrics["runtime_family"],
             )
             self.assertEqual(

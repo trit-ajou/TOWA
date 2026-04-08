@@ -30,32 +30,6 @@ services:
     image: towa-runtime-gemini-http-light:latest
     profiles: ["runtime-images"]
 
-  runtime-hy-mt:
-    build:
-      context: .
-      dockerfile: Dockerfile.hy_mt_runtime
-    image: towa-runtime-hy-mt:latest
-    profiles: ["runtime-images"]
-
   runtime-diffusion-cu121:
     image: towa-runtime-diffusion-cu121:latest
     profiles: ["runtime-images"]
-
-  hy-mt-preload:
-    build:
-      context: .
-      dockerfile: Dockerfile.hy_mt_runtime
-    image: towa-runtime-hy-mt:latest
-    profiles: ["runtime-tools"]
-    environment:
-      HOME: /cache/models
-      XDG_CACHE_HOME: /cache/models
-      HF_HOME: /cache/models/huggingface
-      TRANSFORMERS_CACHE: /cache/models/huggingface/transformers
-    volumes:
-      - ./.cache/models/hy-mt:/cache/models
-    command:
-      - python3
-      - /app/model_engine/scripts/preload_hy_mt_translation.py
-      - --cache-dir
-      - /cache/models

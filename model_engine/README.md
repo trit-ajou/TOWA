@@ -15,6 +15,7 @@
 - `SPEC.md`: 제품/엔진 간 역할과 장기 아키텍처
 - `API_CONTRACT.md`: 현재 서비스 엔진과의 외부 wire contract
 - `README.md`(이 문서): `model_engine` 내부 구현 명세
+- `TROUBLESHOOTING.md`: OCR/번역 실행 중 관측한 문제와 튜닝 기록
 
 즉, 앞으로 `model_engine` 구현 판단은 이 README를 직접 기준으로 한다.
 
@@ -1027,7 +1028,7 @@ custom model이 늘어날수록 가장 큰 문제는 capability contract보다 r
 - `craft-py310-cpu`
 - `manga-ocr-py310-cpu`
 - `gemini-http-light`
-- `hy-mt-cu124`
+- `custom-translation-cu124`
 - `diffusion-cu121`
 
 정책:
@@ -1051,7 +1052,7 @@ worker 또는 remote backend로 우선 보내는 대상:
   - 장기 기본값은 `container_worker`.
 - `translation`
   - 외부 API 계열은 `http_api`, 로컬 대형 모델은 `container_worker`.
-  - 예: Vertex Gemini는 `http_api` 계열, HY-MT는 `container_worker`.
+  - 예: Vertex/OpenAI-compatible proxy는 `http_api` 계열, 로컬 대형 모델은 `container_worker`.
 - `inpaint`
   - 외부 API 계열은 `http_api`, 로컬 diffusion 계열은 `container_worker`.
 
@@ -1142,22 +1143,13 @@ SaaS와 local의 차이는 인증/정산 레이어에만 있다.
 - CPU/GPU/torch/CUDA 조합이 다른 모델은 별도 runtime image로 분리한다.
 - custom model 기본 통합 방식은 "같은 이미지에 계속 의존성을 추가"가 아니라 "맞는 runtime family에 배치"다.
 
-현재 runtime example:
-
-- `towa-runtime-hy-mt:latest`
-  - `Dockerfile.hy_mt_runtime`
-  - `requirements-hy-mt.txt`
-  - `Tencent HY-MT1.5-1.8B` translation worker용 baseline image
-
 현재 pipeline sample translation backend:
 
+- `openai_compatible`
+  - 기본 방식
+  - LM Studio, Ollama OpenAI-compatible endpoint, custom proxy를 대상으로 한다.
 - `vertex`
-  - 기존 방식
-  - `docker compose -f docker-compose.inference.yml run --rm pipeline`에서 사용
-- `hy_mt`
-  - `container_worker` custom model
-  - host에서 `run_pipeline_sample.py --translation-backend hy_mt`로 실행
-  - 번역 stage만 `towa-runtime-hy-mt:latest` worker 컨테이너를 호출
+  - Vertex Gemini 번역 adapter를 명시 선택할 때 사용한다.
 
 ## 18. Built-in Text Detection
 
@@ -1361,11 +1353,17 @@ v1에서는 planner를 규칙 기반으로 시작한다.
 
 ## 20. Built-in Translation Strategy
 
-현재 built-in `translation` adapter는 Vertex AI 경유 호출을 기준으로 한다.
+현재 built-in `translation` adapter는 두 경로를 지원한다.
 
-- provider name: `translation_provider`
-- runtime library: `google-genai`
-- authentication: Vertex AI express mode API key 또는 동일 형식의 provider key를 credential binding으로 주입
+- 기본 로컬/개발 경로: OpenAI-compatible `/v1/chat/completions`
+  - 기본 base URL: `http://127.0.0.1:1234/v1`
+  - Docker Compose 기본 base URL: `http://host.docker.internal:1234/v1`
+  - 주 사용 대상: LM Studio, Ollama OpenAI-compatible endpoint, custom proxy
+  - provider name: `openai_compatible` (API key가 필요한 proxy일 때만 사용)
+- Vertex 경로:
+  - provider name: `translation_provider`
+  - runtime library: `google-genai`
+  - authentication: Vertex AI express mode API key 또는 동일 형식의 provider key를 credential binding으로 주입
 - raw key는 코드, patch, artifact, stage_report에 남기지 않는다
 
 입력 규칙:
@@ -1382,8 +1380,9 @@ v1에서는 planner를 규칙 기반으로 시작한다.
 
 기본 구현 결론:
 
-- built-in `translation`은 Vertex Gemini text model을 사용한다.
-- 기본 모델 이름은 `gemini-3.1-flash-lite-preview`다.
+- built-in `translation` 기본 샘플 경로는 OpenAI-compatible adapter를 사용한다.
+- OpenAI-compatible 기본 모델 이름은 `local-model`이다.
+- Vertex 경로의 기본 모델 이름은 `gemini-3.1-flash-lite-preview`다.
 - 응답은 JSON으로 강제하고, `block_id -> translated_text` 매핑으로 다시 병합한다.
 - `block_id`가 빠진 응답은 입력 순서 fallback을 허용하되 warning을 남긴다.
 - 일부 block이 비면 stage는 `partial`로 기록할 수 있다.
@@ -1391,6 +1390,7 @@ v1에서는 planner를 규칙 기반으로 시작한다.
 권장 `stage_config`:
 
 - `provider`
+- `base_url`
 - `model_name`
 - `source_language`
 - `target_language`

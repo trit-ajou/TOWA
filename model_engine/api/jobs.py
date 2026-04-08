@@ -15,10 +15,14 @@ from ..builtin_models import (
     CRAFT_TEXT_DETECTION_MODEL_ID,
     MANGA_OCR_MODEL_ID,
     NANOBANANA_INPAINT_MODEL_ID,
+    OPENAI_COMPATIBLE_DEFAULT_BASE_URL,
+    OPENAI_COMPATIBLE_DEFAULT_MODEL,
+    OPENAI_COMPATIBLE_TRANSLATION_MODEL_ID,
     VERTEX_TRANSLATION_MODEL_ID,
     register_craft_text_detection_model,
     register_manga_ocr_model,
     register_nanobanana_inpaint_model,
+    register_openai_compatible_translation_model,
     register_vertex_translation_model,
 )
 from ..contracts.artifacts import ArtifactDescriptor, ArtifactStatus
@@ -563,6 +567,7 @@ def runtime_context_from_api_data(payload: dict[str, Any]) -> StageRuntimeContex
         target_regions=list(payload.get("target_regions", [])),
         selected_layer_ids=list(payload.get("selected_layer_ids", [])),
         session_provider_secrets=dict(payload.get("session_provider_secrets", {})),
+        metadata=dict(payload.get("metadata", {})),
         service_session_key=payload.get("service_session_key"),
         service_base_url=payload.get("service_base_url"),
         service_request_ref=payload.get("service_request_ref"),
@@ -689,6 +694,7 @@ def _build_builtin_registry() -> ModelRegistry:
     register_craft_text_detection_model(registry)
     register_manga_ocr_model(registry)
     register_nanobanana_inpaint_model(registry)
+    register_openai_compatible_translation_model(registry)
     register_vertex_translation_model(registry)
     return registry
 
@@ -734,16 +740,27 @@ def _build_operation_stages(
                 config={
                     "input_artifact_ref": input_artifact_ref,
                     "writing_mode_hint": "vertical",
-                    "region_padding": 0,
+                    "region_padding": 12,
+                    "merge_regions": True,
+                    "merge_gap_px": 24,
+                    "merge_min_overlap_ratio": 0.25,
+                    "reading_order_mode": "vertical_rtl",
+                    "min_ocr_region_area_px": 160,
+                    "min_ocr_region_area_ratio": 0.00015,
+                    "max_text_density_per_1000_px2": 1.5,
+                    "small_region_long_text_area_px": 6000,
+                    "small_region_long_text_area_ratio": 0.004,
+                    "small_region_long_text_min_chars": 16,
+                    "hallucination_action": "mark",
                 },
             ),
             AdapterBackedStage(
                 "translation",
                 stage_kind=StageKind.TRANSLATION,
                 registry=registry,
-                preferred_model_id=VERTEX_TRANSLATION_MODEL_ID,
+                preferred_model_id=_translation_model_id_from_runtime(request.runtime_context),
                 config={
-                    "provider": "translation_provider",
+                    **_translation_provider_config_from_runtime(request.runtime_context),
                     "source_language": "Japanese",
                     "target_language": "Korean",
                 },
@@ -788,6 +805,49 @@ def _resolve_primary_bitmap_artifact_ref(artifacts: dict[str, ArtifactDescriptor
         if descriptor.kind == "bitmap":
             return artifact_ref
     raise ValueError("Model jobs require at least one bitmap artifact")
+
+
+def _translation_model_id_from_runtime(runtime_context: StageRuntimeContext) -> str:
+    backend = runtime_context.metadata.get("translation_backend")
+    if backend == "vertex":
+        return VERTEX_TRANSLATION_MODEL_ID
+    return OPENAI_COMPATIBLE_TRANSLATION_MODEL_ID
+
+
+def _translation_provider_config_from_runtime(
+    runtime_context: StageRuntimeContext,
+) -> dict[str, object]:
+    backend = runtime_context.metadata.get("translation_backend")
+    if backend == "vertex":
+        return {
+            "provider": "translation_provider",
+            "model_name": str(
+                runtime_context.metadata.get(
+                    "translation_model_name",
+                    "gemini-3.1-flash-lite-preview",
+                )
+            ),
+        }
+
+    config: dict[str, object] = {
+        "base_url": str(
+            runtime_context.metadata.get(
+                "openai_compatible_base_url",
+                OPENAI_COMPATIBLE_DEFAULT_BASE_URL,
+            )
+        ),
+        "model_name": str(
+            runtime_context.metadata.get(
+                "translation_model_name",
+                OPENAI_COMPATIBLE_DEFAULT_MODEL,
+            )
+        ),
+    }
+    if "openai_compatible" in runtime_context.session_provider_secrets:
+        config["provider"] = "openai_compatible"
+    else:
+        config["skip_provider_resolution"] = True
+    return config
 
 
 def _job_status_from_stage_status(status: StageStatus) -> ModelJobStatus:

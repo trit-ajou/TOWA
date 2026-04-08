@@ -107,7 +107,7 @@
   - `subprocess_ipc`
   - `container_worker`
 - `runtime_family`
-  - 예: `craft-py310-cpu`, `gemini-http-light`, `hy-mt-cu124`
+  - 예: `craft-py310-cpu`, `gemini-http-light`, `custom-translation-cu124`
 - `runtime_image`
   - `container_worker`일 때 사용할 이미지명
 - `runtime_command`
@@ -215,7 +215,7 @@ custom model 지원이 늘어날수록 가장 큰 리스크는 capability 계약
 - `craft-py310-cpu`
 - `manga-ocr-py310-cpu`
 - `gemini-http-light`
-- `hy-mt-cu124`
+- `custom-translation-cu124`
 - `diffusion-cu121`
 
 원칙:
@@ -239,14 +239,8 @@ stage별 기본 판단 기준:
 - workspace는 writable mount, 추가 path/cache는 read-only 또는 지정 mount로 전달한다.
 - `StageResponse`는 stdout JSON IPC로 반환한다.
 
-예: `Tencent HY-MT1.5-1.8B`
-
-- stage capability: `translation`
-- adapter type: `container_worker`
-- runtime image: `towa-runtime-hy-mt:latest`
-- handler: `model_engine.custom_models.hy_mt_translation:hy_mt_translation_handler`
-- manifest 예시는 `model_engine/custom_model_specs/hy_mt_translation_1_8b.json`을 따른다.
-- 전체 추론 샘플과 함께 시험할 때는 host에서 `run_pipeline_sample.py --translation-backend hy_mt`를 사용한다.
+특정 local translation model 예시는 현재 저장소에 병합하지 않는다.
+필요한 경우 별도 manifest와 worker image를 프로젝트 밖에서 준비한 뒤 `container_worker` manifest로 연결한다.
 
 ## 8. 로딩 예시
 
@@ -325,7 +319,7 @@ docker compose -f docker-compose.inference.yml run --rm craft-preload
 
 ```bash
 python3 model_engine/scripts/run_craft_sample.py \
-  --image model_engine/samples/images/sample_page.webp \
+  --image model_engine/samples/dlsite/sample.jpg \
   --workspace model_engine/.runtime
 ```
 
@@ -355,7 +349,7 @@ docker compose -f docker-compose.inference.yml run --rm craft-sample
 export TOWA_NANOBANANA_API_KEY="YOUR_API_KEY"
 
 python3 model_engine/scripts/run_inpaint_sample.py \
-  --image model_engine/samples/images/sample_page.webp \
+  --image model_engine/samples/dlsite/sample.jpg \
   --workspace model_engine/.runtime
 ```
 
@@ -417,7 +411,7 @@ Compose 파일은 아래를 자동으로 처리한다.
 
 ```bash
 python3 model_engine/scripts/run_ocr_sample.py \
-  --image model_engine/samples/images/sample_page.webp \
+  --image model_engine/samples/dlsite/sample.jpg \
   --workspace model_engine/.runtime
 ```
 
@@ -456,12 +450,27 @@ Compose 파일은 OCR 실행 시 아래 cache를 재사용한다.
 
 ### 10-4. Built-in Translation 실행
 
-`CRAFT -> manga-ocr -> Vertex translation` 최소 흐름은 아래 스크립트로 실행한다.
+`CRAFT -> manga-ocr -> OpenAI-compatible translation` 최소 흐름은 아래 스크립트로 실행한다.
+
+로컬 실행 설정은 임시로 `model_engine/.runtime/runtime_config.json`에서 읽는다.
+이 파일은 Git에 올라가지 않는다.
+
+예시:
+
+```json
+{
+  "TOWA_TRANSLATION_BACKEND": "openai_compatible",
+  "TOWA_TRANSLATION_MODEL_NAME": "local-model",
+  "TOWA_OPENAI_COMPATIBLE_BASE_URL": "http://host.docker.internal:1234/v1",
+  "TOWA_OPENAI_COMPATIBLE_API_KEY": "",
+  "TOWA_TRANSLATION_PROVIDER_API_KEY": "",
+  "TOWA_NANOBANANA_API_KEY": ""
+}
+```
 
 ```bash
-export TOWA_TRANSLATION_PROVIDER_API_KEY="YOUR_API_KEY"
 python3 model_engine/scripts/run_translation_sample.py \
-  --image model_engine/samples/images/sample_page.webp \
+  --image model_engine/samples/dlsite/sample.jpg \
   --workspace model_engine/.runtime
 ```
 
@@ -469,7 +478,9 @@ python3 model_engine/scripts/run_translation_sample.py \
 
 - `translation` stage는 `DocumentIR.text_blocks`를 읽고 `translated_text`만 채운다.
 - canonical translation artifact는 `translated_text_blocks` JSON이다.
-- Vertex 호출 credential 경로는 `nanobanana`와 동일한 `google-genai` / API key binding 방식을 재사용한다.
+- 기본 샘플은 OpenAI-compatible `/v1/chat/completions`를 사용한다.
+- Docker Compose에서는 호스트 LM Studio/Ollama/custom proxy 접근을 위해 기본 base URL을 `http://host.docker.internal:1234/v1`로 둔다.
+- Vertex를 쓰려면 `TOWA_TRANSLATION_BACKEND=vertex`와 `TOWA_TRANSLATION_PROVIDER_API_KEY`를 함께 설정한다.
 
 Compose로 실행하면 더 단순하다.
 
@@ -500,8 +511,6 @@ docker compose -f docker-compose.inference.yml run --rm translation-sample
 
 ```bash
 cd model_engine
-export TOWA_TRANSLATION_PROVIDER_API_KEY="YOUR_API_KEY"
-export TOWA_NANOBANANA_API_KEY="YOUR_API_KEY"
 docker compose -f docker-compose.inference.yml run --rm pipeline
 ```
 

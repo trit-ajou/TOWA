@@ -29,7 +29,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Run built-in CRAFT -> manga-ocr on a sample image.")
     parser.add_argument(
         "--image",
-        default="model_engine/samples/images/sample_page.webp",
+        default="model_engine/samples/dlsite/sample.jpg",
         help="Path to the input image file.",
     )
     parser.add_argument(
@@ -119,6 +119,17 @@ def main() -> int:
                 "input_artifact_ref": input_artifact.artifact_ref,
                 "writing_mode_hint": args.writing_mode_hint,
                 "region_padding": args.region_padding,
+                "merge_regions": True,
+                "merge_gap_px": 24,
+                "merge_min_overlap_ratio": 0.25,
+                "reading_order_mode": "vertical_rtl",
+                "min_ocr_region_area_px": 160,
+                "min_ocr_region_area_ratio": 0.00015,
+                "max_text_density_per_1000_px2": 1.5,
+                "small_region_long_text_area_px": 6000,
+                "small_region_long_text_area_ratio": 0.004,
+                "small_region_long_text_min_chars": 16,
+                "hallucination_action": "mark",
             },
         ),
     ]

@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 from pathlib import Path
 import sys
+from typing import Optional
 
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -14,12 +14,17 @@ from PIL import Image
 from model_engine.builtin_models import (
     CRAFT_TEXT_DETECTION_MODEL_ID,
     MANGA_OCR_MODEL_ID,
+    OPENAI_COMPATIBLE_DEFAULT_BASE_URL,
+    OPENAI_COMPATIBLE_DEFAULT_MODEL,
+    OPENAI_COMPATIBLE_TRANSLATION_MODEL_ID,
     VERTEX_TRANSLATION_MODEL_ID,
     register_craft_text_detection_model,
     register_manga_ocr_model,
+    register_openai_compatible_translation_model,
     register_vertex_translation_model,
 )
 from model_engine.contracts.artifacts import ArtifactDescriptor
+from model_engine.config.runtime_config import load_runtime_config, runtime_config_value
 from model_engine.contracts.document_ir import DocumentIR
 from model_engine.contracts.models import StageKind
 from model_engine.contracts.stages import ExecutionMode, StageRuntimeContext
@@ -29,12 +34,13 @@ from model_engine.stages import AdapterBackedStage, Stage
 
 
 def main() -> int:
+    runtime_config = load_runtime_config()
     parser = argparse.ArgumentParser(
-        description="Run built-in CRAFT -> manga-ocr -> Vertex translation on a sample image."
+        description="Run built-in CRAFT -> manga-ocr -> translation on a sample image."
     )
     parser.add_argument(
         "--image",
-        default="model_engine/samples/images/sample_page.webp",
+        default="model_engine/samples/dlsite/sample.jpg",
         help="Path to the input image file.",
     )
     parser.add_argument(
@@ -48,6 +54,32 @@ def main() -> int:
         help="Environment variable that contains the Vertex translation API key.",
     )
     parser.add_argument(
+        "--translation-backend",
+        choices=("openai_compatible", "vertex"),
+        default=runtime_config_value(
+            runtime_config,
+            "TOWA_TRANSLATION_BACKEND",
+            aliases=("translation_backend", "translation.backend"),
+            default="openai_compatible",
+        ),
+        help="Translation backend used in the sample.",
+    )
+    parser.add_argument(
+        "--openai-compatible-api-key-env",
+        default="TOWA_OPENAI_COMPATIBLE_API_KEY",
+        help="Optional environment variable that contains the OpenAI-compatible API key.",
+    )
+    parser.add_argument(
+        "--openai-compatible-base-url",
+        default=runtime_config_value(
+            runtime_config,
+            "TOWA_OPENAI_COMPATIBLE_BASE_URL",
+            aliases=("openai_compatible_base_url", "translation.openai_compatible_base_url"),
+            default=OPENAI_COMPATIBLE_DEFAULT_BASE_URL,
+        ),
+        help="OpenAI-compatible /v1 base URL for local LLM servers or custom proxies.",
+    )
+    parser.add_argument(
         "--source-language",
         default="Japanese",
         help="Source language label passed to the translation stage.",
@@ -59,8 +91,12 @@ def main() -> int:
     )
     parser.add_argument(
         "--model-name",
-        default="gemini-3.1-flash-lite-preview",
-        help="Vertex Gemini model name.",
+        default=runtime_config_value(
+            runtime_config,
+            "TOWA_TRANSLATION_MODEL_NAME",
+            aliases=("translation_model_name", "translation.model_name"),
+        ),
+        help="Backend model name. Defaults to backend-specific model if omitted.",
     )
     parser.add_argument(
         "--text-threshold",
@@ -87,8 +123,17 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    api_key = os.environ.get(args.api_key_env)
-    if not api_key:
+    api_key = runtime_config_value(
+        runtime_config,
+        args.api_key_env,
+        aliases=("translation_provider_api_key", "translation.vertex_api_key"),
+    )
+    openai_compatible_api_key = runtime_config_value(
+        runtime_config,
+        args.openai_compatible_api_key_env,
+        aliases=("openai_compatible_api_key", "translation.openai_compatible_api_key"),
+    )
+    if args.translation_backend == "vertex" and not api_key:
         raise RuntimeError(
             f"Missing translation API key. Set the environment variable {args.api_key_env} before running."
         )
@@ -123,6 +168,7 @@ def main() -> int:
     register_craft_text_detection_model(registry)
     register_manga_ocr_model(registry)
     register_vertex_translation_model(registry)
+    register_openai_compatible_translation_model(registry)
 
     stages: list[Stage] = [
         AdapterBackedStage(
@@ -145,20 +191,37 @@ def main() -> int:
             config={
                 "input_artifact_ref": input_artifact.artifact_ref,
                 "writing_mode_hint": args.writing_mode_hint,
-                "region_padding": 0,
+                "region_padding": 12,
+                "merge_regions": True,
+                "merge_gap_px": 24,
+                "merge_min_overlap_ratio": 0.25,
+                "reading_order_mode": "vertical_rtl",
+                "min_ocr_region_area_px": 160,
+                "min_ocr_region_area_ratio": 0.00015,
+                "max_text_density_per_1000_px2": 1.5,
+                "small_region_long_text_area_px": 6000,
+                "small_region_long_text_area_ratio": 0.004,
+                "small_region_long_text_min_chars": 16,
+                "hallucination_action": "mark",
             },
         ),
         AdapterBackedStage(
             "translation",
             stage_kind=StageKind.TRANSLATION,
             registry=registry,
-            preferred_model_id=VERTEX_TRANSLATION_MODEL_ID,
-            config={
-                "provider": "translation_provider",
-                "model_name": args.model_name,
-                "source_language": args.source_language,
-                "target_language": args.target_language,
-            },
+            preferred_model_id=(
+                OPENAI_COMPATIBLE_TRANSLATION_MODEL_ID
+                if args.translation_backend == "openai_compatible"
+                else VERTEX_TRANSLATION_MODEL_ID
+            ),
+            config=_translation_stage_config(
+                backend=args.translation_backend,
+                model_name=args.model_name,
+                source_language=args.source_language,
+                target_language=args.target_language,
+                openai_compatible_base_url=args.openai_compatible_base_url,
+                openai_compatible_api_key_present=bool(openai_compatible_api_key),
+            ),
         ),
     ]
 
@@ -170,7 +233,11 @@ def main() -> int:
             mode=ExecutionMode.LOCAL,
             workspace_uri=workspace_path.as_uri(),
             requested_by="run_translation_sample",
-            session_provider_secrets={"translation_provider": api_key},
+            session_provider_secrets=_session_provider_secrets(
+                backend=args.translation_backend,
+                vertex_api_key=api_key,
+                openai_compatible_api_key=openai_compatible_api_key,
+            ),
         ),
         initial_artifacts={input_artifact.artifact_ref: input_artifact},
         job_id="job_translation_sample",
@@ -221,6 +288,46 @@ def _media_type_for_suffix(suffix: str) -> str:
     if normalized == ".webp":
         return "image/webp"
     return "image/png"
+
+
+def _translation_stage_config(
+    *,
+    backend: str,
+    model_name: str,
+    source_language: str,
+    target_language: str,
+    openai_compatible_base_url: str,
+    openai_compatible_api_key_present: bool,
+) -> dict[str, object]:
+    if backend == "openai_compatible":
+        config: dict[str, object] = {
+            "base_url": openai_compatible_base_url,
+            "model_name": model_name or OPENAI_COMPATIBLE_DEFAULT_MODEL,
+            "source_language": source_language,
+            "target_language": target_language,
+        }
+        if openai_compatible_api_key_present:
+            config["provider"] = "openai_compatible"
+        else:
+            config["skip_provider_resolution"] = True
+        return config
+    return {
+        "provider": "translation_provider",
+        "model_name": model_name or "gemini-3.1-flash-lite-preview",
+        "source_language": source_language,
+        "target_language": target_language,
+    }
+
+
+def _session_provider_secrets(
+    *,
+    backend: str,
+    vertex_api_key: Optional[str],
+    openai_compatible_api_key: Optional[str],
+) -> dict[str, str]:
+    if backend == "openai_compatible":
+        return {"openai_compatible": openai_compatible_api_key} if openai_compatible_api_key else {}
+    return {"translation_provider": vertex_api_key} if vertex_api_key else {}
 
 
 if __name__ == "__main__":

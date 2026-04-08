@@ -6,6 +6,7 @@
 - `PLAN.md`: 확정/미확정 범위 판단 기준
 - `IMPLEMENTATION_SUMMARY.md`: 현재 실제 구현 완료 범위 요약
 - `OCR_CAPABILITY.md`: OCR capability 공통 계약 초안
+- `TROUBLESHOOTING.md`: OCR/번역 실행 중 관측한 문제와 threshold 튜닝 기록
 - `SPEC.md`, `API_CONTRACT.md`: 외부 엔진 경계와 SaaS/local 계약 참고
 
 ## 이번에 구현한 범위
@@ -18,6 +19,7 @@
 - built-in `ocr=manga-ocr`
 - 규칙 기반 `mask_or_erase_planning`
 - built-in `inpaint=nanobanana(Vertex AI 경유)`
+- built-in `translation=OpenAI-compatible`
 - built-in `translation=Vertex Gemini`
 
 아직 미구현인 영역은 식자/postprocess와 실제 billable provider smoke run이다.
@@ -30,6 +32,8 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - `ServiceBackedPipelineRunner` 추가
 - `StageRuntimeContext`에 SaaS usage wiring 필드 추가
 - service usage hold/capture/release 테스트 추가
+- OpenAI-compatible translation adapter 추가
+- Docker Compose translation 기본 base URL을 host `127.0.0.1:1234/v1` 대응용 `host.docker.internal:1234/v1`로 설정
 
 ### 1. Canonical IR
 
@@ -521,7 +525,7 @@ PYTHONPYCACHEPREFIX=/tmp/pythoncache python3 -m unittest discover -s model_engin
 - 앞으로 custom model의 장기 기본 실행 방식은 같은 Python 프로세스 import가 아니라 격리 worker runtime이다.
 - capability와 runtime을 분리해서 본다.
   - capability 예: `translation`, `ocr`, `inpaint`
-  - runtime family 예: `craft-py310-cpu`, `gemini-http-light`, `hy-mt-cu124`
+  - runtime family 예: `craft-py310-cpu`, `gemini-http-light`, `custom-translation-cu124`
 - `python_callable`은 계속 지원하지만 개발/실험용 우선 경로로 본다.
 - 장기 기본 backend 후보는 `http_api`, `subprocess_ipc`, `container_worker`다.
 - 같은 runtime image에 모든 모델 의존성을 누적하는 방식은 피하고, ABI/의존성이 같은 것끼리 runtime family로 묶는 쪽을 기준으로 한다.
@@ -549,14 +553,7 @@ PYTHONPYCACHEPREFIX=/tmp/pythoncache python3 -m unittest discover -s model_engin
   - workspace와 path mapping, cache mount를 컨테이너로 전달
   - credential secret은 기존 subprocess IPC와 같은 env 주입 경로를 재사용
 - stage selection 결과 메타데이터에 `execution_backend`, `runtime_family`를 기본으로 남기도록 했다.
-- `Tencent HY-MT1.5-1.8B`를 첫 local `container_worker` translation model 예시로 추가했다.
-  - `model_engine/custom_model_specs/hy_mt_translation_1_8b.json`
-  - `model_engine/custom_models/hy_mt_translation.py`
-  - `Dockerfile.hy_mt_runtime`
-  - `requirements-hy-mt.txt`
-  - `docker-compose.runtime.yml`의 `runtime-hy-mt`, `hy-mt-preload`
-  - `scripts/run_hy_mt_translation_sample.py`
-  - `scripts/run_pipeline_sample.py --translation-backend hy_mt`로 전체 pipeline 샘플에서 선택 가능
+- 특정 local translation model 병합 예시는 제거하고, `container_worker` adapter는 generic custom runtime 기반으로만 유지한다.
 
 ## 다음 구현 후보
 

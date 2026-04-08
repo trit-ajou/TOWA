@@ -34,7 +34,7 @@ class OrchestratedJobExecutorTests(unittest.TestCase):
             self.assertEqual(["text_detection"], [report.stage_name for report in result.stage_reports])
             self.assertEqual("craft", result.document.stage_meta["text_detection"]["engine"])
 
-    def test_translate_job_runs_detection_then_ocr_before_placeholder_translation(self) -> None:
+    def test_translate_job_runs_detection_then_ocr_before_openai_compatible_translation(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             request = _job_request(Path(tmpdir), operation_kind="translate")
             executor = OrchestratedJobExecutor()
@@ -46,7 +46,7 @@ class OrchestratedJobExecutorTests(unittest.TestCase):
                 "model_engine.builtin_models.manga_ocr._recognize_with_manga_ocr",
                 side_effect=_fake_recognize_text,
             ), patch(
-                "model_engine.builtin_models.vertex_translation._translate_blocks_with_vertex",
+                "model_engine.builtin_models.openai_compatible_translation._translate_blocks_with_openai_compatible",
                 side_effect=_fake_translate_blocks,
             ):
                 result = executor.execute(request)
@@ -61,7 +61,7 @@ class OrchestratedJobExecutorTests(unittest.TestCase):
             self.assertEqual("세로쓰기 텍스트", result.document.text_blocks[0].translated_text)
             self.assertEqual("manga_ocr", result.document.stage_meta["ocr"]["engine"])
             self.assertEqual(
-                "vertex_gemini_translation",
+                "openai_compatible_translation",
                 result.document.stage_meta["translation"]["engine"],
             )
 
