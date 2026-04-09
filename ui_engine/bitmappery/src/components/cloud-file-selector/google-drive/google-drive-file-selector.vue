@@ -59,7 +59,7 @@ export default {
         this.retrieveFiles( pathToRetrieve );
     },
     methods: {
-        ...mapMutations([
+        ...mapMutations("bmp", [
             "setDriveConnected",
         ]),
         /* base component overrides */

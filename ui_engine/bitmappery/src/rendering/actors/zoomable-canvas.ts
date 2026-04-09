@@ -92,7 +92,7 @@ class ZoomableCanvas extends canvas {
     }
 
     getActiveDocument(): Document {
-        return this.store.getters.activeDocument;
+        return this.store.getters["bmp/activeDocument"];
     }
 
     setInteractive( isInteractive: boolean ): void {

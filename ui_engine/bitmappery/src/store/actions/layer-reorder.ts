@@ -30,13 +30,13 @@ import { type BitMapperyState } from "@/store";
  */
 export const reorderLayers = ( store: Store<BitMapperyState>, activeDocument: Document, originalOrder: string[], updatedOrder: string[] ): void => {
     const commit = () => {
-        store.commit( "reorderLayers", { document: activeDocument, layerIds: updatedOrder } );
+        store.commit( "bmp/reorderLayers", { document: activeDocument, layerIds: updatedOrder } );
     }
     commit();
     
     enqueueState( `reorderLayers_${updatedOrder.join()}`, {
         undo() {
-            store.commit( "reorderLayers", { document: activeDocument, layerIds: originalOrder });
+            store.commit( "bmp/reorderLayers", { document: activeDocument, layerIds: originalOrder });
         },
         redo: commit,
     });

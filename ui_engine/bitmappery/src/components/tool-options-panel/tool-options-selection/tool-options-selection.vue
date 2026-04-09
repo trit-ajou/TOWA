@@ -121,7 +121,7 @@ export default {
         layerId: null,
     }),
     computed: {
-        ...mapGetters([
+        ...mapGetters("bmp", [
             "activeDocument",
             "activeLayer",
             "activeTool",
@@ -215,7 +215,7 @@ export default {
         this.maxHeight = this.activeDocument.height - 1;
     },
     methods: {
-        ...mapMutations([
+        ...mapMutations("bmp", [
             "setToolOptionValue",
         ]),
         handleFocus(): void {

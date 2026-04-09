@@ -63,7 +63,7 @@ export default {
         this.folder = getCurrentFolder();
     },
     methods: {
-        ...mapMutations([
+        ...mapMutations("bmp", [
             "openDialog",
             "showNotification",
             "setLoading",

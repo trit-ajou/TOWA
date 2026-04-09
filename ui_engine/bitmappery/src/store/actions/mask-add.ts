@@ -31,21 +31,21 @@ import { createCanvas } from "@/utils/canvas-util";
 export const addMask = ( store: Store<BitMapperyState>, layer: Layer, index: number ): void => {
     const { cvs: mask, ctx } = createCanvas( layer.width, layer.height );
 
-    const { activeDocument } = store.getters;
+    const activeDocument = store.getters["bmp/activeDocument"];
     const currentSelection = activeDocument?.activeSelection ?? [];
     const hasSelection = currentSelection.length > 0;
 
     if ( hasSelection ) {
         ctx.save();
         clipContextToSelection( ctx, currentSelection, layer.left, layer.top, activeDocument.invertSelection );
-        ctx.fillStyle = store.getters.activeColor;
+        ctx.fillStyle = store.getters["bmp/activeColor"];
         ctx.fill();
         ctx.restore();
     }
     
     const commit  = () => {
-        store.commit( "updateLayer", { index, opts: { mask } });
-        store.commit( "setActiveLayerMask", index );
+        store.commit( "bmp/updateLayer", { index, opts: { mask } });
+        store.commit( "bmp/setActiveLayerMask", index );
 
         if ( hasSelection ) {
             getCanvasInstance()?.interactionPane.setSelection( [], false );
@@ -55,8 +55,8 @@ export const addMask = ( store: Store<BitMapperyState>, layer: Layer, index: num
 
     enqueueState( `maskAdd_${index}`, {
         undo() {
-            store.commit( "updateLayer", { index, opts: { mask: null } });
-            store.commit( "setActiveLayerMask", null );
+            store.commit( "bmp/updateLayer", { index, opts: { mask: null } });
+            store.commit( "bmp/setActiveLayerMask", null );
 
             if ( hasSelection ) {
                 getCanvasInstance()?.interactionPane.setSelection( currentSelection, false );

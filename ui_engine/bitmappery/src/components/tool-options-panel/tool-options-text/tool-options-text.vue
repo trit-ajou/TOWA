@@ -132,7 +132,7 @@ export default {
         layerId: null,
     }),
     computed: {
-        ...mapGetters([
+        ...mapGetters("bmp", [
             "activeLayerIndex",
             "activeLayer",
         ]),
@@ -265,7 +265,7 @@ export default {
         this.handleBlur();
     },
     methods: {
-        ...mapMutations([
+        ...mapMutations("bmp", [
             "openDialog",
             "setActiveTool",
             "updateLayer",

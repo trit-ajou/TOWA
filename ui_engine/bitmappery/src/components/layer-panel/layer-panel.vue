@@ -37,7 +37,7 @@
                 class="component__header-button button--ghost"
                 @click="collapsed = !collapsed"
             >
-                <img :src="`assets/images/icon-${collapsed ? 'expand' : 'collapse'}.svg`" />
+                <img :src="`/assets/images/icon-${collapsed ? 'expand' : 'collapse'}.svg`" />
             </button>
         </div>
         <template v-if="!collapsed">
@@ -197,10 +197,10 @@ export default {
         },
     }),
     computed: {
-        ...mapState([
+        ...mapState("bmp", [
             "openedPanels",
         ]),
-        ...mapGetters([
+        ...mapGetters("bmp", [
             "activeDocument",
             "activeLayer",
             "activeLayerIndex",
@@ -242,7 +242,7 @@ export default {
         },
     },
     methods: {
-        ...mapMutations([
+        ...mapMutations("bmp", [
             "openModal",
             "removeLayer",
             "setActiveLayerIndex",

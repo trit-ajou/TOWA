@@ -51,7 +51,7 @@ export default {
         queue: [] as NotificationVO[]
     }),
     computed: {
-        ...mapState([
+        ...mapState("bmp", [
             "notifications"
         ]),
     },
@@ -75,7 +75,7 @@ export default {
         }
     },
     methods: {
-        ...mapMutations([
+        ...mapMutations("bmp", [
             "clearNotifications",
         ]),
         closeNotification( notificationVO: NotificationVO ): void {

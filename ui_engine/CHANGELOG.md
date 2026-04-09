@@ -4,6 +4,65 @@
 
 ---
 
+## 2026-04-09
+
+### 10:03 — 파일 시스템 구현 (IndexedDB 기반)
+- IndexedDB 스키마 정의 (towa-db: projects, pages, page-images, page-layers, thumbnails, page-cache)
+- FileAdapter 인터페이스 + LocalFileAdapter 구현 (순수 저장소 CRUD)
+- usePageLoader composable (bitmappery ↔ FileAdapter 오케스트레이션)
+- useAutoSave composable (bitmappery history 감지 → debounce 30초 → 자동 저장)
+- PageCache 2계층 캐시 (메모리 LRU + IndexedDB LRU)
+- Store 모듈 전환: 더미 데이터 → IndexedDB 기반 (projects.ts, pages.ts)
+- 더미 데이터를 DB seed 함수로 전환 (첫 실행 시 자동 삽입)
+- 이미지 드래그앤드롭으로 페이지 추가 기능 (PageGrid)
+- 썸네일 자동 생성 (Canvas 축소 → Blob → IndexedDB)
+- 페이지 전환 시 switchPage (저장 → 해제 → 로드) 구현
+- types/page.ts: layers 필드 제거 (bitmappery 관할), thumbnail/originalImage optional
+- 신규 파일: file-adapter/ (db.ts, contracts.ts, local.ts, index.ts, page-cache.ts)
+- 신규 파일: composables/ (useFileAdapter.ts, usePageLoader.ts, useAutoSave.ts)
+
+### 00:53 — 화면 ③ translator 모드 + bitmappery 인스턴스 공유
+- bitmappery를 ProjectView(②③④ 공통 부모)에 배치 — ②에서 백그라운드 초기화, ③④에서 공유
+- ③↔④ 전환 시 캔버스 유지, setTowaMode()로 모드만 전환
+- EditorTab: DualCanvasView 제거 → bitmappery translator 캔버스 + TranslationPanel
+- DetailEditorTab: bitmappery import 제거 (ProjectView가 관리)
+- z-index 레이어링: bitmappery(z:0) + tab-layer(z:1, pointer-events passthrough)
+- 레이아웃 겹침 이슈 남아있음 (bitmappery UI 리디자인 시 해결)
+
+---
+
+## 2026-04-06
+
+### 09:51 — layer-renderer store proxy 적용
+- layer-renderer.ts의 getStore()가 namespace proxy 반환하도록 수정
+- getters.activeColor, commit("setActiveColor") 등 non-namespaced 접근 수정
+- clone/brush/eraser 도구의 캔버스 상호작용 정상화 확인
+
+### 09:26 — bitmappery 통합 버그 수정 (캔버스 + 아이콘 + 도구 초기화)
+- 중복 id="bitmappery-app" 제거 (DetailEditorTab ↔ bitmappery.vue 충돌)
+- $refs.app 접근을 created → mounted로 이동 (Vue 3 lifecycle 호환)
+- store-proxy.ts 신규: namespace 프록시 (KeyboardService, history-state-factory용)
+- Vite server.fs.allow 추가 (bitmappery asset 접근 허용)
+- bitmappery public assets → towa-app public symlink
+- 도구 아이콘 상대경로 → 절대경로 변경 (toolbox, tool-options-panel, layer-panel)
+- 상세 편집 탭 진입 시 자동 빈 문서 생성
+- document-canvas mounted에서 초기 document의 레이어 렌더러 + interaction pane 즉시 초기화
+
+### 01:31 — bitmappery → towa-app 통합 (Phase 1~4)
+- bitmappery Vuex store를 `bmp` namespace로 통합 (~60개 파일, 140+ mapper 수정)
+- feature flag 동적화: `setTowaMode('translator' | 'typesetter')` 런타임 모드 전환
+- `towa-mode-presets.ts` 신규 — 역자/식자 모드별 도구 프리셋
+- `UI_HEADER_MENU` flag 추가, header-menu v-if 제어
+- CSS 격리: `#app` → `#bitmappery-app`, `_global.scss` scope 축소
+- `_colors.scss` CSS custom property fallback 패턴 적용 (10개 색상 변수)
+- towa-app Vite: smartAliasResolver 플러그인 (bitmappery @/ ↔ towa-app @/ 분리)
+- towa-app에 bitmappery 의존성 설치 + i18n/FloatingVue/Buffer polyfill 등록
+- DetailEditorTab.vue: placeholder → bitmappery.vue 컴포넌트 삽입
+- towa-app 테마 → bitmappery CSS 변수 매핑 (accent, bg, text 등)
+- 양쪽 빌드 성공
+
+---
+
 ## 2026-03-22
 
 ## 2026-03-23

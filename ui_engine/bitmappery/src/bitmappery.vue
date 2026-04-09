@@ -21,7 +21,7 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 <template>
-    <div id="app" ref="app">
+    <div id="bitmappery-app" ref="app">
         <header-menu />
         <section class="main">
             <toolbox
@@ -139,7 +139,7 @@ export default {
         docWidth: "100%",
     }),
     computed: {
-        ...mapState([
+        ...mapState("bmp", [
             "blindActive",
             "dialog",
             "modal",
@@ -147,7 +147,7 @@ export default {
             "toolboxOpened",
             "windowSize",
         ]),
-        ...mapGetters([
+        ...mapGetters("bmp", [
             "activeDocument",
             "isLoading",
         ]),
@@ -232,13 +232,6 @@ export default {
     },
     async created(): Promise<void> {
         await this.setupServices( this.$t );
-        // no need to remove the below as we will require it throughout the application lifetime
-        window.addEventListener( "resize", this.handleResize.bind( this ));
-        this.$refs.app.addEventListener( "wheel", ( e: WheelEvent ) => {
-            if ( e.ctrlKey ) {
-                e.preventDefault(); e.stopPropagation(); // prevent zoom using touchpad
-            }
-        });
         // prepare adaptive view for mobile environment
         this.setToolboxOpened( true );
         if ( isMobile() ) {
@@ -246,6 +239,13 @@ export default {
         }
     },
     mounted(): void {
+        // no need to remove the below as we will require it throughout the application lifetime
+        window.addEventListener( "resize", this.handleResize.bind( this ));
+        this.$refs.app?.addEventListener( "wheel", ( e: WheelEvent ) => {
+            if ( e.ctrlKey ) {
+                e.preventDefault(); e.stopPropagation(); // prevent zoom using touchpad
+            }
+        });
         if ( import.meta.env.MODE === "production" ) {
             window.onbeforeunload = e => {
                 if ( !!this.activeDocument ) {
@@ -300,7 +300,7 @@ export default {
         }, false );
     },
     methods: {
-        ...mapMutations([
+        ...mapMutations("bmp", [
             "addNewDocument",
             "closeModal",
             "closeOpenedPanels",
@@ -312,7 +312,7 @@ export default {
             "setWindowSize",
             "unsetLoading",
         ]),
-        ...mapActions([
+        ...mapActions("bmp", [
             "setupServices",
         ]),
         handleResize(): void {
@@ -352,7 +352,7 @@ export default {
 @use "@/styles/_variables";
 @use "@/styles/panel";
 
-#app {
+#bitmappery-app {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     background-image: linear-gradient(to bottom, colors.$color-bg-dark 35%, colors.$color-bg-light 90%);

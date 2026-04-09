@@ -1,15 +1,18 @@
 <script setup lang="ts">
-import { computed, watch, onMounted, onBeforeUnmount } from 'vue'
+import { computed, watch, ref, onMounted, onBeforeUnmount } from 'vue'
 import { useStore } from 'vuex'
 import { useRoute } from 'vue-router'
+import { usePageLoader } from '@/composables/usePageLoader'
+import { useAutoSave } from '@/composables/useAutoSave'
 import PageSidePanel from '@/components/editor/PageSidePanel.vue'
-import DualCanvasView from '@/components/editor/DualCanvasView.vue'
 import TranslationPanel from '@/components/editor/TranslationPanel.vue'
 
 defineOptions({ name: 'EditorTab' })
 
 const store = useStore()
 const route = useRoute()
+const { switchPage } = usePageLoader()
+useAutoSave()
 
 const projectId = computed(() => route.params.id as string)
 const pages = computed(() => store.getters['pages/forProject'](projectId.value))
@@ -19,6 +22,7 @@ const currentPage = computed(() =>
 )
 const selectedBlockId = computed(() => store.getters['editor/selectedTextBlockId'])
 const pagePanelCollapsed = computed(() => store.getters['editor/pagePanelCollapsed'])
+const switching = ref(false)
 
 const currentPageIndex = computed(() => {
   if (!currentPage.value) return 0
@@ -35,8 +39,15 @@ watch(
   { immediate: true },
 )
 
-function selectPage(pageId: string) {
-  store.commit('editor/SET_SELECTED_PAGE', pageId)
+async function selectPage(pageId: string) {
+  if (switching.value || pageId === selectedPageId.value) return
+  switching.value = true
+  try {
+    await switchPage(selectedPageId.value, pageId)
+    store.commit('editor/SET_SELECTED_PAGE', pageId)
+  } finally {
+    switching.value = false
+  }
 }
 
 function selectBlock(blockId: string) {
@@ -50,19 +61,18 @@ function setPanelCollapsed(collapsed: boolean) {
 function goToPrevPage() {
   const idx = pages.value.findIndex((p: { id: string }) => p.id === selectedPageId.value)
   if (idx > 0) {
-    store.commit('editor/SET_SELECTED_PAGE', pages.value[idx - 1].id)
+    selectPage(pages.value[idx - 1].id)
   }
 }
 
 function goToNextPage() {
   const idx = pages.value.findIndex((p: { id: string }) => p.id === selectedPageId.value)
   if (idx >= 0 && idx < pages.value.length - 1) {
-    store.commit('editor/SET_SELECTED_PAGE', pages.value[idx + 1].id)
+    selectPage(pages.value[idx + 1].id)
   }
 }
 
 function onKeydown(e: KeyboardEvent) {
-  // Skip if typing in an input/textarea
   const tag = (e.target as HTMLElement).tagName
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
 
@@ -80,28 +90,32 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 </script>
 
 <template>
-  <div class="h-full flex">
-    <PageSidePanel
-      :pages="pages"
-      :current-page-id="selectedPageId"
-      :collapsed="pagePanelCollapsed"
-      @select-page="selectPage"
-      @update:collapsed="setPanelCollapsed"
-    />
+  <div class="h-full flex pointer-events-none">
+    <!-- 좌측: 페이지 사이드 패널 -->
+    <div class="pointer-events-auto">
+      <PageSidePanel
+        :pages="pages"
+        :current-page-id="selectedPageId"
+        :collapsed="pagePanelCollapsed"
+        @select-page="selectPage"
+        @update:collapsed="setPanelCollapsed"
+      />
+    </div>
 
-    <DualCanvasView
-      :current-page="currentPage"
-      :pages="pages"
-    />
+    <!-- 중앙: 투명 — bitmappery가 ProjectView에서 뒤에 렌더링됨 -->
+    <div class="flex-1" />
 
-    <TranslationPanel
-      :blocks="currentPage?.textBlocks ?? []"
-      :selected-block-id="selectedBlockId"
-      :current-page-index="currentPageIndex"
-      :total-pages="pages.length"
-      @select-block="selectBlock"
-      @prev-page="goToPrevPage"
-      @next-page="goToNextPage"
-    />
+    <!-- 우측: 번역 패널 -->
+    <div class="pointer-events-auto">
+      <TranslationPanel
+        :blocks="currentPage?.textBlocks ?? []"
+        :selected-block-id="selectedBlockId"
+        :current-page-index="currentPageIndex"
+        :total-pages="pages.length"
+        @select-block="selectBlock"
+        @prev-page="goToPrevPage"
+        @next-page="goToNextPage"
+      />
+    </div>
   </div>
 </template>
