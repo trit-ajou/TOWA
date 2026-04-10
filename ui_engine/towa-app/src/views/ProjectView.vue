@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, watch, onMounted } from 'vue'
+import { computed, watch, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { useStore } from 'vuex'
 // @ts-expect-error bitmappery component (JS/Vue)
@@ -15,11 +15,9 @@ const showCanvas = computed(() => activeTab.value === 'editor' || activeTab.valu
 
 watch(projectId, (id) => {
   store.commit('editor/SET_CURRENT_PROJECT', id)
-  // IndexedDB에서 페이지 목록 로드
   store.dispatch('pages/loadForProject', id)
 }, { immediate: true })
 
-// Sync activeTab with route
 watch(
   () => route.name,
   (name) => {
@@ -38,33 +36,33 @@ watch(
   { immediate: true },
 )
 
-// 문서가 없으면 빈 문서 자동 생성 (임시 — 추후 File Adapter가 페이지 이미지를 로드)
-onMounted(() => {
-  const activeDoc = store.getters['bmp/activeDocument']
-  if (!activeDoc) {
-    store.commit('bmp/addNewDocument', 'Untitled')
+// display:none → visible 전환 시 bitmappery 캔버스 크기 재계산
+watch(showCanvas, (visible) => {
+  if (visible) {
+    nextTick(() => window.dispatchEvent(new Event('resize')))
   }
 })
 </script>
 
 <template>
-  <div class="h-[calc(100vh-48px)] relative">
-    <!-- bitmappery 캔버스: ③④에서 공유, ②에서는 백그라운드 초기화 (z-index: 0) -->
-    <div
-      class="bitmappery-layer"
-      :class="{ 'bitmappery-layer--hidden': !showCanvas }"
-    >
-      <BitMappery />
-    </div>
+  <div class="h-[calc(100vh-48px)] flex">
+    <!-- 좌측: Teleport target (EditorTab/DetailEditorTab이 PageSidePanel 주입) -->
+    <div id="towa-left-panel" class="shrink-0 h-full"></div>
 
-    <!-- 탭 UI: bitmappery 위에 표시 (z-index: 1) -->
-    <div class="tab-layer" :class="{ 'tab-layer--passthrough': showCanvas }">
+    <!-- 중앙: bitmappery + router-view -->
+    <div class="flex-1 min-w-0 h-full relative">
+      <div v-show="showCanvas" class="bitmappery-layer">
+        <BitMappery />
+      </div>
       <router-view v-slot="{ Component }">
-        <keep-alive :include="['ProjectHomeTab', 'EditorTab', 'DetailEditorTab']">
+        <keep-alive :include="['ProjectHomeTab']">
           <component :is="Component" />
         </keep-alive>
       </router-view>
     </div>
+
+    <!-- 우측: Teleport target (EditorTab이 TranslationPanel 주입) -->
+    <div id="towa-right-panel" class="shrink-0 h-full"></div>
   </div>
 </template>
 
@@ -72,10 +70,9 @@ onMounted(() => {
 .bitmappery-layer {
   position: absolute;
   inset: 0;
-  pointer-events: auto;
+  overflow: hidden;
   isolation: isolate;
 
-  /* towa 테마 → bitmappery CSS 변수 매핑 */
   --bmp-accent: var(--towa-accent);
   --bmp-secondary: var(--towa-surface);
   --bmp-warning: var(--towa-warning);
@@ -85,20 +82,5 @@ onMounted(() => {
   --bmp-bg-light: var(--towa-surface);
   --bmp-text: var(--towa-text);
   --bmp-lines: var(--towa-border);
-}
-
-.bitmappery-layer--hidden {
-  display: none;
-}
-
-.tab-layer {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-}
-
-/* 캔버스가 보일 때: 탭 UI는 pointer-events 투과 (사이드 패널만 pointer-events-auto) */
-.tab-layer--passthrough {
-  pointer-events: none;
 }
 </style>

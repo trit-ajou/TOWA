@@ -19,6 +19,7 @@ const selectedPageId = computed(() => store.getters['editor/selectedPageId'])
 const pagePanelCollapsed = computed(() => store.getters['editor/pagePanelCollapsed'])
 const switching = ref(false)
 
+// 첫 페이지 자동 선택
 watch(
   [pages, selectedPageId],
   ([pageList, pageId]) => {
@@ -29,15 +30,19 @@ watch(
   { immediate: true },
 )
 
-async function selectPage(pageId: string) {
-  if (switching.value || pageId === selectedPageId.value) return
+// 페이지 변경 시 bitmappery에 자동 로드 (초기 진입 포함)
+watch(selectedPageId, async (newId, oldId) => {
+  if (!newId || newId === oldId || switching.value) return
   switching.value = true
   try {
-    await switchPage(selectedPageId.value, pageId)
-    store.commit('editor/SET_SELECTED_PAGE', pageId)
+    await switchPage(oldId ?? null, newId)
   } finally {
     switching.value = false
   }
+}, { immediate: true })
+
+function selectPage(pageId: string) {
+  store.commit('editor/SET_SELECTED_PAGE', pageId)
 }
 
 function setPanelCollapsed(collapsed: boolean) {
@@ -46,9 +51,8 @@ function setPanelCollapsed(collapsed: boolean) {
 </script>
 
 <template>
-  <div class="h-full flex pointer-events-none">
-    <!-- 좌측: 페이지 사이드 패널 -->
-    <div class="pointer-events-auto">
+  <div>
+    <Teleport to="#towa-left-panel" defer>
       <PageSidePanel
         :pages="pages"
         :current-page-id="selectedPageId"
@@ -56,9 +60,6 @@ function setPanelCollapsed(collapsed: boolean) {
         @select-page="selectPage"
         @update:collapsed="setPanelCollapsed"
       />
-    </div>
-
-    <!-- 중앙+우측: 투명 — bitmappery가 ProjectView에서 뒤에 렌더링됨 (typesetter 전체 도구) -->
-    <div class="flex-1" />
+    </Teleport>
   </div>
 </template>

@@ -29,10 +29,7 @@
                 class="toolbox"
                 :class="{ 'collapsed': !toolboxOpened }"
             />
-            <div
-                class="document-container"
-                :style="{ 'width': docWidth }"
-            >
+            <div class="document-container">
                 <component :is="documentCanvas" ref="documentCanvas" />
             </div>
             <div
@@ -135,9 +132,7 @@ export default {
         LayerPanel,
         Toolbox,
     },
-    data: () => ({
-        docWidth: "100%",
-    }),
+    data: () => ({}),
     computed: {
         ...mapState("bmp", [
             "blindActive",
@@ -224,10 +219,10 @@ export default {
             }
         },
         toolboxOpened(): void {
-            this.$nextTick( this.scaleContainer );
+            this.$nextTick( () => this.$refs.documentCanvas?.calcIdealDimensions?.() );
         },
         openedPanels(): void {
-            this.$nextTick( this.scaleContainer );
+            this.$nextTick( () => this.$refs.documentCanvas?.calcIdealDimensions?.() );
         },
     },
     async created(): Promise<void> {
@@ -319,20 +314,8 @@ export default {
             this.setWindowSize({ width: window.innerWidth, height: window.innerHeight });
             // prevent maximum zoom at previous small window size to lead to excessively large document canvas
             this.setToolOptionValue({ tool: ToolTypes.ZOOM, option: "level", value: 1 });
-        },
-        /**
-         * Ensure the document container has optimal size. Ideally we'd like a pure
-         * CSS solution, but the toolbox and options panel widths are dynamic (and
-         * in both cases fixed), making flexbox cumbersome.
-         */
-        scaleContainer(): void {
-            if ( isMobile() ) {
-                return;
-            }
-            const toolboxWidth      = this.$refs.toolbox?.$el.clientWidth;
-            const optionsPanelWidth = this.$refs.panels?.clientWidth;
-            this.docWidth = `calc(100% - ${toolboxWidth + optionsPanelWidth + 32}px)`;
-            this.$nextTick(() => this.$refs.documentCanvas?.calcIdealDimensions());
+            // re-calculate document canvas dimensions (flex layout handles width automatically)
+            this.$nextTick(() => this.$refs.documentCanvas?.calcIdealDimensions?.());
         },
     }
 };
@@ -358,6 +341,10 @@ export default {
     background-image: linear-gradient(to bottom, colors.$color-bg-dark 35%, colors.$color-bg-light 90%);
     height: 100%;
     font-size: 14px;
+    // container query root: child elements use @container bitmappery (...)
+    // so layout responds to bitmappery's actual size, not viewport width
+    container-type: inline-size;
+    container-name: bitmappery;
     @include mixins.noSelect();
 
     .main {
@@ -381,18 +368,18 @@ export default {
     }
 
     .document-container {
-        width: 100%;
+        flex: 1;
+        min-width: 0;
         margin: 0 variables.$spacing-medium;
     }
 
     /* three column layout on tablet / desktops */
 
     @include mixins.large() {
-        .toolbox,
-        .document-container,
-        .panels {
-            display: inline-block;
-            vertical-align: top;
+        .main {
+            display: flex;
+            flex-direction: row;
+            align-items: stretch;
         }
         .toolbox,
         .panels {
@@ -409,8 +396,9 @@ export default {
             }
         }
         .panels {
-            display: inline-flex;
+            display: flex;
             flex-direction: column;
+            flex-shrink: 0;
             height: calc(100% - variables.$spacing-xsmall );
             $optionsHeight: 250px;
             
@@ -434,6 +422,7 @@ export default {
         }
 
         .toolbox {
+            flex-shrink: 0;
             width: 105px;
         }
         .panels {

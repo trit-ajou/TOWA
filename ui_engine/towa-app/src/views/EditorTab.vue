@@ -29,6 +29,7 @@ const currentPageIndex = computed(() => {
   return currentPage.value.index
 })
 
+// 첫 페이지 자동 선택
 watch(
   [pages, selectedPageId],
   ([pageList, pageId]) => {
@@ -39,15 +40,19 @@ watch(
   { immediate: true },
 )
 
-async function selectPage(pageId: string) {
-  if (switching.value || pageId === selectedPageId.value) return
+// 페이지 변경 시 bitmappery에 자동 로드 (초기 진입 포함)
+watch(selectedPageId, async (newId, oldId) => {
+  if (!newId || newId === oldId || switching.value) return
   switching.value = true
   try {
-    await switchPage(selectedPageId.value, pageId)
-    store.commit('editor/SET_SELECTED_PAGE', pageId)
+    await switchPage(oldId ?? null, newId)
   } finally {
     switching.value = false
   }
+}, { immediate: true })
+
+function selectPage(pageId: string) {
+  store.commit('editor/SET_SELECTED_PAGE', pageId)
 }
 
 function selectBlock(blockId: string) {
@@ -60,28 +65,21 @@ function setPanelCollapsed(collapsed: boolean) {
 
 function goToPrevPage() {
   const idx = pages.value.findIndex((p: { id: string }) => p.id === selectedPageId.value)
-  if (idx > 0) {
-    selectPage(pages.value[idx - 1].id)
-  }
+  if (idx > 0) selectPage(pages.value[idx - 1].id)
 }
 
 function goToNextPage() {
   const idx = pages.value.findIndex((p: { id: string }) => p.id === selectedPageId.value)
-  if (idx >= 0 && idx < pages.value.length - 1) {
-    selectPage(pages.value[idx + 1].id)
-  }
+  if (idx >= 0 && idx < pages.value.length - 1) selectPage(pages.value[idx + 1].id)
 }
 
 function onKeydown(e: KeyboardEvent) {
   const tag = (e.target as HTMLElement).tagName
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
-
   if (e.key === 'q' || e.key === 'Q' || e.key === 'ㅂ' || e.code === 'KeyQ') {
-    e.preventDefault()
-    goToPrevPage()
+    e.preventDefault(); goToPrevPage()
   } else if (e.key === 'w' || e.key === 'W' || e.key === 'ㅈ' || e.code === 'KeyW') {
-    e.preventDefault()
-    goToNextPage()
+    e.preventDefault(); goToNextPage()
   }
 }
 
@@ -90,9 +88,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 </script>
 
 <template>
-  <div class="h-full flex pointer-events-none">
-    <!-- 좌측: 페이지 사이드 패널 -->
-    <div class="pointer-events-auto">
+  <div>
+    <Teleport to="#towa-left-panel" defer>
       <PageSidePanel
         :pages="pages"
         :current-page-id="selectedPageId"
@@ -100,13 +97,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
         @select-page="selectPage"
         @update:collapsed="setPanelCollapsed"
       />
-    </div>
+    </Teleport>
 
-    <!-- 중앙: 투명 — bitmappery가 ProjectView에서 뒤에 렌더링됨 -->
-    <div class="flex-1" />
-
-    <!-- 우측: 번역 패널 -->
-    <div class="pointer-events-auto">
+    <Teleport to="#towa-right-panel" defer>
       <TranslationPanel
         :blocks="currentPage?.textBlocks ?? []"
         :selected-block-id="selectedBlockId"
@@ -116,6 +109,6 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
         @prev-page="goToPrevPage"
         @next-page="goToNextPage"
       />
-    </div>
+    </Teleport>
   </div>
 </template>
