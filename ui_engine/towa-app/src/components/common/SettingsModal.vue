@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { useStore } from 'vuex'
-import { Settings, Monitor, Brain, Palette, User, Bug } from 'lucide-vue-next'
+import { Settings, Monitor, Brain, Palette, User, Bug, LogOut } from 'lucide-vue-next'
 import BaseModal from './BaseModal.vue'
+import BaseButton from './BaseButton.vue'
 import { useDeploymentMode, type ModeTag } from '@/composables/useDeploymentMode'
 import { DEPLOYMENT_MODE, setDeploymentMode, type DeploymentMode } from '@/config/deployment'
 import { MODEL_ENGINE_URL } from '@/config/engines'
@@ -16,9 +17,23 @@ defineProps<{
   open: boolean
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   close: []
+  'open-login': []
 }>()
+
+const authUser = computed(() => store.state.auth.user)
+const authIsLoggedIn = computed(() => store.getters['auth/isLoggedIn'])
+const authCreditBalance = computed(() => store.state.auth.creditBalance)
+
+function handleAccountLogout() {
+  store.dispatch('auth/logout')
+}
+
+function handleOpenLogin() {
+  emit('close')
+  emit('open-login')
+}
 
 type SettingsTab = 'general' | 'model-standalone' | 'model-cloud' | 'appearance' | 'account' | 'debug'
 
@@ -252,7 +267,39 @@ const transLanguages = [
             <!-- Account (cloud only) -->
             <div v-if="activeTab === 'account'" class="space-y-5">
               <h3 class="text-base font-semibold text-towa-text">계정 설정</h3>
-              <p class="text-sm text-towa-text-muted">클라우드 서비스 계정 관리 (구현 예정)</p>
+
+              <!-- 로그인 상태 -->
+              <template v-if="authIsLoggedIn && authUser">
+                <div class="space-y-3">
+                  <div class="p-4 bg-towa-bg rounded-md space-y-2">
+                    <div class="flex items-center justify-between">
+                      <span class="text-xs text-towa-text-muted">이메일</span>
+                      <span class="text-sm text-towa-text">{{ authUser.email }}</span>
+                    </div>
+                    <div class="flex items-center justify-between">
+                      <span class="text-xs text-towa-text-muted">닉네임</span>
+                      <span class="text-sm text-towa-text">{{ authUser.nickname }}</span>
+                    </div>
+                    <div class="flex items-center justify-between">
+                      <span class="text-xs text-towa-text-muted">크레딧 잔액</span>
+                      <span class="text-sm text-towa-text font-medium">{{ authCreditBalance }}</span>
+                    </div>
+                  </div>
+                  <button
+                    class="flex items-center gap-2 text-sm text-towa-danger hover:text-red-400 transition-colors"
+                    @click="handleAccountLogout"
+                  >
+                    <LogOut :size="14" />
+                    로그아웃
+                  </button>
+                </div>
+              </template>
+
+              <!-- 미로그인 상태 -->
+              <template v-else>
+                <p class="text-sm text-towa-text-muted">클라우드 서비스에 로그인해주세요.</p>
+                <BaseButton variant="primary" @click="handleOpenLogin">로그인</BaseButton>
+              </template>
             </div>
 
 
