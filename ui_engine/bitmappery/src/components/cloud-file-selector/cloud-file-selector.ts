@@ -90,7 +90,7 @@ export default {
         newFolderName: "",
     }),
     computed: {
-        ...mapState([
+        ...mapState("bmp", [
             "loadingStates",
         ]),
         loading(): boolean {
@@ -134,7 +134,7 @@ export default {
         window.removeEventListener( "keyup", this.escListener );
     },
     methods: {
-        ...mapMutations([
+        ...mapMutations("bmp", [
             "openDialog",
             "closeModal",
             "setStorageType",
@@ -142,7 +142,7 @@ export default {
             "setLoading",
             "unsetLoading",
         ]),
-        ...mapActions([
+        ...mapActions("bmp", [
             "loadDocument",
         ]),
         async retrieveFiles( path: string ): Promise<void> {

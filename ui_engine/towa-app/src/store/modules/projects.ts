@@ -1,29 +1,40 @@
 import type { Module } from 'vuex'
 import type { Project } from '@/types/project'
-import { dummyProjects } from '@/data/dummy'
+import type { FileAdapter, ProjectRecord } from '@/file-adapter'
 
 interface ProjectsState {
   list: Project[]
+  fileAdapter: FileAdapter | null
+}
+
+// ProjectRecord (DB) → Project (UI) 변환. thumbnail은 런타임에 별도 설정.
+function toProject(record: ProjectRecord): Project {
+  return { ...record }
+}
+
+// Project (UI) → ProjectRecord (DB) 변환. thumbnail 제거.
+function toRecord(project: Project): ProjectRecord {
+  const { thumbnail: _, ...record } = project
+  return record as ProjectRecord
 }
 
 const projects: Module<ProjectsState, unknown> = {
   namespaced: true,
 
   state: (): ProjectsState => ({
-    list: dummyProjects,
+    list: [],
+    fileAdapter: null,
   }),
 
   getters: {
     all: (state) => state.list,
     byId: (state) => (id: string) => state.list.find((p) => p.id === id),
 
-    // Filter by folder path prefix (e.g. '주간연재' matches '주간연재/점프')
     byFolder: (state) => (folderPath: string | null) => {
       if (!folderPath) return state.list
       return state.list.filter((p) => p.folder === folderPath || p.folder.startsWith(folderPath + '/'))
     },
 
-    // Recently edited (sorted by updatedAt desc)
     recentlyEdited: (state) => (count: number = 3) => {
       return [...state.list]
         .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
@@ -32,6 +43,12 @@ const projects: Module<ProjectsState, unknown> = {
   },
 
   mutations: {
+    SET_FILE_ADAPTER(state, adapter: FileAdapter) {
+      state.fileAdapter = adapter
+    },
+    SET_PROJECTS(state, projects: Project[]) {
+      state.list = projects
+    },
     ADD_PROJECT(state, project: Project) {
       state.list.unshift(project)
     },
@@ -45,8 +62,39 @@ const projects: Module<ProjectsState, unknown> = {
   },
 
   actions: {
-    create({ commit }, project: Project) {
+    async init({ commit }, adapter: FileAdapter) {
+      commit('SET_FILE_ADAPTER', adapter)
+    },
+
+    async loadAll({ commit, state }) {
+      const adapter = state.fileAdapter
+      if (!adapter) return
+      const records = await adapter.listProjects()
+      commit('SET_PROJECTS', records.map(toProject))
+    },
+
+    async create({ commit, state }, project: Project) {
+      const adapter = state.fileAdapter
+      if (adapter) {
+        await adapter.saveProject(toRecord(project))
+      }
       commit('ADD_PROJECT', project)
+    },
+
+    async update({ commit, state }, project: Project) {
+      const adapter = state.fileAdapter
+      if (adapter) {
+        await adapter.saveProject(toRecord(project))
+      }
+      commit('UPDATE_PROJECT', project)
+    },
+
+    async remove({ commit, state }, id: string) {
+      const adapter = state.fileAdapter
+      if (adapter) {
+        await adapter.deleteProject(id)
+      }
+      commit('REMOVE_PROJECT', id)
     },
   },
 }

@@ -81,7 +81,7 @@ export default {
         internalValue: null,
     }),
     computed: {
-        ...mapGetters([
+        ...mapGetters("bmp", [
             "preferences",
             "supportWASM",
         ]),
@@ -101,11 +101,11 @@ export default {
         this.internalValue = { ...this.preferences };
     },
     methods: {
-        ...mapMutations([
+        ...mapMutations("bmp", [
             "closeModal",
             "setPreferences",
         ]),
-        ...mapActions([
+        ...mapActions("bmp", [
             "storePreferences",
         ]),
         async save() {

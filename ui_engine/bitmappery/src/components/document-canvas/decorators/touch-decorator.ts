@@ -16,13 +16,13 @@ let Contact: {
 
 export default {
     computed: {
-        ...mapGetters([
+        ...mapGetters("bmp", [
             "activeLayerIndex",
             "zoomOptions",
         ]),
     },
     methods: {
-        ...mapMutations([
+        ...mapMutations("bmp", [
             "updateLayerTransform",
         ]),
         detectTouch(): void {

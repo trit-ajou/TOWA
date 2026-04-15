@@ -22,6 +22,7 @@
  */
 import { type Store } from "vuex";
 import { type BitMapperyState } from "@/store";
+import { createNamespacedProxy } from "@/utils/store-proxy";
 
 /**
  * a history state should provide undo and redo functions and an optional
@@ -38,10 +39,10 @@ const stateQueue      = new Map<string, UndoRedoState>();
 const ENQUEUE_TIMEOUT = 1000;
 
 let timeout: ReturnType<typeof setTimeout>;
-let store: Store<BitMapperyState> | undefined;
+let commit: ( type: string, payload?: any ) => void;
 
 export const initHistory = ( storeReference: Store<BitMapperyState> ): void => {
-    store = storeReference;
+    ({ commit } = createNamespacedProxy( storeReference ));
 }
 export const hasQueue = (): boolean => queueLength() > 0;
 
@@ -87,6 +88,6 @@ export const enqueueState = ( key: string, undoRedoState: UndoRedoState ): void 
 
 function processQueue(): void {
     clearTimeout( timeout );
-    stateQueue.forEach( undoRedoState => store?.commit( "saveState", undoRedoState ));
+    stateQueue.forEach( undoRedoState => commit?.( "saveState", undoRedoState ));
     stateQueue.clear();
 }

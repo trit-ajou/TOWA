@@ -36,7 +36,17 @@ def test_dev_admin_migrate_creates_tables(monkeypatch, tmp_path: Path, capsys) -
     engine = make_engine(database_url)
     try:
         inspector = inspect(engine)
-        assert {"users", "auth_sessions", "credit_accounts", "usage_jobs", "credit_holds", "credit_ledger"}.issubset(
+        assert {
+            "users",
+            "auth_sessions",
+            "credit_accounts",
+            "usage_jobs",
+            "credit_holds",
+            "credit_ledger",
+            "projects",
+            "pages",
+            "page_snapshots",
+        }.issubset(
             set(inspector.get_table_names()),
         )
     finally:

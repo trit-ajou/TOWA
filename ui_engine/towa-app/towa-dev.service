@@ -1,0 +1,16 @@
+[Unit]
+Description=TOWA App Vite Dev Server
+After=network.target
+
+[Service]
+Type=simple
+User=nangtural02
+WorkingDirectory=/home/nangtural02/TOWA/ui_engine/towa-app
+ExecStart=/home/nangtural02/.nvm/versions/node/v20.20.2/bin/npm run dev
+Restart=always
+RestartSec=5
+Environment=PATH=/home/nangtural02/.nvm/versions/node/v20.20.2/bin:/usr/bin:/bin
+Environment=HOME=/home/nangtural02
+
+[Install]
+WantedBy=multi-user.target

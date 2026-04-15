@@ -4,10 +4,12 @@ FastAPI 기반 `service_engine` 초안입니다.
 
 문서:
 
-- 현재 wire contract: [API_CONTRACT.md](/home/user/dev/TOWA/service_engine/API_CONTRACT.md)
-- 현재 경계/비목표: [ARCHITECTURE.md](/home/user/dev/TOWA/service_engine/ARCHITECTURE.md)
+- 현재 wire contract: [../docs/http-contract.md](../docs/http-contract.md)
+- 현재 경계/비목표: [../docs/service-engine-boundary.md](../docs/service-engine-boundary.md)
+- project/page storage boundary: [../docs/project-page-storage-boundary.md](../docs/project-page-storage-boundary.md)
+- UI/model 추상 경계: [../docs/ui-model-abstract-boundary.md](../docs/ui-model-abstract-boundary.md)
 
-현재 범위:
+현재 구현 범위:
 
 - `POST /auth/dev/login`
 - `GET /auth/me`
@@ -15,6 +17,23 @@ FastAPI 기반 `service_engine` 초안입니다.
 - `POST /usage/jobs/{job_id}/capture`
 - `POST /usage/jobs/{job_id}/release`
 - `GET /usage/jobs/{job_id}`
+- `POST /api/v1/projects`
+- `GET /api/v1/projects`
+- `GET /api/v1/projects/{project_id}`
+- `PATCH /api/v1/projects/{project_id}`
+- `DELETE /api/v1/projects/{project_id}`
+- `GET /api/v1/projects/{project_id}/pages`
+- `POST /api/v1/projects/{project_id}/pages`
+- `GET /api/v1/pages/{page_id}/snapshot`
+- `PUT /api/v1/pages/{page_id}/snapshot`
+- `DELETE /api/v1/pages/{page_id}`
+- `GET /api/v1/pages/{page_id}/thumbnail`
+
+합의된 v1 target boundary:
+
+- cloud `project` metadata persistence
+- cloud `page summary` 조회
+- cloud `page snapshot` save/load/delete
 
 ## Python Environment
 
@@ -36,19 +55,19 @@ source .venv/bin/activate
 ### 3. 의존성 설치
 
 ```bash
-python -m pip install -r requirements-dev.txt
+python3 -m pip install -r requirements-dev.txt
 ```
 
 ### 4. 테스트 실행
 
 ```bash
-pytest
+python3 -m pytest
 ```
 
 ### 5. 서버 실행
 
 ```bash
-uvicorn app.main:app --reload
+python3 -m uvicorn app.main:app --reload
 ```
 
 ### 6. 마이그레이션 적용

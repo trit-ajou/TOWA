@@ -7,6 +7,8 @@ import app.modules  # noqa: F401
 from app.api.errors import APIError, handle_api_error, handle_http_exception, handle_validation_error
 from app.api.routers.auth import router as auth_router
 from app.api.routers.health import router as health_router
+from app.api.routers.pages import router as pages_router
+from app.api.routers.projects import router as projects_router
 from app.api.routers.usage import router as usage_router
 from app.core.settings import get_settings
 
@@ -26,6 +28,8 @@ def create_app() -> FastAPI:
     application.include_router(health_router)
     application.include_router(auth_router)
     application.include_router(usage_router)
+    application.include_router(projects_router)
+    application.include_router(pages_router)
     return application
 
 

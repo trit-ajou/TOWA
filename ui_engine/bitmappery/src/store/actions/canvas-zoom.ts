@@ -27,13 +27,13 @@ import { type BitMapperyState } from "@/store";
 const ZOOM_INCREMENT = 1 / 10;
 
 export const zoomIn = ( store: Store<BitMapperyState> ): void => {
-    store.commit( "setToolOptionValue",
-        { tool: ToolTypes.ZOOM, option: "level", value: Math.min( MAX_ZOOM, store.getters.zoomOptions.level + ( MAX_ZOOM * ZOOM_INCREMENT ))
+    store.commit( "bmp/setToolOptionValue",
+        { tool: ToolTypes.ZOOM, option: "level", value: Math.min( MAX_ZOOM, store.getters["bmp/zoomOptions"].level + ( MAX_ZOOM * ZOOM_INCREMENT ))
     });
 };
 
 export const zoomOut = ( store: Store<BitMapperyState> ): void => {
-    store.commit( "setToolOptionValue",
-        { tool: ToolTypes.ZOOM, option: "level", value: Math.max( MIN_ZOOM, store.getters.zoomOptions.level - ( MAX_ZOOM * ZOOM_INCREMENT ))
+    store.commit( "bmp/setToolOptionValue",
+        { tool: ToolTypes.ZOOM, option: "level", value: Math.max( MIN_ZOOM, store.getters["bmp/zoomOptions"].level - ( MAX_ZOOM * ZOOM_INCREMENT ))
     });
 };

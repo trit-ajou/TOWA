@@ -47,7 +47,7 @@ export default {
         ToggleButton,
     },
     computed: {
-        ...mapGetters([
+        ...mapGetters("bmp", [
             "activeDocument",
             "activeLayer",
             "activeLayerMask",
@@ -70,7 +70,7 @@ export default {
         }
     },
     methods: {
-        ...mapMutations([
+        ...mapMutations("bmp", [
             "setToolOptionValue",
         ]),
     },

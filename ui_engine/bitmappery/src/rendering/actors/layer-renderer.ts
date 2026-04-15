@@ -21,6 +21,7 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 import type { Store } from "vuex";
+import { createNamespacedProxy } from "@/utils/store-proxy";
 import type { Point, Rectangle, Size } from "zcanvas";
 import type ZoomableCanvas from "./zoomable-canvas";
 import ZoomableSprite from "./zoomable-sprite";
@@ -125,8 +126,12 @@ export default class LayerRenderer extends ZoomableSprite {
         this._unmaskedBitmap = unmaskedBitmap; // this bitmap will only be defined when the layer has a mask
     }
 
-    getStore(): Store<BitMapperyState> {
-        return this.canvas?.store;
+    private _storeProxy: any;
+    getStore(): any {
+        if ( !this._storeProxy && this.canvas?.store ) {
+            this._storeProxy = createNamespacedProxy( this.canvas.store );
+        }
+        return this._storeProxy ?? this.canvas?.store;
     }
 
     isDrawing(): boolean {

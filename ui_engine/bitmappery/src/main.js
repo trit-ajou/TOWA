@@ -5,7 +5,7 @@ import { createStore } from "vuex";
 import { createI18n } from "vue-i18n";
 import BitMappery from "./bitmappery.vue";
 import messages from "./messages.json";
-import store from "./store";
+import storeConfig from "./store";
 
 FloatingVue.options.themes.tooltip.delay.show = 500;
 import "floating-vue/dist/style.css"; // required for tooltips
@@ -20,7 +20,7 @@ const i18n = createI18n({
 });
 
 const app = Vue.createApp( BitMappery );
-app.use( createStore( store ));
+app.use( createStore({ modules: { bmp: storeConfig } }));
 app.use( i18n );
 app.directive( "tooltip", vTooltip );
-app.mount( "#app" );
+app.mount( "#bitmappery-app" );

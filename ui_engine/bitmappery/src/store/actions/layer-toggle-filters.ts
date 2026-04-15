@@ -32,12 +32,12 @@ import type { BitMapperyState } from "@/store";
 export const toggleLayerFilters = ( store: Store<BitMapperyState>, layer: Layer, index: number ): void => {
     const originalFilters = { ...layer.filters };
     
-    const commit = () => store.commit( "updateLayer", { index, opts: { filters: { ...originalFilters, enabled: !originalFilters.enabled } } });
+    const commit = () => store.commit( "bmp/updateLayer", { index, opts: { filters: { ...originalFilters, enabled: !originalFilters.enabled } } });
     commit();
     
     enqueueState( `layerFiltersEnabled_${index}`, {
         undo() {
-            store.commit( "updateLayer", { index, opts: { filters: originalFilters } });
+            store.commit( "bmp/updateLayer", { index, opts: { filters: originalFilters } });
         },
         redo: commit,
     });

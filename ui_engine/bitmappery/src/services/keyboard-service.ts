@@ -21,6 +21,7 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 import type { Store, Commit, Dispatch } from "vuex";
+import { createNamespacedProxy } from "@/utils/store-proxy";
 import type { Shape } from "@/definitions/document";
 import { LayerTypes } from "@/definitions/layer-types";
 import { ALL_PANELS } from "@/definitions/panel-types";
@@ -68,7 +69,7 @@ const KeyboardService =
 {
     init( storeReference: Store<BitMapperyState> ): void {
         store = storeReference;
-        ({ state, getters, commit, dispatch } = storeReference );
+        ({ state, getters, commit, dispatch } = createNamespacedProxy( storeReference ));
 
         // these handlers remain active for the entire application lifetime
 

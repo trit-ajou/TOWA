@@ -80,7 +80,7 @@ export default {
         },
     }),
     computed: {
-        ...mapGetters([
+        ...mapGetters("bmp", [
             "documents",
         ]),
     },
@@ -89,7 +89,7 @@ export default {
         focus( this.$refs.first );
     },
     methods: {
-        ...mapMutations([
+        ...mapMutations("bmp", [
             "closeModal",
             "addNewDocument",
         ]),

@@ -59,7 +59,7 @@ import messages  from "./messages.json";
 export default {
     i18n: { messages },
     computed: {
-        ...mapGetters([
+        ...mapGetters("bmp", [
             "activeLayer",
             "activeLayerIndex",
             "activeLayerTransform",

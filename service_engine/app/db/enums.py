@@ -28,3 +28,15 @@ class CreditLedgerEntryType(StrEnum):
     USAGE = "usage"
     ADJUSTMENT = "adjustment"
 
+
+class ProjectStatus(StrEnum):
+    TODO = "todo"
+    IN_PROGRESS = "in-progress"
+    DONE = "done"
+
+
+class PageStatus(StrEnum):
+    WAITING = "waiting"
+    AI_PROCESSING = "ai-processing"
+    IN_PROGRESS = "in-progress"
+    DONE = "done"

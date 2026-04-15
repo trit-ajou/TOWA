@@ -36,7 +36,7 @@
                 class="component__header-button button--ghost"
                 @click="collapsed = !collapsed"
             >
-                <img :src="`assets/images/icon-${collapsed ? 'expand' : 'collapse'}.svg`" />
+                <img :src="`/assets/images/icon-${collapsed ? 'expand' : 'collapse'}.svg`" />
             </button>
         </div>
         <div
@@ -67,11 +67,11 @@ export default {
         restoreCollapse: false,
     }),
     computed: {
-        ...mapState([
+        ...mapState("bmp", [
             "layersMaximized",
             "openedPanels",
         ]),
-        ...mapGetters([
+        ...mapGetters("bmp", [
             "activeTool",
         ]),
         collapsed: {
@@ -145,7 +145,7 @@ export default {
         },
     },
     methods: {
-        ...mapMutations([
+        ...mapMutations("bmp", [
             "setOpenedPanel",
         ]),
     }

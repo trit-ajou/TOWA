@@ -128,13 +128,13 @@ export default {
         hasOutsideAction: false,
     }),
     computed: {
-        ...mapState([
+        ...mapState("bmp", [
             "windowSize",
             "panMode",
             "layerSelectMode",
             "selectMode",
         ]),
-        ...mapGetters([
+        ...mapGetters("bmp", [
             "activeDocument",
             "layers",
             "activeLayer",
@@ -260,16 +260,42 @@ export default {
         await this.$nextTick();
         this.cacheContainerSize();
         this.scaleWrapper();
+        // clean up stale canvas instance from previous navigation cycle:
+        // when the parent (ProjectView) unmounts, it commits closeActiveDocument
+        // but this component's watcher may not fire because the component is already
+        // being torn down. The stale singleton reference then blocks canvas recreation.
+        const staleCanvas = getCanvasInstance();
+        if ( staleCanvas ) {
+            this.removeTouchListeners();
+            staleCanvas.dispose();
+            setCanvasInstance( null );
+            lastDocument = null;
+        }
+        // if document already exists at mount time (e.g. towa-app auto-created it),
+        // trigger canvas creation that the watcher would normally handle
+        if ( this.activeDocument?.layers && !getCanvasInstance() ) {
+            const document = this.activeDocument;
+            const zCanvas = this.createCanvas();
+            this.$nextTick( async () => {
+                zCanvas.insertInPage( this.$refs.canvasContainer );
+                this.addTouchListeners( this.$refs.canvasContainer );
+                // initialize document state (same as watcher's "switching between documents" block)
+                lastDocument = document.id;
+                this.calcIdealDimensions( true );
+                this.createLayerRenderers();
+                this.updateInteractionPane();
+            });
+        }
     },
     methods: {
-        ...mapMutations([
+        ...mapMutations("bmp", [
             "setCanvasDimensions",
             "setActiveTool",
             "setPanMode",
             "setSelectMode",
             "setToolOptionValue",
         ]),
-        ...mapActions([
+        ...mapActions("bmp", [
             "requestDocumentClose",
         ]),
         createCanvas(): void {

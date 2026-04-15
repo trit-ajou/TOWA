@@ -29,12 +29,12 @@ export const pasteLayerFilters = ( store: Store<BitMapperyState>, clonedFilters:
     const orgFilters = { ...layer.filters };
     const filters    = { ...clonedFilters };
 
-    const commit = () => store.commit( "updateLayer", { index, opts: { filters } });
+    const commit = () => store.commit( "bmp/updateLayer", { index, opts: { filters } });
     commit();
 
     enqueueState( `pasteFilters_${index}`, {
         undo() {
-            store.commit( "updateLayer", { index, opts: { filters: { ...orgFilters } }});
+            store.commit( "bmp/updateLayer", { index, opts: { filters: { ...orgFilters } }});
         },
         redo: commit,
     });

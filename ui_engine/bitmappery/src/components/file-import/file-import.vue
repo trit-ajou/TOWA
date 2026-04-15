@@ -111,7 +111,7 @@ export default {
         hasS3: supportsS3(),
     }),
     computed: {
-        ...mapGetters([
+        ...mapGetters("bmp", [
             "fileTarget",
         ]),
         fileTargetOptions() {
@@ -155,7 +155,7 @@ export default {
         },
     },
     methods: {
-        ...mapMutations([
+        ...mapMutations("bmp", [
             "openModal",
             "setFileTarget",
         ]),

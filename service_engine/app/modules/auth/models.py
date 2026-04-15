@@ -14,6 +14,7 @@ from app.db.types import enum_type
 
 if TYPE_CHECKING:
     from app.modules.billing.models import CreditAccount, CreditLedger, UsageJob
+    from app.modules.projects.models import Project
 
 
 class User(TimestampMixin, Base):
@@ -40,6 +41,7 @@ class User(TimestampMixin, Base):
     )
     usage_jobs: Mapped[list["UsageJob"]] = relationship(back_populates="user")
     credit_entries: Mapped[list["CreditLedger"]] = relationship(back_populates="user")
+    projects: Mapped[list["Project"]] = relationship(back_populates="user")
 
     @validates("email")
     def normalize_email(self, _key: str, value: str) -> str:
@@ -73,4 +75,3 @@ class AuthSession(CreatedAtMixin, Base):
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     user: Mapped["User"] = relationship(back_populates="auth_sessions")
-

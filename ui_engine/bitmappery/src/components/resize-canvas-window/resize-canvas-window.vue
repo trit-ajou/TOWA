@@ -101,7 +101,7 @@ export default {
         alignment: CENTER,
     }),
     computed: {
-        ...mapGetters([
+        ...mapGetters("bmp", [
             "activeDocument",
         ]),
         alignmentOptions(): { label: string, value: string }[] {
@@ -124,7 +124,7 @@ export default {
         focus( this.$refs.widthInput );
     },
     methods: {
-        ...mapMutations([
+        ...mapMutations("bmp", [
             "closeModal"
         ]),
         resize(): void {

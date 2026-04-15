@@ -90,7 +90,7 @@ export default {
         MAX_BRUSH_SIZE,
     }),
     computed: {
-        ...mapGetters([
+        ...mapGetters("bmp", [
             "activeDocument",
             "activeLayer",
             "activeLayerMask",
@@ -155,7 +155,7 @@ export default {
         window.removeEventListener( "keyup",   this._handler );
     },
     methods: {
-        ...mapMutations([
+        ...mapMutations("bmp", [
             "setToolOptionValue",
         ]),
         resetSourceCoordinate(): void {

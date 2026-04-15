@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     auth_session_ttl_hours: int = 24
     billing_hold_ttl_minutes: int = 30
     initial_credit_units: int = 1000
+    project_original_image_max_bytes: int = 50 * 1024 * 1024
+    project_thumbnail_max_bytes: int = 5 * 1024 * 1024
+    project_layer_blob_max_bytes: int = 100 * 1024 * 1024
     cors_allow_origins: str = Field(
         default="http://localhost:5173",
         validation_alias="SERVICE_ENGINE_CORS_ALLOW_ORIGINS",

@@ -3,7 +3,8 @@ import { computed, ref } from 'vue'
 import { useStore } from 'vuex'
 import { useRoute, useRouter } from 'vue-router'
 import type { EditMode } from '@/store/modules/editor'
-import type { PageStatus } from '@/types/page'
+import type { Page, PageStatus } from '@/types/page'
+import { useFileAdapter } from '@/composables/useFileAdapter'
 import ProjectDashboard from '@/components/project/ProjectDashboard.vue'
 import PageGrid from '@/components/project/PageGrid.vue'
 
@@ -12,6 +13,7 @@ defineOptions({ name: 'ProjectHomeTab' })
 const store = useStore()
 const route = useRoute()
 const router = useRouter()
+const fileAdapter = useFileAdapter()
 
 const projectId = computed(() => route.params.id as string)
 const project = computed(() => store.getters['projects/byId'](projectId.value))
@@ -52,6 +54,68 @@ function selectAndDetail(pageId: string) {
   store.commit('editor/SET_SELECTED_PAGE', pageId)
   router.push(`/project/${projectId.value}/detail`)
 }
+
+/**
+ * 이미지 파일로 썸네일 Blob 생성 (Canvas 축소)
+ */
+function generateThumbnail(file: File, maxW = 200, maxH = 300): Promise<Blob> {
+  return new Promise((resolve) => {
+    const img = new Image()
+    img.onload = () => {
+      const scale = Math.min(maxW / img.width, maxH / img.height, 1)
+      const w = Math.round(img.width * scale)
+      const h = Math.round(img.height * scale)
+      const canvas = document.createElement('canvas')
+      canvas.width = w
+      canvas.height = h
+      const ctx = canvas.getContext('2d')!
+      ctx.drawImage(img, 0, 0, w, h)
+      canvas.toBlob((blob) => resolve(blob!), 'image/png')
+      URL.revokeObjectURL(img.src)
+    }
+    img.src = URL.createObjectURL(file)
+  })
+}
+
+async function addPages(files: File[]) {
+  const pid = projectId.value
+  const currentCount = allPages.value.length
+
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i]
+    const pageIndex = currentCount + i + 1
+    const pageId = `${pid}-page-${pageIndex}`
+
+    // 썸네일 생성
+    const thumbBlob = await generateThumbnail(file)
+    const thumbUrl = URL.createObjectURL(thumbBlob)
+
+    // 페이지 객체 생성
+    const page: Page = {
+      id: pageId,
+      projectId: pid,
+      index: pageIndex,
+      thumbnail: thumbUrl,
+      status: 'waiting',
+      textBlocks: [],
+    }
+
+    // IndexedDB에 저장 + Vuex에 추가
+    await store.dispatch('pages/addPage', { page, imageBlob: file })
+    await fileAdapter.saveThumbnail(pageId, thumbBlob)
+    store.commit('pages/SET_THUMBNAIL_URL', { pageId, url: thumbUrl })
+  }
+
+  // 프로젝트 pageCount 업데이트
+  const proj = project.value
+  if (proj) {
+    await store.dispatch('projects/update', {
+      ...proj,
+      pageCount: currentCount + files.length,
+      updatedAt: new Date().toISOString(),
+    })
+  }
+}
 </script>
 
 <template>
@@ -89,8 +153,10 @@ function selectAndDetail(pageId: string) {
           <PageGrid
             :pages="filteredPages"
             :selected-page-id="selectedPageId"
+            :project-id="projectId"
             @open-edit="selectAndEdit"
             @open-detail="selectAndDetail"
+            @add-pages="addPages"
           />
         </div>
       </div>
@@ -128,8 +194,10 @@ function selectAndDetail(pageId: string) {
         <PageGrid
           :pages="filteredPages"
           :selected-page-id="selectedPageId"
+          :project-id="projectId"
           @open-edit="selectAndEdit"
           @open-detail="selectAndDetail"
+          @add-pages="addPages"
         />
       </div>
     </template>

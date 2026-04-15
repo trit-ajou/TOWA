@@ -31,10 +31,14 @@ const statusBadge = computed(() => {
   <BaseCard hoverable @click="$emit('click')">
     <div class="aspect-[3/4] bg-towa-bg overflow-hidden relative">
       <img
+        v-if="project.thumbnail"
         :src="project.thumbnail"
         :alt="project.name"
         class="w-full h-full object-cover"
       />
+      <div v-else class="w-full h-full flex items-center justify-center text-towa-text-muted text-xs px-2 text-center">
+        {{ project.name }}
+      </div>
       <!-- Overlay badges -->
       <div class="absolute top-1.5 left-1.5 flex items-center gap-1">
         <span class="text-[10px] font-medium text-white px-1.5 py-0.5 rounded" :class="statusBadge.bg">

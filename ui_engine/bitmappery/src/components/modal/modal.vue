@@ -47,7 +47,7 @@ import { focus } from "@/utils/environment-util";
 
 export default {
     methods: {
-        ...mapMutations([
+        ...mapMutations("bmp", [
             "closeModal",
         ]),
     },

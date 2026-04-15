@@ -21,7 +21,7 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 <template>
-    <div id="app" ref="app">
+    <div id="bitmappery-app" ref="app">
         <header-menu />
         <section class="main">
             <toolbox
@@ -29,10 +29,7 @@
                 class="toolbox"
                 :class="{ 'collapsed': !toolboxOpened }"
             />
-            <div
-                class="document-container"
-                :style="{ 'width': docWidth }"
-            >
+            <div class="document-container">
                 <component :is="documentCanvas" ref="documentCanvas" />
             </div>
             <div
@@ -135,11 +132,9 @@ export default {
         LayerPanel,
         Toolbox,
     },
-    data: () => ({
-        docWidth: "100%",
-    }),
+    data: () => ({}),
     computed: {
-        ...mapState([
+        ...mapState("bmp", [
             "blindActive",
             "dialog",
             "modal",
@@ -147,7 +142,7 @@ export default {
             "toolboxOpened",
             "windowSize",
         ]),
-        ...mapGetters([
+        ...mapGetters("bmp", [
             "activeDocument",
             "isLoading",
         ]),
@@ -224,21 +219,14 @@ export default {
             }
         },
         toolboxOpened(): void {
-            this.$nextTick( this.scaleContainer );
+            this.$nextTick( () => this.$refs.documentCanvas?.calcIdealDimensions?.() );
         },
         openedPanels(): void {
-            this.$nextTick( this.scaleContainer );
+            this.$nextTick( () => this.$refs.documentCanvas?.calcIdealDimensions?.() );
         },
     },
     async created(): Promise<void> {
         await this.setupServices( this.$t );
-        // no need to remove the below as we will require it throughout the application lifetime
-        window.addEventListener( "resize", this.handleResize.bind( this ));
-        this.$refs.app.addEventListener( "wheel", ( e: WheelEvent ) => {
-            if ( e.ctrlKey ) {
-                e.preventDefault(); e.stopPropagation(); // prevent zoom using touchpad
-            }
-        });
         // prepare adaptive view for mobile environment
         this.setToolboxOpened( true );
         if ( isMobile() ) {
@@ -246,6 +234,13 @@ export default {
         }
     },
     mounted(): void {
+        // no need to remove the below as we will require it throughout the application lifetime
+        window.addEventListener( "resize", this.handleResize.bind( this ));
+        this.$refs.app?.addEventListener( "wheel", ( e: WheelEvent ) => {
+            if ( e.ctrlKey ) {
+                e.preventDefault(); e.stopPropagation(); // prevent zoom using touchpad
+            }
+        });
         if ( import.meta.env.MODE === "production" ) {
             window.onbeforeunload = e => {
                 if ( !!this.activeDocument ) {
@@ -300,7 +295,7 @@ export default {
         }, false );
     },
     methods: {
-        ...mapMutations([
+        ...mapMutations("bmp", [
             "addNewDocument",
             "closeModal",
             "closeOpenedPanels",
@@ -312,27 +307,15 @@ export default {
             "setWindowSize",
             "unsetLoading",
         ]),
-        ...mapActions([
+        ...mapActions("bmp", [
             "setupServices",
         ]),
         handleResize(): void {
             this.setWindowSize({ width: window.innerWidth, height: window.innerHeight });
             // prevent maximum zoom at previous small window size to lead to excessively large document canvas
             this.setToolOptionValue({ tool: ToolTypes.ZOOM, option: "level", value: 1 });
-        },
-        /**
-         * Ensure the document container has optimal size. Ideally we'd like a pure
-         * CSS solution, but the toolbox and options panel widths are dynamic (and
-         * in both cases fixed), making flexbox cumbersome.
-         */
-        scaleContainer(): void {
-            if ( isMobile() ) {
-                return;
-            }
-            const toolboxWidth      = this.$refs.toolbox?.$el.clientWidth;
-            const optionsPanelWidth = this.$refs.panels?.clientWidth;
-            this.docWidth = `calc(100% - ${toolboxWidth + optionsPanelWidth + 32}px)`;
-            this.$nextTick(() => this.$refs.documentCanvas?.calcIdealDimensions());
+            // re-calculate document canvas dimensions (flex layout handles width automatically)
+            this.$nextTick(() => this.$refs.documentCanvas?.calcIdealDimensions?.());
         },
     }
 };
@@ -352,12 +335,16 @@ export default {
 @use "@/styles/_variables";
 @use "@/styles/panel";
 
-#app {
+#bitmappery-app {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     background-image: linear-gradient(to bottom, colors.$color-bg-dark 35%, colors.$color-bg-light 90%);
     height: 100%;
     font-size: 14px;
+    // container query root: child elements use @container bitmappery (...)
+    // so layout responds to bitmappery's actual size, not viewport width
+    container-type: inline-size;
+    container-name: bitmappery;
     @include mixins.noSelect();
 
     .main {
@@ -381,18 +368,18 @@ export default {
     }
 
     .document-container {
-        width: 100%;
+        flex: 1;
+        min-width: 0;
         margin: 0 variables.$spacing-medium;
     }
 
     /* three column layout on tablet / desktops */
 
     @include mixins.large() {
-        .toolbox,
-        .document-container,
-        .panels {
-            display: inline-block;
-            vertical-align: top;
+        .main {
+            display: flex;
+            flex-direction: row;
+            align-items: stretch;
         }
         .toolbox,
         .panels {
@@ -409,8 +396,9 @@ export default {
             }
         }
         .panels {
-            display: inline-flex;
+            display: flex;
             flex-direction: column;
+            flex-shrink: 0;
             height: calc(100% - variables.$spacing-xsmall );
             $optionsHeight: 250px;
             
@@ -434,6 +422,7 @@ export default {
         }
 
         .toolbox {
+            flex-shrink: 0;
             width: 105px;
         }
         .panels {

@@ -28,12 +28,12 @@ import { type BitMapperyState } from "@/store";
 export const renameLayer = ( store: Store<BitMapperyState>, layer: Layer, index: number, name: string ): void => {
     const currentName = layer.name;
 
-    const commit = () => store.commit( "updateLayer", { index, opts: { name } });
+    const commit = () => store.commit( "bmp/updateLayer", { index, opts: { name } });
     commit();
 
     enqueueState( `layerName_${index}`, {
         undo() {
-            store.commit( "updateLayer", { index, opts: { name: currentName } });
+            store.commit( "bmp/updateLayer", { index, opts: { name: currentName } });
         },
         redo: commit,
     });

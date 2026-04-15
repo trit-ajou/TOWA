@@ -21,7 +21,7 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 <template>
-    <nav class="menu"
+    <nav v-if="headerMenuEnabled" class="menu"
          :class="{ 'menu--opened': menuOpened }"
     >
         <div class="toggle" @click="setMenuOpened( !menuOpened )">
@@ -397,12 +397,12 @@ export default {
         hasS3: supportsS3(),
     }),
     computed: {
-        ...mapState([
+        ...mapState("bmp", [
             "menuOpened",
             "blindActive",
             "selectionContent",
         ]),
-        ...mapGetters([
+        ...mapGetters("bmp", [
             "documents",
             "activeDocument",
             "activeLayer",
@@ -416,6 +416,9 @@ export default {
             "pixelGrid",
         ]),
         supportsFullscreen,
+        headerMenuEnabled(): boolean {
+            return isFeatureEnabled( "UI_HEADER_MENU" );
+        },
         featureDocResize(): boolean {
             return isFeatureEnabled( "DOC_RESIZE" );
         },
@@ -496,7 +499,7 @@ export default {
         }
     },
     methods: {
-        ...mapMutations([
+        ...mapMutations("bmp", [
             "setMenuOpened",
             "openModal",
             "setActiveDocument",
@@ -509,7 +512,7 @@ export default {
             "setPixelGrid",
             "updateLayer",
         ]),
-        ...mapActions([
+        ...mapActions("bmp", [
             "requestDocumentClose",
             "requestSelectionCopy",
             "requestSelectionCut",

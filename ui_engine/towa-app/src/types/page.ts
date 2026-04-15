@@ -1,5 +1,4 @@
 import type { TextBlock } from './text-block'
-import type { Layer } from './layer'
 
 export type PageStatus = 'waiting' | 'ai-processing' | 'in-progress' | 'done'
 
@@ -7,9 +6,8 @@ export interface Page {
   id: string
   projectId: string
   index: number
-  originalImage: string
-  thumbnail: string
+  originalImage?: string
+  thumbnail?: string
   status: PageStatus
   textBlocks: TextBlock[]
-  layers: Layer[]
 }

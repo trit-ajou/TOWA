@@ -84,7 +84,7 @@ export default {
         type: LayerTypes.LAYER_GRAPHIC,
     }),
     computed: {
-        ...mapGetters([
+        ...mapGetters("bmp", [
             "activeDocument",
             "activeLayerIndex",
             "layers",
@@ -109,7 +109,7 @@ export default {
         this.$refs.nameInput.select();
     },
     methods: {
-        ...mapMutations([
+        ...mapMutations("bmp", [
             "closeModal",
         ]),
         requestLayerAdd(): void {
