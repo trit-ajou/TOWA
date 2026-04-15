@@ -1,13 +1,21 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+import json
 from typing import Annotated, Any
 
-from fastapi import FastAPI, Header, status
+from fastapi import FastAPI, Header, Request, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.datastructures import UploadFile as StarletteUploadFile
 
-from .jobs import ModelJobError, ModelJobManager, submission_from_api_payload
+from .jobs import (
+    ModelJobError,
+    ModelJobManager,
+    UploadedBinaryPart,
+    submission_from_api_payload,
+    submission_from_multipart_payload,
+)
 from .schemas import (
     ModelJobCreateRequest,
     UsageJobCaptureRequest,
@@ -42,12 +50,12 @@ def create_app(
         return {"status": "ok"}
 
     @application.post("/v1/jobs", tags=["jobs"])
-    def create_job(
-        payload: ModelJobCreateRequest,
+    async def create_job(
+        request: Request,
         authorization: Annotated[str | None, Header()] = None,
     ) -> JSONResponse:
         try:
-            submission = submission_from_api_payload(payload)
+            submission = await _submission_from_http_request(request)
             status_code, response = job_manager.create_job(
                 submission,
                 authorization=authorization,
@@ -220,6 +228,86 @@ def _error_response(
             }
         },
     )
+
+
+async def _submission_from_http_request(request: Request):
+    content_type = request.headers.get("content-type", "").lower()
+
+    if content_type.startswith("multipart/form-data"):
+        form = await request.form()
+        extra_fields = set(form.keys()) - {"metadata", "primary_bitmap"}
+        if extra_fields:
+            raise ModelJobError(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                code="model_validation_error",
+                message=f"Unsupported multipart fields: {', '.join(sorted(extra_fields))}",
+            )
+
+        metadata_part = form.get("metadata")
+        metadata = await _metadata_text_from_form_part(metadata_part)
+        if metadata is None:
+            raise ModelJobError(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                code="model_validation_error",
+                message="multipart metadata field is required",
+            )
+
+        primary_bitmap = _upload_from_form_part(form.get("primary_bitmap"))
+        if primary_bitmap is None:
+            raise ModelJobError(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                code="model_validation_error",
+                message="multipart primary_bitmap field is required",
+            )
+
+        try:
+            metadata_payload = json.loads(metadata)
+        except json.JSONDecodeError as exc:
+            raise ModelJobError(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                code="model_validation_error",
+                message=f"Invalid metadata JSON: {exc.msg}",
+            ) from exc
+
+        payload = ModelJobCreateRequest.model_validate(metadata_payload)
+        upload = UploadedBinaryPart(
+            part_name="primary_bitmap",
+            filename=primary_bitmap.filename or "primary_bitmap",
+            media_type=primary_bitmap.content_type or "application/octet-stream",
+            content=await primary_bitmap.read(),
+        )
+        await primary_bitmap.close()
+        return submission_from_multipart_payload(payload, primary_bitmap=upload)
+
+    if content_type.startswith("application/json") or not content_type:
+        payload = ModelJobCreateRequest.model_validate(await request.json())
+        return submission_from_api_payload(payload)
+
+    raise ModelJobError(
+        status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+        code="model_validation_error",
+        message=f"Unsupported Content-Type: {request.headers.get('content-type', '')}",
+    )
+
+
+async def _metadata_text_from_form_part(part: Any) -> str | None:
+    if isinstance(part, str):
+        return part
+    upload = _upload_from_form_part(part)
+    if upload is not None:
+        try:
+            return (await upload.read()).decode("utf-8")
+        finally:
+            await upload.close()
+    return None
+
+
+def _upload_from_form_part(part: Any) -> UploadFile | StarletteUploadFile | None:
+    if isinstance(part, (UploadFile, StarletteUploadFile)):
+        return part
+    if all(hasattr(part, attr) for attr in ("read", "close", "filename")):
+        return part
+    return None
 
 
 app = create_app()

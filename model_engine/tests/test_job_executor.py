@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 import tempfile
+import time
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
@@ -14,7 +16,9 @@ from model_engine.api.jobs import (
     ModelJobStatus,
     OrchestratedJobExecutor,
     PlaceholderJobExecutor,
+    UploadedBinaryPart,
     submission_from_api_payload,
+    submission_from_multipart_payload,
 )
 from model_engine.contracts.artifacts import ArtifactDescriptor
 from model_engine.contracts.document_ir import DocumentIR
@@ -91,6 +95,59 @@ class OrchestratedJobExecutorTests(unittest.TestCase):
         record = manager._jobs_by_id[response["job_id"]]
         self.assertEqual("demo-session", record.runtime_context.service_session_key)
         self.assertEqual("Bearer demo-session", service_client.calls[0]["authorization"])
+
+    def test_multipart_submission_materializes_primary_bitmap_and_updates_fingerprint(self) -> None:
+        payload = _job_payload(operation_kind="translate", mode="local")
+        payload["artifacts"] = {
+            "artifact://input/primary_bitmap": {
+                "artifact_ref": "artifact://input/primary_bitmap",
+                "kind": "bitmap",
+                "media_type": "image/png",
+                "uri": "upload://primary_bitmap",
+            }
+        }
+        first = submission_from_multipart_payload(
+            _payload_object(payload),
+            primary_bitmap=UploadedBinaryPart(
+                part_name="primary_bitmap",
+                filename="page.png",
+                media_type="image/png",
+                content=b"first-image",
+            ),
+        )
+        second = submission_from_multipart_payload(
+            _payload_object(payload),
+            primary_bitmap=UploadedBinaryPart(
+                part_name="primary_bitmap",
+                filename="page.png",
+                media_type="image/png",
+                content=b"second-image",
+            ),
+        )
+
+        first_artifact = first.artifacts["artifact://input/primary_bitmap"]
+        self.assertTrue(first_artifact.uri.startswith("file://"))
+        self.assertEqual(
+            f"sha256:{hashlib.sha256(b'first-image').hexdigest()}",
+            first_artifact.checksum,
+        )
+        self.assertEqual(len(b"first-image"), first_artifact.byte_size)
+        self.assertNotEqual(first.request_fingerprint, second.request_fingerprint)
+
+    def test_job_detail_response_includes_document_patch(self) -> None:
+        manager = ModelJobManager(
+            executor=PlaceholderJobExecutor(sleep_seconds=0.0),
+        )
+        submission = submission_from_api_payload(
+            _payload_object(_job_payload(operation_kind="detect", mode="local"))
+        )
+
+        _, response = manager.create_job(submission)
+        detail = _wait_for_terminal_job(manager, response["job_id"])
+
+        self.assertEqual("succeeded", detail["status"])
+        self.assertIn("document_patch", detail)
+        self.assertEqual("set_stage_meta", detail["document_patch"]["patches"][0]["op"])
 
 
 def _job_request(workspace_dir: Path, *, operation_kind: str) -> JobExecutionRequest:
@@ -236,6 +293,16 @@ def _payload_object(payload: dict[str, object]) -> SimpleNamespace:
         artifacts=payload["artifacts"],
         runtime_context=payload["runtime_context"],
     )
+
+
+def _wait_for_terminal_job(manager: ModelJobManager, job_id: str) -> dict[str, object]:
+    deadline = time.time() + 2.0
+    while time.time() < deadline:
+        detail = manager.get_job(job_id)
+        if detail["status"] in {"succeeded", "failed", "partial"}:
+            return detail
+        time.sleep(0.01)
+    raise AssertionError(f"Timed out waiting for job {job_id} to finish")
 
 
 if __name__ == "__main__":

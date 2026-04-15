@@ -61,6 +61,7 @@ class ModelJobDetailResponse(BaseModel):
     operation_kind: ModelOperationKind
     request_ref: str
     document: dict[str, Any]
+    document_patch: dict[str, Any] = Field(default_factory=lambda: {"patches": []})
     artifacts: dict[str, dict[str, Any]]
     stage_reports: list[dict[str, Any]] = Field(default_factory=list)
     error: dict[str, Any] | None = None

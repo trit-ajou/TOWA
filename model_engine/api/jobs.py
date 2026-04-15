@@ -6,7 +6,9 @@ from datetime import datetime, timezone
 from enum import Enum
 import hashlib
 import json
+from pathlib import Path
 from threading import Lock, Thread
+import tempfile
 import time
 from typing import TYPE_CHECKING, Any, Callable, Optional
 from uuid import uuid4
@@ -28,8 +30,9 @@ from ..builtin_models import (
 from ..contracts.artifacts import ArtifactDescriptor, ArtifactStatus
 from ..contracts.document_ir import DocumentIR
 from ..contracts.models import StageKind
+from ..contracts.patches import PatchOperation
 from ..contracts.stages import ExecutionMode, StageReport, StageRuntimeContext, StageStatus
-from ..ipc.serde import document_from_data, document_to_data, stage_report_to_data
+from ..ipc.serde import document_from_data, document_to_data, patch_to_data, stage_report_to_data
 from ..models import ModelRegistry
 from ..orchestrator import PipelineOrchestrator
 from ..stages import AdapterBackedStage, Stage, run_mask_or_erase_planning
@@ -103,6 +106,14 @@ class JobSubmission:
     runtime_context: StageRuntimeContext
 
 
+@dataclass(frozen=True)
+class UploadedBinaryPart:
+    part_name: str
+    filename: str
+    media_type: str
+    content: bytes
+
+
 @dataclass
 class JobExecutionRequest:
     job_id: str
@@ -120,6 +131,7 @@ class JobExecutionResult:
     status: ModelJobStatus
     document: DocumentIR
     artifacts: dict[str, ArtifactDescriptor]
+    document_patch: list[PatchOperation] = field(default_factory=list)
     stage_reports: list[StageReport] = field(default_factory=list)
     error: dict[str, Any] | None = None
 
@@ -138,6 +150,7 @@ class ModelJobRecord:
     artifacts: dict[str, ArtifactDescriptor]
     runtime_context: StageRuntimeContext
     status: ModelJobStatus = ModelJobStatus.QUEUED
+    document_patch: list[PatchOperation] = field(default_factory=list)
     stage_reports: list[StageReport] = field(default_factory=list)
     error: dict[str, Any] | None = None
     usage_job_id: str | None = None
@@ -185,11 +198,21 @@ class PlaceholderJobExecutor(JobExecutor):
             "pipeline_id": request.pipeline_id,
             "stage_count": len(stage_reports),
         }
+        document_patch = [
+            PatchOperation(
+                op="set_stage_meta",
+                payload={
+                    "key": OPERATION_META_KEYS[request.operation_kind],
+                    "value": dict(active_document.stage_meta[OPERATION_META_KEYS[request.operation_kind]]),
+                },
+            )
+        ]
 
         return JobExecutionResult(
             status=ModelJobStatus.SUCCEEDED,
             document=active_document,
             artifacts=dict(request.artifacts),
+            document_patch=document_patch,
             stage_reports=stage_reports,
         )
 
@@ -218,6 +241,7 @@ class OrchestratedJobExecutor(JobExecutor):
             status=_job_status_from_stage_status(result.status),
             document=result.document,
             artifacts=result.artifacts,
+            document_patch=list(result.applied_patches),
             stage_reports=result.stage_reports,
             error=_error_from_stage_reports(result.stage_reports),
         )
@@ -324,6 +348,7 @@ class ModelJobManager:
                 status=ModelJobStatus.FAILED,
                 document=record.document.clone(),
                 artifacts=dict(record.artifacts),
+                document_patch=[],
                 error=_error_payload(
                     code="model_stage_failed",
                     message=str(exc),
@@ -345,6 +370,7 @@ class ModelJobManager:
             stored.status = result.status
             stored.document = result.document
             stored.artifacts = result.artifacts
+            stored.document_patch = result.document_patch
             stored.stage_reports = result.stage_reports
             stored.error = result.error
 
@@ -536,6 +562,7 @@ class ModelJobManager:
             "operation_kind": record.operation_kind,
             "request_ref": record.request_ref,
             "document": document_to_data(record.document),
+            "document_patch": {"patches": [patch_to_data(patch) for patch in record.document_patch]},
             "artifacts": {
                 artifact_ref: artifact_descriptor_to_api_data(descriptor)
                 for artifact_ref, descriptor in record.artifacts.items()
@@ -547,6 +574,7 @@ class ModelJobManager:
 
 def submission_from_api_payload(payload: "ModelJobCreateRequest") -> JobSubmission:
     runtime_context = runtime_context_from_api_data(payload.runtime_context)
+    normalized_artifacts = _artifact_descriptors_from_api_payload(payload.artifacts)
     return JobSubmission(
         schema_version=payload.schema_version,
         idempotency_key=payload.idempotency_key,
@@ -563,10 +591,46 @@ def submission_from_api_payload(payload: "ModelJobCreateRequest") -> JobSubmissi
             }
         ),
         document=document_from_data(payload.document),
-        artifacts={
-            artifact_ref: artifact_descriptor_from_api_data(descriptor)
-            for artifact_ref, descriptor in payload.artifacts.items()
-        },
+        artifacts=normalized_artifacts,
+        runtime_context=runtime_context,
+    )
+
+
+def submission_from_multipart_payload(
+    payload: "ModelJobCreateRequest",
+    *,
+    primary_bitmap: UploadedBinaryPart,
+) -> JobSubmission:
+    runtime_context = runtime_context_from_api_data(payload.runtime_context)
+    upload_checksum = f"sha256:{hashlib.sha256(primary_bitmap.content).hexdigest()}"
+    normalized_artifacts = _artifact_descriptors_from_api_payload(
+        payload.artifacts,
+        primary_bitmap=primary_bitmap,
+        primary_bitmap_checksum=upload_checksum,
+    )
+    return JobSubmission(
+        schema_version=payload.schema_version,
+        idempotency_key=payload.idempotency_key,
+        operation_kind=payload.operation_kind,
+        request_ref=payload.request_ref,
+        request_fingerprint=_request_fingerprint(
+            {
+                "schema_version": payload.schema_version,
+                "operation_kind": payload.operation_kind,
+                "request_ref": payload.request_ref,
+                "document": payload.document,
+                "artifacts": payload.artifacts,
+                "runtime_context": payload.runtime_context,
+                "uploads": {
+                    "primary_bitmap": {
+                        "sha256": upload_checksum,
+                        "media_type": primary_bitmap.media_type,
+                    }
+                },
+            }
+        ),
+        document=document_from_data(payload.document),
+        artifacts=normalized_artifacts,
         runtime_context=runtime_context,
     )
 
@@ -603,6 +667,65 @@ def artifact_descriptor_from_api_data(payload: dict[str, Any]) -> ArtifactDescri
         expires_at=_parse_datetime(payload.get("expires_at")),
         metadata=dict(payload.get("metadata", {})),
     )
+
+
+def _artifact_descriptors_from_api_payload(
+    artifacts_payload: dict[str, dict[str, Any]],
+    *,
+    primary_bitmap: UploadedBinaryPart | None = None,
+    primary_bitmap_checksum: str | None = None,
+) -> dict[str, ArtifactDescriptor]:
+    normalized: dict[str, ArtifactDescriptor] = {}
+    resolved_primary_uri: str | None = None
+    referenced_primary_upload = False
+
+    for artifact_ref, descriptor_payload in artifacts_payload.items():
+        upload_uri = str(descriptor_payload.get("uri", ""))
+        if upload_uri.startswith("upload://") and upload_uri != "upload://primary_bitmap":
+            raise ValueError(f"Unsupported upload artifact uri: {upload_uri}")
+        if upload_uri == "upload://primary_bitmap":
+            referenced_primary_upload = True
+            if primary_bitmap is None or primary_bitmap_checksum is None:
+                raise ValueError("primary_bitmap upload is required when metadata references upload://primary_bitmap")
+            if resolved_primary_uri is None:
+                resolved_primary_uri = _persist_uploaded_binary(primary_bitmap)
+            descriptor_payload = {
+                **descriptor_payload,
+                "uri": resolved_primary_uri,
+                "media_type": primary_bitmap.media_type or descriptor_payload.get("media_type", "application/octet-stream"),
+                "byte_size": len(primary_bitmap.content),
+                "checksum": primary_bitmap_checksum,
+                "metadata": {
+                    **dict(descriptor_payload.get("metadata", {})),
+                    "upload_part": primary_bitmap.part_name,
+                    "upload_filename": primary_bitmap.filename,
+                },
+            }
+        normalized[artifact_ref] = artifact_descriptor_from_api_data(descriptor_payload)
+
+    if primary_bitmap is not None and not referenced_primary_upload:
+        raise ValueError("primary_bitmap upload was provided but metadata does not reference upload://primary_bitmap")
+
+    return normalized
+
+
+def _persist_uploaded_binary(upload: UploadedBinaryPart) -> str:
+    suffix = _upload_suffix(upload)
+    upload_dir = Path(tempfile.mkdtemp(prefix="towa_model_job_upload_"))
+    file_path = upload_dir / f"{upload.part_name}{suffix}"
+    file_path.write_bytes(upload.content)
+    return file_path.resolve().as_uri()
+
+
+def _upload_suffix(upload: UploadedBinaryPart) -> str:
+    candidate = Path(upload.filename or "").suffix.lower()
+    if candidate:
+        return candidate
+    return {
+        "image/png": ".png",
+        "image/jpeg": ".jpg",
+        "image/webp": ".webp",
+    }.get(upload.media_type, ".bin")
 
 
 def artifact_descriptor_to_api_data(descriptor: ArtifactDescriptor) -> dict[str, Any]:

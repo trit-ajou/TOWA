@@ -19,6 +19,7 @@
 - `README.md`(이 문서): `model_engine` 내부 구현 명세
 - `TROUBLESHOOTING.md`: OCR/번역 실행 중 관측한 문제와 튜닝 기록
 - `SESSION_AND_CREDENTIAL_IMPLEMENTATION.md`: cloud/standalone 기준 세션, usage, provider credential 책임과 구현 포인트
+- `UI_MODEL_CONTRACT_DRAFT.md`: `UI engine <-> model engine` concrete contract 최소 합의안 draft
 
 즉, 앞으로 `model_engine` 구현 판단은 이 README를 직접 기준으로 한다.
 

@@ -9,7 +9,8 @@
 - `IMPLEMENTATION_SUMMARY.md`: 현재 실제 구현 완료 범위 요약
 - `OCR_CAPABILITY.md`: OCR capability 공통 계약 초안
 - `TROUBLESHOOTING.md`: OCR/번역 실행 중 관측한 문제와 threshold 튜닝 기록
-- `SPEC.md`, `API_CONTRACT.md`: 외부 엔진 경계와 SaaS/local 계약 참고
+- `SESSION_AND_CREDENTIAL_IMPLEMENTATION.md`: 세션, usage, provider credential 구현 준비 문서
+- `SPEC.md`, `../docs/http-contract.md`: 외부 엔진 경계와 SaaS/local 계약 참고
 
 ## 이번에 구현한 범위
 
@@ -33,6 +34,8 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - `service_engine` client/errors/models 패키지 추가
 - `ServiceBackedPipelineRunner` 추가
 - `StageRuntimeContext`에 SaaS usage wiring 필드 추가
+- SaaS HTTP job 경로에서 `Authorization` bearer를 `runtime_context.service_session_key`로 정규화해 job context에 저장
+- background usage capture/release가 request-local raw header가 아니라 저장된 `service_session_key` 기준으로 동작하도록 정리
 - service usage hold/capture/release 테스트 추가
 - OpenAI-compatible translation adapter 추가
 - `model_engine/.runtime/runtime_config.json` 기반 local runtime config 로더 추가
@@ -40,6 +43,13 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - `Tencent HY-MT` 구체 모델 병합 예시는 제거하고 generic custom runtime 방향으로 정리
 - OCR stage에 `MangaOcr()` recognizer 재사용, region merge, `vertical_rtl` reading order, density/area 기반 `needs_review` 마킹 추가
 - OCR/번역 튜닝 기록용 `TROUBLESHOOTING.md` 추가
+- 세션/credential 책임과 실제 API 함수 기준 호환성을 정리한 `SESSION_AND_CREDENTIAL_IMPLEMENTATION.md` 추가
+- `UI_MODEL_CONTRACT_DRAFT.md` 추가
+- `/v1/jobs`가 `multipart(metadata + primary_bitmap)` 입력을 수신할 수 있게 확장
+- metadata의 `upload://primary_bitmap` descriptor를 request 시점에 `file://...` artifact로 물질화
+- multipart request fingerprint에 uploaded bitmap sha256을 포함해 idempotency 충돌 판정을 안정화
+- `GET /v1/jobs/{job_id}` 응답에 `document_patch` 필드 추가
+- UI migration 전환을 위해 legacy JSON create와 full `document` 응답도 임시로 함께 유지
 
 ### 1. Canonical IR
 
@@ -212,7 +222,9 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 
 - raw secret은 stage IPC JSON에 싣지 않는다.
 - subprocess worker에는 env로만 주입한다.
-- session credential source는 타입과 런타임 필드만 열어두고, 실제 세션 주입 흐름은 아직 미구현이다.
+- local persisted credential 기본 경로는 `~/.config/towa/model_engine/credentials.json`이다.
+- `.runtime/runtime_config.json`은 샘플 스크립트용 runtime config이고, 기본 resolver persisted source 그 자체는 아니다.
+- local 샘플 실행은 runtime config에서 읽은 값을 `session_provider_secrets`로 옮겨 stage 실행에 사용한다.
 
 ### 8. SaaS Usage Wiring
 
@@ -232,11 +244,16 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - 순수 `PipelineOrchestrator` 위에 얹는 `ServiceBackedPipelineRunner`
 - SaaS 실행 시 `POST /usage/jobs` -> pipeline 실행 -> `capture` 또는 `release`
 - release 사유를 마지막 실패 stage 기준으로 정리하는 기본 매핑
+- SaaS HTTP job 생성 시 raw bearer에서 session token 본문을 추출해 `runtime_context.service_session_key`에 저장
+- background usage hold/capture/release는 저장된 `service_session_key`로 authenticated path를 재구성해 service 호출
 
 비고:
 
 - 현재 `text_detection` 계열 실행은 service usage enum 호환을 위해 `mask`로 매핑한다.
 - 기존 `/v1/jobs` API 브리지는 유지하고, core orchestrator wiring을 별도로 닫았다.
+- 현재 cloud 경로에는 두 세션 입력 형태가 공존한다.
+  - HTTP API 경로: raw `Authorization` 헤더 입력 -> 내부에서 `service_session_key`로 정규화
+  - direct runner 경로: `service_session_key`를 runtime context에 직접 주입
 
 ### 9. Container Bootstrap
 
@@ -554,6 +571,8 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - 규칙 기반 planner와 nanobanana inpaint composite 실행
 - transaction-scoped artifact 저장 경로
 - nanobanana failure snapshot 보존
+- multipart upload를 artifact descriptor로 정규화
+- `document_patch` 응답 생성
 
 현재 상태:
 
