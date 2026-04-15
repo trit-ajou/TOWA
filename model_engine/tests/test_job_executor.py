@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -12,6 +13,8 @@ from model_engine.api.jobs import (
     ModelJobManager,
     ModelJobStatus,
     OrchestratedJobExecutor,
+    PlaceholderJobExecutor,
+    submission_from_api_payload,
 )
 from model_engine.contracts.artifacts import ArtifactDescriptor
 from model_engine.contracts.document_ir import DocumentIR
@@ -68,6 +71,26 @@ class OrchestratedJobExecutorTests(unittest.TestCase):
     def test_model_job_manager_defaults_to_orchestrated_executor(self) -> None:
         manager = ModelJobManager()
         self.assertIsInstance(manager._executor, OrchestratedJobExecutor)
+
+    def test_saas_job_persists_service_session_key_for_background_billing(self) -> None:
+        service_client = _RecordingServiceClient()
+        manager = ModelJobManager(
+            executor=PlaceholderJobExecutor(sleep_seconds=0.0),
+            service_client_factory=lambda: service_client,
+        )
+        submission = submission_from_api_payload(
+            _payload_object(_job_payload(operation_kind="translate", mode="saas"))
+        )
+
+        status_code, response = manager.create_job(
+            submission,
+            authorization="Bearer demo-session",
+        )
+
+        self.assertEqual(202, status_code)
+        record = manager._jobs_by_id[response["job_id"]]
+        self.assertEqual("demo-session", record.runtime_context.service_session_key)
+        self.assertEqual("Bearer demo-session", service_client.calls[0]["authorization"])
 
 
 def _job_request(workspace_dir: Path, *, operation_kind: str) -> JobExecutionRequest:
@@ -129,6 +152,90 @@ def _fake_translate_blocks(blocks, config: dict[str, object], api_key: str) -> l
     _ = config
     _ = api_key
     return [{"block_id": block.block_id, "translated_text": "세로쓰기 텍스트"} for block in blocks]
+
+
+class _RecordingServiceClient:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, object]] = []
+
+    def post(
+        self,
+        path: str,
+        *,
+        body: dict[str, object] | None = None,
+        authorization: str | None = None,
+    ) -> dict[str, object]:
+        self.calls.append(
+            {
+                "path": path,
+                "body": dict(body or {}),
+                "authorization": authorization,
+            }
+        )
+        if path == "/usage/jobs":
+            return {
+                "job_id": "svc_job_1",
+                "status": "authorized",
+                "reserved_units": 20,
+                "hold_expires_at": "2026-03-25T01:00:00Z",
+            }
+        return {"status": "ok"}
+
+
+def _job_payload(*, operation_kind: str, mode: str) -> dict[str, object]:
+    return {
+        "schema_version": "v1",
+        "idempotency_key": f"project:proj-1:page:001:op:{operation_kind}:v:1",
+        "operation_kind": operation_kind,
+        "request_ref": "project/proj-1/page/001",
+        "document": {
+            "id": "doc_page_001",
+            "name": "page-001",
+            "width": 800,
+            "height": 1200,
+            "layers": [
+                {
+                    "id": "layer_original",
+                    "name": "Original",
+                    "type": "graphic",
+                    "left": 0,
+                    "top": 0,
+                    "width": 800,
+                    "height": 1200,
+                    "source_ref": "artifact://page-original",
+                }
+            ],
+            "text_blocks": [],
+            "stage_meta": {},
+        },
+        "artifacts": {
+            "artifact://page-original": {
+                "artifact_ref": "artifact://page-original",
+                "kind": "bitmap",
+                "media_type": "image/png",
+                "uri": "https://storage.example.test/page-001.png",
+            }
+        },
+        "runtime_context": {
+            "mode": mode,
+            "workspace_uri": "workspace://project/proj-1/page/001",
+            "requested_by": "user@example.com",
+            "target_regions": [],
+            "selected_layer_ids": [],
+        },
+    }
+
+
+def _payload_object(payload: dict[str, object]) -> SimpleNamespace:
+    return SimpleNamespace(
+        schema_version=payload["schema_version"],
+        idempotency_key=payload["idempotency_key"],
+        operation_kind=payload["operation_kind"],
+        request_ref=payload["request_ref"],
+        document=payload["document"],
+        artifacts=payload["artifacts"],
+        runtime_context=payload["runtime_context"],
+    )
 
 
 if __name__ == "__main__":

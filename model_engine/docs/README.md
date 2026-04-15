@@ -15,9 +15,10 @@
 `model_engine` 문서는 `docs/` 아래에 모은다.
 
 - `SPEC.md`: 제품/엔진 간 역할과 장기 아키텍처
-- `API_CONTRACT.md`: 현재 서비스 엔진과의 외부 wire contract
+- `../docs/http-contract.md`: 현재 구현 기준 canonical HTTP contract
 - `README.md`(이 문서): `model_engine` 내부 구현 명세
 - `TROUBLESHOOTING.md`: OCR/번역 실행 중 관측한 문제와 튜닝 기록
+- `SESSION_AND_CREDENTIAL_IMPLEMENTATION.md`: cloud/standalone 기준 세션, usage, provider credential 책임과 구현 포인트
 
 즉, 앞으로 `model_engine` 구현 판단은 이 README를 직접 기준으로 한다.
 

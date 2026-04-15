@@ -243,6 +243,7 @@ class ModelJobManager:
         authorization: str | None = None,
     ) -> tuple[int, dict[str, Any]]:
         self._validate_submission(submission, authorization=authorization)
+        submission = self._normalized_submission(submission, authorization=authorization)
         owner_scope = self._owner_scope(submission, authorization=authorization)
         idempotency_scope = (owner_scope, submission.idempotency_key)
 
@@ -254,7 +255,7 @@ class ModelJobManager:
                 status_code = 200 if existing.status in TERMINAL_JOB_STATUSES else 202
                 return status_code, self._create_response(existing)
 
-        usage_job_id = self._authorize_usage_hold(submission, authorization=authorization)
+        usage_job_id = self._authorize_usage_hold(submission)
         record = ModelJobRecord(
             job_id=f"job_{uuid4().hex}",
             pipeline_id=f"pipe_{uuid4().hex}",
@@ -283,7 +284,7 @@ class ModelJobManager:
 
         Thread(
             target=self._run_job,
-            args=(record.job_id, authorization),
+            args=(record.job_id,),
             daemon=True,
         ).start()
         return 202, create_response
@@ -300,7 +301,7 @@ class ModelJobManager:
             self._assert_job_read_access(record, authorization=authorization)
             return self._detail_response(record)
 
-    def _run_job(self, job_id: str, authorization: str | None) -> None:
+    def _run_job(self, job_id: str) -> None:
         with self._lock:
             record = self._jobs_by_id[job_id]
             record.status = ModelJobStatus.RUNNING
@@ -332,7 +333,6 @@ class ModelJobManager:
 
         billing_error = self._finalize_billing(
             record=record,
-            authorization=authorization,
             result=result,
         )
         if billing_error is not None:
@@ -352,13 +352,13 @@ class ModelJobManager:
         self,
         *,
         record: ModelJobRecord,
-        authorization: str | None,
         result: JobExecutionResult,
     ) -> dict[str, Any] | None:
         if record.runtime_context.mode is not ExecutionMode.SAAS or record.usage_job_id is None:
             return None
 
         client = self._require_service_client()
+        authorization = _service_authorization(record.runtime_context)
         try:
             if result.status in {ModelJobStatus.SUCCEEDED, ModelJobStatus.PARTIAL}:
                 client.post(
@@ -471,16 +471,29 @@ class ModelJobManager:
         requested_by = (submission.runtime_context.requested_by or "").strip()
         return f"local:{requested_by}" if requested_by else "local"
 
-    def _authorize_usage_hold(
+    def _normalized_submission(
         self,
         submission: JobSubmission,
         *,
         authorization: str | None,
+    ) -> JobSubmission:
+        if submission.runtime_context.mode is not ExecutionMode.SAAS:
+            return submission
+
+        service_session_key = _service_session_key_from_authorization(authorization)
+        runtime_context = submission.runtime_context
+        runtime_context.service_session_key = service_session_key
+        return submission
+
+    def _authorize_usage_hold(
+        self,
+        submission: JobSubmission,
     ) -> str | None:
         if submission.runtime_context.mode is not ExecutionMode.SAAS:
             return None
 
         client = self._require_service_client()
+        authorization = _service_authorization(submission.runtime_context)
         payload = client.post(
             "/usage/jobs",
             body={
@@ -656,6 +669,32 @@ def _request_fingerprint(payload: dict[str, Any]) -> str:
 def _saas_owner_scope(authorization: str) -> str:
     normalized = authorization.strip()
     return f"saas:{hashlib.sha256(normalized.encode('utf-8')).hexdigest()}"
+
+
+def _service_session_key_from_authorization(authorization: str | None) -> str:
+    normalized = (authorization or "").strip()
+    if not normalized:
+        raise ModelJobError(
+            status_code=401,
+            code="session_key_required",
+            message="Authorization header is required for saas mode",
+        )
+
+    scheme, _, token = normalized.partition(" ")
+    if scheme.lower() != "bearer" or not token.strip():
+        raise ModelJobError(
+            status_code=401,
+            code="session_key_required",
+            message="Authorization header is required for saas mode",
+        )
+    return token.strip()
+
+
+def _service_authorization(runtime_context: StageRuntimeContext) -> str:
+    session_key = (runtime_context.service_session_key or "").strip()
+    if not session_key:
+        raise ValueError("runtime_context.service_session_key is required for saas mode")
+    return f"Bearer {session_key}"
 
 
 def _parse_datetime(value: Any) -> Optional[datetime]:

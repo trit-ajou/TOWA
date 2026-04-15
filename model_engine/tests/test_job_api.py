@@ -13,7 +13,9 @@ from model_engine.api.jobs import (
     ModelJobManager,
     ModelJobStatus,
     PlaceholderJobExecutor,
+    submission_from_api_payload,
 )
+from model_engine.api.schemas import ModelJobCreateRequest
 from model_engine.api.service_bridge import ServiceEngineHTTPError
 
 
@@ -77,6 +79,27 @@ class ModelJobAPITests(unittest.TestCase):
             headers={"Authorization": "Bearer demo-session"},
         )
         self.assertEqual(200, saas_detail.status_code)
+
+    def test_saas_job_persists_service_session_key_in_runtime_context(self) -> None:
+        fake_service = _FakeServiceClient()
+        manager = ModelJobManager(
+            executor=PlaceholderJobExecutor(sleep_seconds=0.0),
+            service_client_factory=lambda: fake_service,
+        )
+
+        submission = submission_from_api_payload(
+            ModelJobCreateRequest.model_validate(
+                _job_payload(operation_kind="translate", mode="saas")
+            )
+        )
+        status_code, response = manager.create_job(
+            submission,
+            authorization="Bearer demo-session",
+        )
+
+        self.assertEqual(202, status_code)
+        record = manager._jobs_by_id[response["job_id"]]
+        self.assertEqual("demo-session", record.runtime_context.service_session_key)
 
     def test_detect_jobs_are_mapped_to_mask_usage_for_service_engine(self) -> None:
         fake_service = _FakeServiceClient()
