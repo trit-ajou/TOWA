@@ -4,11 +4,12 @@ FastAPI 기반 `service_engine` 초안입니다.
 
 문서:
 
-- 문서 허브: [../docs/README.md](../docs/README.md)
 - 현재 wire contract: [../docs/http-contract.md](../docs/http-contract.md)
 - 현재 경계/비목표: [../docs/service-engine-boundary.md](../docs/service-engine-boundary.md)
+- project/page storage boundary: [../docs/project-page-storage-boundary.md](../docs/project-page-storage-boundary.md)
+- UI/model 추상 경계: [../docs/ui-model-abstract-boundary.md](../docs/ui-model-abstract-boundary.md)
 
-현재 범위:
+현재 구현 범위:
 
 - `POST /auth/dev/login`
 - `GET /auth/me`
@@ -16,6 +17,12 @@ FastAPI 기반 `service_engine` 초안입니다.
 - `POST /usage/jobs/{job_id}/capture`
 - `POST /usage/jobs/{job_id}/release`
 - `GET /usage/jobs/{job_id}`
+
+합의된 v1 target boundary:
+
+- cloud `project` metadata persistence
+- cloud `page summary` 조회
+- cloud `page snapshot` save/load/delete
 
 ## Python Environment
 

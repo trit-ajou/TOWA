@@ -1,31 +1,43 @@
-# HTTP Contract v0
+# HTTP Contract v1
 
 현재 `service_engine` 브랜치의 canonical HTTP contract 문서다.
-목표는 `UI engine`, `service engine`, `model engine` 개발자가 같은 wire contract를 보고 구현을 맞출 수 있게 하는 것이다.
+목표는 `UI engine`, `service engine`, `model engine` 개발자가 같은 wire contract와 책임 경계를 보고 구현을 맞출 수 있게 하는 것이다.
 
-이 문서는 현재 구현되어 있는 contract만 다룬다.
-설계 경계와 비목표는 [service-engine-boundary.md](service-engine-boundary.md)에서 함께 본다.
+관련 문서:
+
+- [service-engine-boundary.md](service-engine-boundary.md)
+- [project-page-storage-boundary.md](project-page-storage-boundary.md)
+- [ui-model-abstract-boundary.md](ui-model-abstract-boundary.md)
+
+주의:
+
+- `auth`와 `usage`는 현재 구현된 contract다.
+- `project/page snapshot` API는 이 브랜치에서 합의된 v1 target contract다.
+- `UI -> model`, `model -> UI`의 상세 payload/result shape는 이번 단계에서 canonical wire contract로 고정하지 않는다.
 
 ## Scope
 
 - 전송 방식: `HTTP REST`
-- payload: `application/json; charset=utf-8`
+- 기본 payload:
+  - 작은 메타데이터: `application/json; charset=utf-8`
+  - page snapshot: `multipart/form-data`
 - 공통 actor:
-  - `UI engine`: 사용자 진입점
-  - `service engine`: 세션, credit, usage authority
+  - `UI engine`: 사용자 진입점, project/page snapshot save/load 주체
+  - `service engine`: 세션, credit, usage, cloud project/page snapshot authority
   - `model engine`: AI 작업 실행 주체
 - 제외:
   - websocket, SSE streaming
   - cloud launch, exchange, heartbeat
-  - object storage 상세 설계
+  - export 포맷 상세
   - provider API 세부 프로토콜
+  - `UI <-> model` 상세 payload/result shape
 
 ## Deployment Modes
 
 ### Cloud
 
-- `UI -> service`: 로그인, 세션 확인
-- `UI -> model`: 작업 요청
+- `UI -> service`: 로그인, 세션 확인, project/page summary 조회, page snapshot 저장/로드
+- `UI -> model`: AI 작업 요청
 - `model -> service`: hold, capture, release
 
 UI의 `deployment mode=cloud`는 model의 `runtime_context.mode=saas`에 대응한다.
@@ -34,6 +46,7 @@ UI의 `deployment mode=cloud`는 model의 `runtime_context.mode=saas`에 대응�
 
 - `UI -> model`만 필수다
 - `service engine`은 없어도 된다
+- project/page snapshot 저장은 UI 내부 IndexedDB가 담당한다
 - 개인 API 키 또는 로컬 모델 경로는 `model engine` 내부 정책으로 처리한다
 
 UI의 `deployment mode=standalone`은 model의 `runtime_context.mode=local`에 대응한다.
@@ -43,6 +56,8 @@ UI의 `deployment mode=standalone`은 model의 `runtime_context.mode=local`에 �
 | Caller | Target | Endpoints |
 | --- | --- | --- |
 | `UI engine` | `service engine` | `POST /auth/dev/login`, `GET /auth/me` |
+| `UI engine` | `service engine` | `POST /api/v1/projects`, `GET /api/v1/projects`, `GET /api/v1/projects/{project_id}`, `PATCH /api/v1/projects/{project_id}` |
+| `UI engine` | `service engine` | `GET /api/v1/projects/{project_id}/pages`, `POST /api/v1/projects/{project_id}/pages`, `GET /api/v1/pages/{page_id}/snapshot`, `PUT /api/v1/pages/{page_id}/snapshot`, `DELETE /api/v1/pages/{page_id}` |
 | `model engine` | `service engine` | `POST /usage/jobs`, `POST /usage/jobs/{job_id}/capture`, `POST /usage/jobs/{job_id}/release`, `GET /usage/jobs/{job_id}` |
 | `UI engine` | `model engine` | `GET /healthz`, `POST /v1/jobs`, `GET /v1/jobs/{job_id}` |
 | smoke/debug caller | `model engine` bridge | `GET /bridge/service/healthz`, `GET /bridge/service/auth/me`, `POST /bridge/service/usage/jobs`, `POST /bridge/service/usage/jobs/{job_id}/capture`, `POST /bridge/service/usage/jobs/{job_id}/release`, `GET /bridge/service/usage/jobs/{job_id}` |
@@ -146,6 +161,10 @@ project:{project_id}:page:{page_id}:op:{operation_kind}:v:{attempt_or_revision}
   - `usage_conflict`
   - `missing_credit_account`
   - `concurrent_update_conflict`
+  - `project_not_found`
+  - `page_not_found`
+  - `project_conflict`
+  - `page_conflict`
 - model 공통:
   - `model_validation_error`
   - `model_job_not_found`
@@ -153,40 +172,17 @@ project:{project_id}:page:{page_id}:op:{operation_kind}:v:{attempt_or_revision}
   - `model_stage_failed`
   - `service_engine_unreachable`
 
-### Large Payload Rule
+### Large Payload Rules
 
-큰 비트맵을 JSON 본문에 base64로 직접 넣는 것은 현재 inter-engine 계약으로 채택하지 않는다.
-
-규칙:
-
-- 작은 메타데이터는 JSON 본문
-- 큰 이미지, 마스크, OCR raw, 결과물은 artifact descriptor로 전달
-- descriptor는 `uri`로 실제 payload 위치를 가리킨다
-
-artifact descriptor 예시:
-
-```json
-{
-  "artifact_ref": "artifact://page-original",
-  "kind": "bitmap",
-  "media_type": "image/png",
-  "uri": "https://storage.example.test/page-001.png",
-  "width": 1600,
-  "height": 2400,
-  "byte_size": 2481301,
-  "checksum": "sha256:...",
-  "producer_stage": "upload"
-}
-```
+- 큰 비트맵을 inter-engine JSON 본문에 base64로 직접 넣는 것은 채택하지 않는다.
+- service의 page snapshot save/load는 예외적으로 `multipart`를 사용한다.
+- model 관련 큰 결과물 전달 방식은 [ui-model-abstract-boundary.md](ui-model-abstract-boundary.md)에 적은 추상 규칙만 고정하고, 구체 wire shape는 미룬다.
 
 ## Service Engine Endpoints
 
-### `POST /auth/dev/login`
+### Auth
 
-용도:
-
-- 개발용 로그인
-- 신규 유저와 credit account 자동 생성
+#### `POST /auth/dev/login`
 
 요청:
 
@@ -221,7 +217,7 @@ artifact descriptor 예시:
 - 기존 유저면 새 `session_key`를 다시 발급한다
 - `nickname`이 들어오면 기존 유저 닉네임도 갱신한다
 
-### `GET /auth/me`
+#### `GET /auth/me`
 
 헤더:
 
@@ -245,26 +241,22 @@ Authorization: Bearer <session_key>
 }
 ```
 
-### `POST /usage/jobs`
+### Usage
+
+#### `POST /usage/jobs`
 
 호출자:
 
 - `model engine`
 
-헤더:
-
-```http
-Authorization: Bearer <session_key>
-```
-
 요청:
 
 ```json
 {
-  "idempotency_key": "page-1-translate",
-  "operation_kind": "translate",
-  "request_ref": "page-1",
-  "estimated_units": 20
+  "idempotency_key": "project:proj-1:page:001:op:detect:v:1",
+  "operation_kind": "mask",
+  "request_ref": "project/proj-1/page/001",
+  "estimated_units": 5
 }
 ```
 
@@ -274,8 +266,8 @@ Authorization: Bearer <session_key>
 {
   "job_id": "uuid",
   "status": "authorized",
-  "reserved_units": 20,
-  "hold_expires_at": "2026-03-25T01:00:00Z"
+  "reserved_units": 5,
+  "hold_expires_at": "2026-03-29T07:00:00Z"
 }
 ```
 
@@ -288,36 +280,11 @@ Authorization: Bearer <session_key>
 - 사용 가능한 credit이 부족하면 `409 insufficient_credits`다
 - stale hold 정리는 authenticated user 범위에서만 수행한다
 
-### `POST /usage/jobs/{job_id}/capture`
+#### `POST /usage/jobs/{job_id}/capture`
 
-용도:
+요청 본문은 빈 JSON 객체 `{}` 를 사용한다.
 
-- 성공한 작업의 hold 확정 차감
-
-요청:
-
-```json
-{}
-```
-
-응답:
-
-```json
-{
-  "id": "uuid",
-  "operation_kind": "translate",
-  "request_ref": "page-1",
-  "estimated_units": 20,
-  "status": "succeeded",
-  "reserved_units": 20,
-  "hold_status": "captured",
-  "hold_expires_at": "2026-03-25T01:00:00Z",
-  "error_code": null,
-  "error_detail": null,
-  "requested_at": "2026-03-25T00:30:00Z",
-  "finished_at": "2026-03-25T00:31:00Z"
-}
-```
+응답은 usage job detail이며, 성공 시 상태는 `succeeded`다.
 
 규칙:
 
@@ -326,39 +293,18 @@ Authorization: Bearer <session_key>
 - 이미 `failed`인 job에 capture하면 `409 usage_conflict`다
 - hold가 만료된 뒤 capture하면 먼저 release 처리되고 `409 usage_conflict`를 반환한다
 
-### `POST /usage/jobs/{job_id}/release`
-
-용도:
-
-- 실패한 작업의 hold 해제
+#### `POST /usage/jobs/{job_id}/release`
 
 요청:
 
 ```json
 {
-  "error_code": "upstream_error",
-  "reason": "timeout"
+  "error_code": "model_stage_failed",
+  "reason": "placeholder executor failed"
 }
 ```
 
-응답:
-
-```json
-{
-  "id": "uuid",
-  "operation_kind": "translate",
-  "request_ref": "page-1",
-  "estimated_units": 20,
-  "status": "failed",
-  "reserved_units": 20,
-  "hold_status": "released",
-  "hold_expires_at": "2026-03-25T01:00:00Z",
-  "error_code": "upstream_error",
-  "error_detail": "timeout",
-  "requested_at": "2026-03-25T00:30:00Z",
-  "finished_at": "2026-03-25T00:31:00Z"
-}
-```
+응답은 usage job detail이며, 성공 시 상태는 `failed`다.
 
 규칙:
 
@@ -367,17 +313,245 @@ Authorization: Bearer <session_key>
 - 이미 `failed`인 job에 다시 release하면 같은 실패 상태를 반환한다
 - 이미 `succeeded`인 job에 release하면 `409 usage_conflict`다
 
-### `GET /usage/jobs/{job_id}`
+#### `GET /usage/jobs/{job_id}`
 
-용도:
+응답은 usage job detail이며 현재 세션 유저 소유 job만 조회 가능하다.
 
-- 개별 job 상태 조회
+규칙:
+
+- 다른 유저 job이면 `404 usage_job_not_found`다
+
+### Project Metadata
+
+서비스는 project 메타에서 `config`를 opaque JSON으로 저장한다.
+`page_count`는 서버가 pages 개수 기준으로 산출하는 read-only 필드다.
+
+#### Project Object
+
+```json
+{
+  "id": "proj_001",
+  "name": "원피스 1122화",
+  "source_lang": "ja",
+  "target_lang": "ko",
+  "page_count": 19,
+  "status": "in-progress",
+  "folder": "주간연재/점프",
+  "config": {
+    "auto_detect": true,
+    "auto_inpaint": true,
+    "auto_translate": false,
+    "inference_mode": "cloud"
+  },
+  "created_at": "2026-04-15T00:00:00Z",
+  "updated_at": "2026-04-15T00:00:00Z"
+}
+```
+
+#### `POST /api/v1/projects`
+
+요청:
+
+```json
+{
+  "id": "proj_001",
+  "name": "원피스 1122화",
+  "source_lang": "ja",
+  "target_lang": "ko",
+  "status": "todo",
+  "folder": "주간연재/점프",
+  "config": {
+    "auto_detect": true,
+    "auto_inpaint": true,
+    "auto_translate": false,
+    "inference_mode": "cloud"
+  }
+}
+```
+
+응답은 Project Object다.
+
+규칙:
+
+- client-generated `id`를 사용한다
+- 같은 유저가 같은 `id`를 다시 만들면 `409 project_conflict`다
+- `page_count`는 요청에 받지 않는다
+
+#### `GET /api/v1/projects`
 
 응답:
 
-- `UsageJobResponse`
-- 현재 세션 유저 소유 job만 조회 가능하다
-- 다른 유저 job이면 `404 usage_job_not_found`다
+```json
+{
+  "items": [Project Object...]
+}
+```
+
+#### `GET /api/v1/projects/{project_id}`
+
+응답은 Project Object다.
+
+#### `PATCH /api/v1/projects/{project_id}`
+
+부분 갱신 가능 필드:
+
+- `name`
+- `source_lang`
+- `target_lang`
+- `status`
+- `folder`
+- `config`
+
+응답은 갱신된 Project Object다.
+
+### Page Summary
+
+프로젝트 화면용 page 목록은 full page snapshot이 아니라 summary만 제공한다.
+
+#### Page Summary Object
+
+```json
+{
+  "id": "page_001",
+  "project_id": "proj_001",
+  "index": 1,
+  "status": "waiting",
+  "thumbnail_url": "https://storage.example.test/thumbs/page_001.webp",
+  "updated_at": "2026-04-15T00:00:00Z"
+}
+```
+
+#### `GET /api/v1/projects/{project_id}/pages`
+
+응답:
+
+```json
+{
+  "items": [Page Summary Object...]
+}
+```
+
+규칙:
+
+- project view는 이 API만 사용한다
+- full snapshot과 `text_blocks` 전체 목록은 포함하지 않는다
+- `thumbnail_url`은 fetch 가능한 opaque URL이며 URL shape 자체는 v1에서 고정하지 않는다
+
+### Page Snapshot
+
+page save/load의 authoritative transport는 `page snapshot`이다.
+
+request part names:
+
+- `metadata`: `application/json`
+- `original_image`: `image/*`
+- `layer_blob`: `application/octet-stream`
+- `thumbnail`: `image/*`
+
+full replace 규칙:
+
+- `POST`와 `PUT` 모두 complete snapshot을 요구한다
+- partial update는 지원하지 않는다
+- 저장 정책은 `last-write-wins`다
+
+#### TextBlock Object
+
+```json
+{
+  "id": "tb_001",
+  "page_id": "page_001",
+  "bbox": {
+    "x": 12,
+    "y": 24,
+    "width": 180,
+    "height": 56
+  },
+  "original": "おはようございます！",
+  "translated": "좋은 아침이에요!",
+  "font": "Noto Sans KR",
+  "font_size": 14,
+  "color": "#000000",
+  "status": "translated"
+}
+```
+
+#### Page Snapshot Metadata Object
+
+```json
+{
+  "page": {
+    "id": "page_001",
+    "project_id": "proj_001",
+    "index": 1,
+    "status": "in-progress",
+    "text_blocks": [TextBlock Object...]
+  }
+}
+```
+
+규칙:
+
+- `original_image`는 mutable current page asset이다
+- `layer_blob`은 bitmappery `DocumentFactory.toBlob()` 결과를 그대로 저장하는 opaque binary다
+- service는 `layer_blob` 내부를 해석하지 않는다
+- `thumbnail`은 project/page list 최적화를 위한 current preview다
+
+#### `POST /api/v1/projects/{project_id}/pages`
+
+요청:
+
+- `Content-Type: multipart/form-data`
+- 위의 네 part를 모두 포함한다
+
+응답:
+
+```json
+{
+  "page": Page Summary Object
+}
+```
+
+규칙:
+
+- `metadata.page.project_id`는 path의 `project_id`와 같아야 한다
+- 같은 유저/프로젝트 안에서 page `id`가 중복되면 `409 page_conflict`다
+
+#### `GET /api/v1/pages/{page_id}/snapshot`
+
+응답:
+
+- `Content-Type: multipart/mixed`
+- part names는 요청과 동일하다:
+  - `metadata`
+  - `original_image`
+  - `layer_blob`
+  - `thumbnail`
+
+#### `PUT /api/v1/pages/{page_id}/snapshot`
+
+요청:
+
+- `Content-Type: multipart/form-data`
+- `POST /api/v1/projects/{project_id}/pages`와 같은 complete snapshot
+
+응답:
+
+```json
+{
+  "page": Page Summary Object
+}
+```
+
+#### `DELETE /api/v1/pages/{page_id}`
+
+응답:
+
+```json
+{
+  "deleted": true,
+  "page_id": "page_001"
+}
+```
 
 ## Service Engine State Rules
 
@@ -407,11 +581,26 @@ Authorization: Bearer <session_key>
 
 ## Service Engine Invariants
 
-- `service engine`은 이미지, OCR 원문, 생성 결과, provider secret을 저장하지 않는다
+- `service engine`은 cloud 모드에서 project metadata와 page snapshot binary를 저장할 수 있다
+- `service engine`은 bitmappery `layer_blob`, OCR 의미, 생성 결과 의미를 해석하지 않는다
+- `service engine`은 provider secret을 저장하거나 소유하지 않는다
 - `service engine`은 `estimated_units`의 business authority가 아니라 세션, 잔액, 상태 authority다
 - capture, release는 같은 `job_id`에 대해 idempotent 하게 동작해야 한다
 - `credit_ledger`는 capture 때만 증가한다
 - release는 ledger entry를 만들지 않는다
+
+## UI -> Model Boundary
+
+이번 단계에서 canonical하게 고정하는 것은 아래뿐이다.
+
+- UI는 model에 직접 AI 작업을 요청한다
+- 모든 AI 작업은 비동기 job contract를 사용한다
+- UI는 현재 메모리 상태를 기준으로 AI 입력을 구성한다
+- AI 결과를 받은 뒤 최종 page snapshot 저장은 UI가 담당한다
+- model이 service와 직접 통신하는 범위는 auth/usage로 제한한다
+
+세부 payload/result shape, binary handoff, artifact transport는
+[ui-model-abstract-boundary.md](ui-model-abstract-boundary.md)에서 deferred decision으로 관리한다.
 
 ## Model Engine Endpoints
 
@@ -432,8 +621,13 @@ Authorization: Bearer <session_key>
 의미:
 
 - `healthz`: model 컨테이너 헬스체크
-- `/v1/jobs`: placeholder job create, status API
+- `/v1/jobs`: placeholder async job create, status API
 - `bridge/service/*`: service contract pass-through smoke test
+
+주의:
+
+- `/v1/jobs`의 상세 request/response body shape는 현재 repo reference implementation이다
+- 이 shape 자체를 이번 단계의 canonical cross-engine contract로 고정하지 않는다
 
 ### `GET /healthz`
 
@@ -446,6 +640,11 @@ Authorization: Bearer <session_key>
 ```
 
 ### `POST /v1/jobs`
+
+주의:
+
+- 아래 JSON 예시는 현재 reference implementation이다
+- `UI <-> model` canonical boundary로 고정하는 것은 endpoint 존재가 아니라 async job invariant와 auth/usage 책임 분리다
 
 ```http
 POST /v1/jobs
@@ -538,6 +737,11 @@ Content-Type: application/json
 - `pipeline`은 현재 `422 model_validation_error`다
 
 ### `GET /v1/jobs/{job_id}`
+
+주의:
+
+- 아래 응답 shape도 현재 reference implementation이다
+- 최종 canonical cross-engine result schema는 UI/model 팀 합의 후 별도 문서화한다
 
 ```http
 GET /v1/jobs/{job_id}
@@ -678,14 +882,14 @@ standalone flow:
 - service error envelope shape
 - usage hold, capture, release 흐름
 - model bridge의 service pass-through 동작
-- `UI -> model`의 `POST /v1/jobs`, `GET /v1/jobs/{job_id}` 기본 계약
+- `UI -> model` direct async job boundary와 auth/usage 책임 분리
 - browser URL과 compose internal URL 구분
 
 ## What Still Needs Implementation
 
 - `GET /v1/jobs/{job_id}` persistent status store
 - 번역 pipeline의 실제 stage 구현
-- 대용량 artifact 전달용 storage 정책
+- model-side artifact transport와 최종 cross-engine result schema
 - `pipeline` operation의 실제 지원
 
 ## Out Of Scope
@@ -695,4 +899,3 @@ standalone flow:
 - 별도 runtime session이나 reconnect 정책
 - 외부 결제 시스템
 - cloud launch, exchange, heartbeat
-
