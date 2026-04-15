@@ -10,10 +10,9 @@
 
 ## Docs
 - 프로젝트 전반에 적용되는 중요한 규칙/방법론/접근법/리팩토링을 적용할 경우 `docs/` 디렉토리에 간단히 문서화하고, 그 문서에 대한 설명을 아래 목록에 작성하세요:
-  - [docs/README.md](docs/README.md): 현재 브랜치 문서 허브입니다. canonical 문서의 위치와 읽는 순서를 정리합니다.
+  - [docs/example.md](docs/example.md): 예시입니다. 이 문서는 존재하지 않습니다. *이 목록은 에이전트가 수정할 수 있습니다.*
   - [docs/http-contract.md](docs/http-contract.md): 현재 구현 기준 단일 HTTP 계약 문서입니다. `UI engine`, `service engine`, `model engine` 간 wire contract를 함께 정의합니다.
   - [docs/service-engine-boundary.md](docs/service-engine-boundary.md): `service_engine`의 책임 경계, 비목표, 고정된 v0 설계 선택을 정리합니다.
-  - [docs/example.md](docs/example.md): 예시입니다. 이 문서는 존재하지 않습니다. *이 목록은 에이전트가 수정할 수 있습니다.*
 
 ### 계획 적용 시 문서 작성 요령
 - 계획을 적용하는 턴을 시작할 때는 전체 계획을 **그대로** `임시 계획 문서`로 기록합니다.
