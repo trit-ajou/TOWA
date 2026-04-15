@@ -8,11 +8,13 @@
 - [service-engine-boundary.md](service-engine-boundary.md)
 - [project-page-storage-boundary.md](project-page-storage-boundary.md)
 - [ui-model-abstract-boundary.md](ui-model-abstract-boundary.md)
+- [ui-model-implementation.md](ui-model-implementation.md)
 
 주의:
 
 - `auth`, `usage`, `project/page snapshot`은 현재 구현된 contract다.
 - `UI -> model`, `model -> UI`의 상세 payload/result shape는 이번 단계에서 canonical wire contract로 고정하지 않는다.
+- 현재 저장소 구현을 UI 팀이 맞추기 위한 guide는 [ui-model-implementation.md](ui-model-implementation.md)에 정리한다.
 
 ## Scope
 
