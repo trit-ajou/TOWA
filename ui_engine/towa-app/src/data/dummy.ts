@@ -1,4 +1,7 @@
-import type { FileAdapter, ProjectRecord, PageRecord } from '@/file-adapter'
+import type { FileAdapter, ProjectRecord } from '@/file-adapter'
+import type { PageSnapshotMeta, PageSnapshot } from '@/file-adapter/contracts'
+import type { PageStatus } from '@/types/page'
+import type { TextBlock } from '@/types/text-block'
 // @ts-expect-error bitmappery JS module
 import DocumentFactory from '@bitmappery/factories/document-factory'
 // @ts-expect-error bitmappery JS module
@@ -103,55 +106,42 @@ const seedProjects: ProjectRecord[] = [
   },
 ]
 
-function createSeedPages(projectId: string, count: number): PageRecord[] {
-  const statuses: PageRecord['status'][] = ['done', 'in-progress', 'ai-processing', 'waiting']
-
-  return Array.from({ length: count }, (_, i) => {
-    const pageId = `${projectId}-page-${i + 1}`
-    const status = statuses[Math.min(i, statuses.length - 1)]
-
-    return {
-      id: pageId,
-      projectId,
-      index: i + 1,
-      status,
-      textBlocks: [
-        {
-          id: `${pageId}-tb-1`,
-          pageId,
-          bbox: { x: 50, y: 80, width: 200, height: 60 },
-          original: 'おはようございます！',
-          translated: status === 'waiting' ? '' : '좋은 아침이에요!',
-          font: 'Noto Sans KR',
-          fontSize: 14,
-          color: '#000000',
-          status: status === 'waiting' ? 'detected' : 'translated',
-        },
-        {
-          id: `${pageId}-tb-2`,
-          pageId,
-          bbox: { x: 300, y: 150, width: 180, height: 80 },
-          original: 'なんだと？！信じられない！',
-          translated: status === 'waiting' ? '' : '뭐라고?! 믿을 수 없어!',
-          font: 'Noto Sans KR',
-          fontSize: 16,
-          color: '#000000',
-          status: status === 'waiting' ? 'detected' : 'edited',
-        },
-        {
-          id: `${pageId}-tb-3`,
-          pageId,
-          bbox: { x: 100, y: 400, width: 220, height: 50 },
-          original: 'ここで待ってて',
-          translated: status === 'waiting' ? '' : '여기서 기다려',
-          font: 'Noto Sans KR',
-          fontSize: 13,
-          color: '#000000',
-          status: status === 'waiting' ? 'detected' : 'translated',
-        },
-      ],
-    }
-  })
+function createSeedTextBlocks(pageId: string, status: PageStatus): TextBlock[] {
+  return [
+    {
+      id: `${pageId}-tb-1`,
+      pageId,
+      bbox: { x: 50, y: 80, width: 200, height: 60 },
+      original: 'おはようございます！',
+      translated: status === 'waiting' ? '' : '좋은 아침이에요!',
+      font: 'Noto Sans KR',
+      fontSize: 14,
+      color: '#000000',
+      status: status === 'waiting' ? 'detected' : 'translated',
+    },
+    {
+      id: `${pageId}-tb-2`,
+      pageId,
+      bbox: { x: 300, y: 150, width: 180, height: 80 },
+      original: 'なんだと？！信じられない！',
+      translated: status === 'waiting' ? '' : '뭐라고?! 믿을 수 없어!',
+      font: 'Noto Sans KR',
+      fontSize: 16,
+      color: '#000000',
+      status: status === 'waiting' ? 'detected' : 'edited',
+    },
+    {
+      id: `${pageId}-tb-3`,
+      pageId,
+      bbox: { x: 100, y: 400, width: 220, height: 50 },
+      original: 'ここで待ってて',
+      translated: status === 'waiting' ? '' : '여기서 기다려',
+      font: 'Noto Sans KR',
+      fontSize: 13,
+      color: '#000000',
+      status: status === 'waiting' ? 'detected' : 'translated',
+    },
+  ]
 }
 
 /**
@@ -218,37 +208,39 @@ const projectThumbnailConfig: Record<string, { text: string; bg: string; fg: str
 export async function seedDummyDataIfEmpty(adapter: FileAdapter): Promise<boolean> {
   const existing = await adapter.listProjects()
   if (existing.length > 0) {
-    // 기존 데이터가 있지만 page-layers가 없으면 (이전 버전 seed) 전체 재생성
-    const firstPageLayers = await adapter.getLayerData('proj-1-page-1')
-    if (firstPageLayers) return false
-    // page-layers 없음 → DB 초기화 후 재생성
+    // 기존 데이터가 있지만 snapshot이 없으면 (이전 버전 seed) 전체 재생성
+    const firstSnapshot = await adapter.getPageSnapshot('proj-1-page-1')
+    if (firstSnapshot) return false
+    // snapshot 없음 → DB 초기화 후 재생성
     for (const p of existing) {
       await adapter.deleteProject(p.id)
     }
   }
 
-  // 프로젝트 저장
-  for (const project of seedProjects) {
-    await adapter.saveProject(project)
+  const statuses: PageStatus[] = ['done', 'in-progress', 'ai-processing', 'waiting']
 
-    // 페이지 저장 + 원본 이미지 + bitmappery 문서 + 썸네일
+  for (const project of seedProjects) {
+    // pageCount를 0으로 시작 (createPage가 increment)
+    await adapter.createProject({ ...project, pageCount: 0 })
+
     const thumbConfig = projectThumbnailConfig[project.id]
     const bg = thumbConfig?.bg ?? '#1a1726'
     const fg = thumbConfig?.fg ?? '#4a4560'
-    const pages = createSeedPages(project.id, project.pageCount)
-    for (const page of pages) {
-      await adapter.savePage(page)
 
-      // 원본 이미지 (800×1200)
+    for (let i = 0; i < project.pageCount; i++) {
+      const pageId = `${project.id}-page-${i + 1}`
+      const status = statuses[Math.min(i, statuses.length - 1)]
+      const textBlocks = createSeedTextBlocks(pageId, status)
+
+      // 원본 이미지 (800x1200)
       const imgBlob = await generatePlaceholderImage(
-        `${project.name}\nPage ${page.index}`, bg, fg, 800, 1200,
+        `${project.name}\nPage ${i + 1}`, bg, fg, 800, 1200,
       )
-      await adapter.saveOriginalImage(page.id, imgBlob)
 
-      // bitmappery 문서 생성 → 직렬화 → page-layers에 저장
+      // bitmappery 문서 생성 → 직렬화 → layerBlob
       const imgCanvas = await blobToCanvas(imgBlob)
       const doc = DocumentFactory.create({
-        name: `page-${page.id}`,
+        name: `page-${pageId}`,
         width: imgCanvas.width,
         height: imgCanvas.height,
         layers: [
@@ -260,12 +252,27 @@ export async function seedDummyDataIfEmpty(adapter: FileAdapter): Promise<boolea
           }),
         ],
       })
-      const docBlob = await DocumentFactory.toBlob(doc)
-      await adapter.saveLayerData(page.id, docBlob)
+      const layerBlob = await DocumentFactory.toBlob(doc)
 
-      // 썸네일 (200×300)
-      const thumbBlob = await generatePlaceholderImage(`P${page.index}`, bg, fg, 200, 300)
-      await adapter.saveThumbnail(page.id, thumbBlob)
+      // 썸네일 (200x300)
+      const thumbnail = await generatePlaceholderImage(`P${i + 1}`, bg, fg, 200, 300)
+
+      const pageMeta: PageSnapshotMeta = {
+        id: pageId,
+        projectId: project.id,
+        index: i + 1, // createPage가 override하지만 논리적 일관성을 위해
+        status,
+        textBlocks,
+      }
+
+      const snapshot: PageSnapshot = {
+        page: pageMeta,
+        originalImage: imgBlob,
+        layerBlob,
+        thumbnail,
+      }
+
+      await adapter.createPage(project.id, snapshot)
     }
   }
 

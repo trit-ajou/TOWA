@@ -3,10 +3,15 @@ import { computed, ref } from 'vue'
 import { useStore } from 'vuex'
 import { useRoute, useRouter } from 'vue-router'
 import type { EditMode } from '@/store/modules/editor'
-import type { Page, PageStatus } from '@/types/page'
+import type { PageStatus } from '@/types/page'
+import type { PageSnapshot } from '@/file-adapter'
 import { useFileAdapter } from '@/composables/useFileAdapter'
 import ProjectDashboard from '@/components/project/ProjectDashboard.vue'
 import PageGrid from '@/components/project/PageGrid.vue'
+// @ts-expect-error bitmappery JS module
+import DocumentFactory from '@bitmappery/factories/document-factory'
+// @ts-expect-error bitmappery JS module
+import LayerFactory from '@bitmappery/factories/layer-factory'
 
 defineOptions({ name: 'ProjectHomeTab' })
 
@@ -79,42 +84,79 @@ function generateThumbnail(file: File, maxW = 200, maxH = 300): Promise<Blob> {
 
 async function addPages(files: File[]) {
   const pid = projectId.value
-  const currentCount = allPages.value.length
 
   for (let i = 0; i < files.length; i++) {
     const file = files[i]
-    const pageIndex = currentCount + i + 1
+    const currentCount = allPages.value.length
+    const pageIndex = currentCount + 1
     const pageId = `${pid}-page-${pageIndex}`
 
-    // 썸네일 생성
-    const thumbBlob = await generateThumbnail(file)
-    const thumbUrl = URL.createObjectURL(thumbBlob)
+    // 원본 이미지 blob
+    const originalImage = file as Blob
 
-    // 페이지 객체 생성
-    const page: Page = {
-      id: pageId,
-      projectId: pid,
-      index: pageIndex,
-      thumbnail: thumbUrl,
-      status: 'waiting',
-      textBlocks: [],
+    // 썸네일 생성
+    const thumbnail = await generateThumbnail(file)
+
+    // bitmappery document 생성 → layerBlob
+    const imgCanvas = await blobToCanvas(file)
+    const doc = DocumentFactory.create({
+      name: `page-${pageId}`,
+      width: imgCanvas.width,
+      height: imgCanvas.height,
+      layers: [
+        LayerFactory.create({
+          name: 'original',
+          source: imgCanvas,
+          width: imgCanvas.width,
+          height: imgCanvas.height,
+        }),
+      ],
+    })
+    const layerBlob = await DocumentFactory.toBlob(doc) as Blob
+
+    const snapshot: PageSnapshot = {
+      page: {
+        id: pageId,
+        projectId: pid,
+        index: pageIndex,
+        status: 'waiting',
+        textBlocks: [],
+      },
+      originalImage,
+      layerBlob,
+      thumbnail,
     }
 
-    // IndexedDB에 저장 + Vuex에 추가
-    await store.dispatch('pages/addPage', { page, imageBlob: file })
-    await fileAdapter.saveThumbnail(pageId, thumbBlob)
-    store.commit('pages/SET_THUMBNAIL_URL', { pageId, url: thumbUrl })
+    // createPage (snapshot) → IndexedDB + Vuex
+    await store.dispatch('pages/addPage', { projectId: pid, snapshot })
   }
 
-  // 프로젝트 pageCount 업데이트
+  // 프로젝트 pageCount/updatedAt 갱신 (createPage가 이미 갱신하지만 Vuex도 동기화)
   const proj = project.value
   if (proj) {
     await store.dispatch('projects/update', {
       ...proj,
-      pageCount: currentCount + files.length,
+      pageCount: allPages.value.length,
       updatedAt: new Date().toISOString(),
     })
   }
+}
+
+function blobToCanvas(blob: Blob): Promise<HTMLCanvasElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => {
+      const canvas = document.createElement('canvas')
+      canvas.width = img.width
+      canvas.height = img.height
+      const ctx = canvas.getContext('2d')!
+      ctx.drawImage(img, 0, 0)
+      URL.revokeObjectURL(img.src)
+      resolve(canvas)
+    }
+    img.onerror = reject
+    img.src = URL.createObjectURL(blob)
+  })
 }
 </script>
 
