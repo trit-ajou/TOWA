@@ -21,7 +21,7 @@ TOWA는 이 간극을 메운다: **AI가 초벌 번역과 배경 복원을 자�
 - 2차: 영어 → 한국어
 - 추후 확장 가능
 
-엔진 간 HTTP 규약: [INTER_ENGINE_HTTP.md](/home/user/dev/TOWA/INTER_ENGINE_HTTP.md)
+엔진 간 HTTP 규약: [docs/http-contract.md](docs/http-contract.md)
 
 ---
 

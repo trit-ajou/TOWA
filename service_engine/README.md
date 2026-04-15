@@ -4,8 +4,9 @@ FastAPI 기반 `service_engine` 초안입니다.
 
 문서:
 
-- 현재 wire contract: [API_CONTRACT.md](/home/user/dev/TOWA/service_engine/API_CONTRACT.md)
-- 현재 경계/비목표: [ARCHITECTURE.md](/home/user/dev/TOWA/service_engine/ARCHITECTURE.md)
+- 문서 허브: [../docs/README.md](../docs/README.md)
+- 현재 wire contract: [../docs/http-contract.md](../docs/http-contract.md)
+- 현재 경계/비목표: [../docs/service-engine-boundary.md](../docs/service-engine-boundary.md)
 
 현재 범위:
 
@@ -36,19 +37,19 @@ source .venv/bin/activate
 ### 3. 의존성 설치
 
 ```bash
-python -m pip install -r requirements-dev.txt
+python3 -m pip install -r requirements-dev.txt
 ```
 
 ### 4. 테스트 실행
 
 ```bash
-pytest
+python3 -m pytest
 ```
 
 ### 5. 서버 실행
 
 ```bash
-uvicorn app.main:app --reload
+python3 -m uvicorn app.main:app --reload
 ```
 
 ### 6. 마이그레이션 적용
