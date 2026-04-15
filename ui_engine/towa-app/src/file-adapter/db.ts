@@ -16,6 +16,8 @@ export interface ProjectRecord {
   config: ProjectConfig
   createdAt: string
   updatedAt: string
+  /** Project cover thumbnail URL (cloud only; local leaves undefined). */
+  thumbnailUrl?: string | null
 }
 
 export interface PageRecord {
