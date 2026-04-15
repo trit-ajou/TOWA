@@ -11,8 +11,7 @@
 
 주의:
 
-- `auth`와 `usage`는 현재 구현된 contract다.
-- `project/page snapshot` API는 이 브랜치에서 합의된 v1 target contract다.
+- `auth`, `usage`, `project/page snapshot`은 현재 구현된 contract다.
 - `UI -> model`, `model -> UI`의 상세 payload/result shape는 이번 단계에서 canonical wire contract로 고정하지 않는다.
 
 ## Scope
@@ -56,8 +55,8 @@ UI의 `deployment mode=standalone`은 model의 `runtime_context.mode=local`에 �
 | Caller | Target | Endpoints |
 | --- | --- | --- |
 | `UI engine` | `service engine` | `POST /auth/dev/login`, `GET /auth/me` |
-| `UI engine` | `service engine` | `POST /api/v1/projects`, `GET /api/v1/projects`, `GET /api/v1/projects/{project_id}`, `PATCH /api/v1/projects/{project_id}` |
-| `UI engine` | `service engine` | `GET /api/v1/projects/{project_id}/pages`, `POST /api/v1/projects/{project_id}/pages`, `GET /api/v1/pages/{page_id}/snapshot`, `PUT /api/v1/pages/{page_id}/snapshot`, `DELETE /api/v1/pages/{page_id}` |
+| `UI engine` | `service engine` | `POST /api/v1/projects`, `GET /api/v1/projects`, `GET /api/v1/projects/{project_id}`, `PATCH /api/v1/projects/{project_id}`, `DELETE /api/v1/projects/{project_id}` |
+| `UI engine` | `service engine` | `GET /api/v1/projects/{project_id}/pages`, `POST /api/v1/projects/{project_id}/pages`, `GET /api/v1/pages/{page_id}/snapshot`, `PUT /api/v1/pages/{page_id}/snapshot`, `DELETE /api/v1/pages/{page_id}`, `GET /api/v1/pages/{page_id}/thumbnail` |
 | `model engine` | `service engine` | `POST /usage/jobs`, `POST /usage/jobs/{job_id}/capture`, `POST /usage/jobs/{job_id}/release`, `GET /usage/jobs/{job_id}` |
 | `UI engine` | `model engine` | `GET /healthz`, `POST /v1/jobs`, `GET /v1/jobs/{job_id}` |
 | smoke/debug caller | `model engine` bridge | `GET /bridge/service/healthz`, `GET /bridge/service/auth/me`, `POST /bridge/service/usage/jobs`, `POST /bridge/service/usage/jobs/{job_id}/capture`, `POST /bridge/service/usage/jobs/{job_id}/release`, `GET /bridge/service/usage/jobs/{job_id}` |
@@ -332,6 +331,7 @@ Authorization: Bearer <session_key>
 {
   "id": "proj_001",
   "name": "원피스 1122화",
+  "thumbnail_url": "http://localhost:8000/api/v1/pages/page_001/thumbnail",
   "source_lang": "ja",
   "target_lang": "ko",
   "page_count": 19,
@@ -376,6 +376,8 @@ Authorization: Bearer <session_key>
 - client-generated `id`를 사용한다
 - 같은 유저가 같은 `id`를 다시 만들면 `409 project_conflict`다
 - `page_count`는 요청에 받지 않는다
+- `thumbnail_url`은 nullable이다
+- `thumbnail_url`은 UI가 선택한 대표 cover 값이며 service는 opaque string으로 저장/반환한다
 
 #### `GET /api/v1/projects`
 
@@ -396,6 +398,7 @@ Authorization: Bearer <session_key>
 부분 갱신 가능 필드:
 
 - `name`
+- `thumbnail_url`
 - `source_lang`
 - `target_lang`
 - `status`
@@ -403,6 +406,22 @@ Authorization: Bearer <session_key>
 - `config`
 
 응답은 갱신된 Project Object다.
+
+#### `DELETE /api/v1/projects/{project_id}`
+
+응답:
+
+```json
+{
+  "deleted": true,
+  "project_id": "proj_001"
+}
+```
+
+규칙:
+
+- hard delete다
+- 관련 page와 snapshot binary도 함께 제거된다
 
 ### Page Summary
 
@@ -416,7 +435,7 @@ Authorization: Bearer <session_key>
   "project_id": "proj_001",
   "index": 1,
   "status": "waiting",
-  "thumbnail_url": "https://storage.example.test/thumbs/page_001.webp",
+  "thumbnail_url": "http://localhost:8000/api/v1/pages/page_001/thumbnail",
   "updated_at": "2026-04-15T00:00:00Z"
 }
 ```
@@ -435,7 +454,7 @@ Authorization: Bearer <session_key>
 
 - project view는 이 API만 사용한다
 - full snapshot과 `text_blocks` 전체 목록은 포함하지 않는다
-- `thumbnail_url`은 fetch 가능한 opaque URL이며 URL shape 자체는 v1에서 고정하지 않는다
+- `thumbnail_url`은 bearer 인증이 필요한 private service URL이다
 
 ### Page Snapshot
 
@@ -453,6 +472,17 @@ full replace 규칙:
 - `POST`와 `PUT` 모두 complete snapshot을 요구한다
 - partial update는 지원하지 않는다
 - 저장 정책은 `last-write-wins`다
+- 첫 저장도 `layer_blob`을 포함한 complete snapshot이어야 한다
+- page create는 append-only다
+
+media validation:
+
+- `original_image`, `thumbnail`: `image/jpeg | image/png | image/webp`
+- `layer_blob`: `application/octet-stream`
+- 최대 크기:
+  - `original_image`: `50MB`
+  - `thumbnail`: `5MB`
+  - `layer_blob`: `100MB`
 
 #### TextBlock Object
 
@@ -495,6 +525,7 @@ full replace 규칙:
 - `layer_blob`은 bitmappery `DocumentFactory.toBlob()` 결과를 그대로 저장하는 opaque binary다
 - service는 `layer_blob` 내부를 해석하지 않는다
 - `thumbnail`은 project/page list 최적화를 위한 current preview다
+- `metadata.page.id`, `metadata.page.project_id`는 canonical ULID string이다
 
 #### `POST /api/v1/projects/{project_id}/pages`
 
@@ -514,7 +545,9 @@ full replace 규칙:
 규칙:
 
 - `metadata.page.project_id`는 path의 `project_id`와 같아야 한다
-- 같은 유저/프로젝트 안에서 page `id`가 중복되면 `409 page_conflict`다
+- 같은 page `id`가 이미 존재하면 `409 page_conflict`다
+- `metadata.page.index`는 현재 마지막 page의 다음 번호와 같아야 한다
+- 중간 삽입은 v1에서 지원하지 않는다
 
 #### `GET /api/v1/pages/{page_id}/snapshot`
 
@@ -526,6 +559,17 @@ full replace 규칙:
   - `original_image`
   - `layer_blob`
   - `thumbnail`
+
+#### `GET /api/v1/pages/{page_id}/thumbnail`
+
+응답:
+
+- `Content-Type: image/jpeg | image/png | image/webp`
+
+규칙:
+
+- 현재 유저가 소유한 page만 fetch 가능하다
+- 이 endpoint의 absolute URL이 `Page Summary.thumbnail_url`의 기본 구현이다
 
 #### `PUT /api/v1/pages/{page_id}/snapshot`
 
@@ -542,6 +586,12 @@ full replace 규칙:
 }
 ```
 
+규칙:
+
+- `metadata.page.id`는 path의 `page_id`와 같아야 한다
+- `metadata.page.project_id`, `metadata.page.index`는 저장된 page identity와 같아야 한다
+- 순서 변경은 지원하지 않는다
+
 #### `DELETE /api/v1/pages/{page_id}`
 
 응답:
@@ -552,6 +602,11 @@ full replace 규칙:
   "page_id": "page_001"
 }
 ```
+
+규칙:
+
+- hard delete다
+- 뒤 page들의 `index`를 당겨 dense `1..N`을 유지한다
 
 ## Service Engine State Rules
 

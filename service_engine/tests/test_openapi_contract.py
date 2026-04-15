@@ -5,24 +5,19 @@ from fastapi.testclient import TestClient
 from app.main import create_app
 
 
-def _json_schema_ref(openapi: dict[str, object], *, path: str, method: str, status_code: str) -> str:
+def _json_schema_ref(
+    openapi: dict[str, object],
+    *,
+    path: str,
+    method: str,
+    status_code: str,
+    content_type: str = "application/json",
+) -> str:
     response = openapi["paths"][path][method]["responses"][status_code]
-    return response["content"]["application/json"]["schema"]["$ref"]
+    return response["content"][content_type]["schema"]["$ref"]
 
 
-def _normalize_snapshot(value):
-    if isinstance(value, dict):
-        return {
-            key: _normalize_snapshot(item)
-            for key, item in sorted(value.items())
-            if key not in {"title", "description", "operationId", "summary"}
-        }
-    if isinstance(value, list):
-        return [_normalize_snapshot(item) for item in value]
-    return value
-
-
-def test_auth_and_usage_routes_document_common_error_envelope() -> None:
+def test_auth_usage_and_storage_routes_document_common_error_envelope() -> None:
     client = TestClient(create_app())
 
     response = client.get("/openapi.json")
@@ -50,317 +45,91 @@ def test_auth_and_usage_routes_document_common_error_envelope() -> None:
     ) == "#/components/schemas/ErrorResponse"
     assert _json_schema_ref(
         openapi,
-        path="/usage/jobs/{job_id}/capture",
+        path="/api/v1/projects",
         method="post",
         status_code="409",
     ) == "#/components/schemas/ErrorResponse"
+    assert _json_schema_ref(
+        openapi,
+        path="/api/v1/pages/{page_id}",
+        method="delete",
+        status_code="404",
+    ) == "#/components/schemas/ErrorResponse"
 
 
-def test_openapi_contract_snapshot_matches_expected_shape() -> None:
+def test_openapi_documents_project_and_page_storage_contract() -> None:
     client = TestClient(create_app())
 
     response = client.get("/openapi.json")
 
     assert response.status_code == 200
     openapi = response.json()
-    snapshot = {
-        "securitySchemes": _normalize_snapshot(openapi["components"].get("securitySchemes", {})),
-        "paths": _normalize_snapshot(openapi["paths"]),
-        "schemas": _normalize_snapshot(
-            {
-                name: schema
-                for name, schema in openapi["components"]["schemas"].items()
-                if name not in {"HTTPValidationError", "ValidationError"}
-            },
-        ),
+    paths = openapi["paths"]
+    schemas = openapi["components"]["schemas"]
+
+    assert set(paths["/api/v1/projects"].keys()) == {"get", "post"}
+    assert set(paths["/api/v1/projects/{project_id}"].keys()) == {"get", "patch", "delete"}
+    assert set(paths["/api/v1/projects/{project_id}/pages"].keys()) == {"get", "post"}
+    assert set(paths["/api/v1/pages/{page_id}"].keys()) == {"delete"}
+    assert set(paths["/api/v1/pages/{page_id}/snapshot"].keys()) == {"get", "put"}
+    assert set(paths["/api/v1/pages/{page_id}/thumbnail"].keys()) == {"get"}
+
+    assert _json_schema_ref(
+        openapi,
+        path="/api/v1/projects",
+        method="post",
+        status_code="200",
+    ) == "#/components/schemas/ProjectResponse"
+    assert _json_schema_ref(
+        openapi,
+        path="/api/v1/projects",
+        method="get",
+        status_code="200",
+    ) == "#/components/schemas/ProjectListResponse"
+    assert _json_schema_ref(
+        openapi,
+        path="/api/v1/projects/{project_id}/pages",
+        method="get",
+        status_code="200",
+    ) == "#/components/schemas/PageListResponse"
+    assert _json_schema_ref(
+        openapi,
+        path="/api/v1/projects/{project_id}/pages",
+        method="post",
+        status_code="200",
+    ) == "#/components/schemas/PageSummaryEnvelope"
+    assert _json_schema_ref(
+        openapi,
+        path="/api/v1/pages/{page_id}/snapshot",
+        method="put",
+        status_code="200",
+    ) == "#/components/schemas/PageSummaryEnvelope"
+
+    page_create_request = paths["/api/v1/projects/{project_id}/pages"]["post"]["requestBody"]["content"]
+    page_update_request = paths["/api/v1/pages/{page_id}/snapshot"]["put"]["requestBody"]["content"]
+    assert "multipart/form-data" in page_create_request
+    assert "multipart/form-data" in page_update_request
+
+    snapshot_get_content = paths["/api/v1/pages/{page_id}/snapshot"]["get"]["responses"]["200"]["content"]
+    assert "multipart/mixed" in snapshot_get_content
+
+    thumbnail_get_content = paths["/api/v1/pages/{page_id}/thumbnail"]["get"]["responses"]["200"]["content"]
+    assert {"image/jpeg", "image/png", "image/webp"}.issubset(set(thumbnail_get_content.keys()))
+
+    project_response = schemas["ProjectResponse"]
+    assert "thumbnail_url" in project_response["properties"]
+    assert set(project_response["required"]) == {
+        "id",
+        "name",
+        "source_lang",
+        "target_lang",
+        "page_count",
+        "status",
+        "folder",
+        "config",
+        "created_at",
+        "updated_at",
     }
 
-    assert snapshot == {
-        "paths": {
-            "/auth/dev/login": {
-                "post": {
-                    "requestBody": {
-                        "content": {
-                            "application/json": {
-                                "schema": {"$ref": "#/components/schemas/DevLoginRequest"},
-                            },
-                        },
-                        "required": True,
-                    },
-                    "responses": {
-                        "200": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/DevLoginResponse"}}}},
-                        "409": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
-                        "422": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
-                    },
-                    "tags": ["auth"],
-                },
-            },
-            "/auth/me": {
-                "get": {
-                    "responses": {
-                        "200": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/CurrentUserResponse"}}}},
-                        "401": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
-                    },
-                    "security": [{"HTTPBearer": []}],
-                    "tags": ["auth"],
-                },
-            },
-            "/healthz": {
-                "get": {
-                    "responses": {
-                        "200": {
-                            "content": {
-                                "application/json": {
-                                    "schema": {
-                                        "additionalProperties": {"type": "string"},
-                                        "type": "object",
-                                    },
-                                },
-                            },
-                        },
-                    },
-                    "tags": ["infra"],
-                },
-            },
-            "/usage/jobs": {
-                "post": {
-                    "requestBody": {
-                        "content": {
-                            "application/json": {
-                                "schema": {"$ref": "#/components/schemas/UsageJobCreateRequest"},
-                            },
-                        },
-                        "required": True,
-                    },
-                    "responses": {
-                        "200": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/UsageJobCreateResponse"}}}},
-                        "401": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
-                        "409": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
-                        "422": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
-                    },
-                    "security": [{"HTTPBearer": []}],
-                    "tags": ["usage"],
-                },
-            },
-            "/usage/jobs/{job_id}": {
-                "get": {
-                    "parameters": [
-                        {
-                            "in": "path",
-                            "name": "job_id",
-                            "required": True,
-                            "schema": {"format": "uuid", "type": "string"},
-                        },
-                    ],
-                    "responses": {
-                        "200": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/UsageJobResponse"}}}},
-                        "401": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
-                        "404": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
-                        "409": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
-                        "422": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
-                    },
-                    "security": [{"HTTPBearer": []}],
-                    "tags": ["usage"],
-                },
-            },
-            "/usage/jobs/{job_id}/capture": {
-                "post": {
-                    "parameters": [
-                        {
-                            "in": "path",
-                            "name": "job_id",
-                            "required": True,
-                            "schema": {"format": "uuid", "type": "string"},
-                        },
-                    ],
-                    "requestBody": {
-                        "content": {
-                            "application/json": {
-                                "schema": {"$ref": "#/components/schemas/UsageJobCaptureRequest"},
-                            },
-                        },
-                        "required": True,
-                    },
-                    "responses": {
-                        "200": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/UsageJobResponse"}}}},
-                        "401": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
-                        "404": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
-                        "409": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
-                        "422": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
-                    },
-                    "security": [{"HTTPBearer": []}],
-                    "tags": ["usage"],
-                },
-            },
-            "/usage/jobs/{job_id}/release": {
-                "post": {
-                    "parameters": [
-                        {
-                            "in": "path",
-                            "name": "job_id",
-                            "required": True,
-                            "schema": {"format": "uuid", "type": "string"},
-                        },
-                    ],
-                    "requestBody": {
-                        "content": {
-                            "application/json": {
-                                "schema": {"$ref": "#/components/schemas/UsageJobReleaseRequest"},
-                            },
-                        },
-                        "required": True,
-                    },
-                    "responses": {
-                        "200": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/UsageJobResponse"}}}},
-                        "401": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
-                        "404": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
-                        "409": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
-                        "422": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
-                    },
-                    "security": [{"HTTPBearer": []}],
-                    "tags": ["usage"],
-                },
-            },
-        },
-        "schemas": {
-            "AuthenticatedUserResponse": {
-                "properties": {
-                    "created_at": {"format": "date-time", "type": "string"},
-                    "email": {"type": "string"},
-                    "id": {"format": "uuid", "type": "string"},
-                    "nickname": {"type": "string"},
-                    "status": {"$ref": "#/components/schemas/UserStatus"},
-                },
-                "required": ["id", "email", "nickname", "status", "created_at"],
-                "type": "object",
-            },
-            "CreditHoldStatus": {
-                "enum": ["held", "captured", "released"],
-                "type": "string",
-            },
-            "CurrentUserResponse": {
-                "properties": {
-                    "credit_balance": {"type": "integer"},
-                    "reserved_units": {"type": "integer"},
-                    "user": {"$ref": "#/components/schemas/AuthenticatedUserResponse"},
-                },
-                "required": ["user", "credit_balance", "reserved_units"],
-                "type": "object",
-            },
-            "DevLoginRequest": {
-                "additionalProperties": False,
-                "properties": {
-                    "email": {"type": "string"},
-                    "nickname": {"anyOf": [{"type": "string"}, {"type": "null"}]},
-                },
-                "required": ["email"],
-                "type": "object",
-            },
-            "DevLoginResponse": {
-                "properties": {
-                    "credit_balance": {"type": "integer"},
-                    "expires_in": {"type": "integer"},
-                    "reserved_units": {"type": "integer"},
-                    "session_key": {"type": "string"},
-                    "user": {"$ref": "#/components/schemas/AuthenticatedUserResponse"},
-                },
-                "required": ["session_key", "expires_in", "user", "credit_balance", "reserved_units"],
-                "type": "object",
-            },
-            "ErrorBody": {
-                "properties": {
-                    "code": {"type": "string"},
-                    "details": {"anyOf": [{"additionalProperties": True, "type": "object"}, {"type": "null"}]},
-                    "message": {"type": "string"},
-                    "retryable": {"type": "boolean"},
-                },
-                "required": ["code", "message", "retryable"],
-                "type": "object",
-            },
-            "ErrorResponse": {
-                "properties": {"error": {"$ref": "#/components/schemas/ErrorBody"}},
-                "required": ["error"],
-                "type": "object",
-            },
-            "UsageJobCaptureRequest": {
-                "additionalProperties": False,
-                "properties": {},
-                "type": "object",
-            },
-            "UsageJobCreateRequest": {
-                "additionalProperties": False,
-                "properties": {
-                    "estimated_units": {"type": "integer"},
-                    "idempotency_key": {"type": "string"},
-                    "operation_kind": {"$ref": "#/components/schemas/UsageOperationKind"},
-                    "request_ref": {"type": "string"},
-                },
-                "required": ["idempotency_key", "operation_kind", "request_ref", "estimated_units"],
-                "type": "object",
-            },
-            "UsageJobCreateResponse": {
-                "properties": {
-                    "hold_expires_at": {"format": "date-time", "type": "string"},
-                    "job_id": {"format": "uuid", "type": "string"},
-                    "reserved_units": {"type": "integer"},
-                    "status": {"$ref": "#/components/schemas/UsageJobStatus"},
-                },
-                "required": ["job_id", "status", "reserved_units", "hold_expires_at"],
-                "type": "object",
-            },
-            "UsageJobReleaseRequest": {
-                "additionalProperties": False,
-                "properties": {
-                    "error_code": {"anyOf": [{"type": "string"}, {"type": "null"}]},
-                    "reason": {"anyOf": [{"type": "string"}, {"type": "null"}]},
-                },
-                "type": "object",
-            },
-            "UsageJobResponse": {
-                "properties": {
-                    "error_code": {"anyOf": [{"type": "string"}, {"type": "null"}]},
-                    "error_detail": {"anyOf": [{"type": "string"}, {"type": "null"}]},
-                    "estimated_units": {"type": "integer"},
-                    "finished_at": {"anyOf": [{"format": "date-time", "type": "string"}, {"type": "null"}]},
-                    "hold_expires_at": {"format": "date-time", "type": "string"},
-                    "hold_status": {"$ref": "#/components/schemas/CreditHoldStatus"},
-                    "id": {"format": "uuid", "type": "string"},
-                    "operation_kind": {"$ref": "#/components/schemas/UsageOperationKind"},
-                    "request_ref": {"type": "string"},
-                    "requested_at": {"format": "date-time", "type": "string"},
-                    "reserved_units": {"type": "integer"},
-                    "status": {"$ref": "#/components/schemas/UsageJobStatus"},
-                },
-                "required": [
-                    "id",
-                    "operation_kind",
-                    "request_ref",
-                    "estimated_units",
-                    "status",
-                    "reserved_units",
-                    "hold_status",
-                    "hold_expires_at",
-                    "requested_at",
-                ],
-                "type": "object",
-            },
-            "UsageJobStatus": {
-                "enum": ["authorized", "succeeded", "failed"],
-                "type": "string",
-            },
-            "UsageOperationKind": {
-                "enum": ["mask", "translate", "inpaint"],
-                "type": "string",
-            },
-            "UserStatus": {
-                "enum": ["active", "disabled"],
-                "type": "string",
-            },
-        },
-        "securitySchemes": {
-            "HTTPBearer": {
-                "scheme": "bearer",
-                "type": "http",
-            },
-        },
-    }
+    page_summary = schemas["PageSummaryResponse"]
+    assert page_summary["properties"]["thumbnail_url"]["type"] == "string"

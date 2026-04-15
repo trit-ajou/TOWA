@@ -18,40 +18,22 @@ v1 boundary 문서에서 일부 전제는 이미 고정했고, 일부 항목은 
 - page 저장 단위는 자산별 분해가 아니라 `full page snapshot`이다
 - `page summary`와 `page snapshot`은 분리한다
 - page save 정책은 `full replace + last-write-wins`다
+- `project.id`, `page.id`는 `UI engine`이 생성한 canonical ULID를 사용한다
+- page create는 append-only이고 delete 후 dense reindex를 유지한다
+- `project.status`, `page.status`는 UI가 정하고 service는 최소 검증만 한다
+- snapshot create/save는 `metadata`, `original_image`, `layer_blob`, `thumbnail` 네 part를 항상 요구한다
+- page summary `thumbnail_url`은 private service URL이다
+- snapshot load transport는 `multipart/mixed`다
+- snapshot binary backend는 현재 DB BLOB이다
+- media validation은 `image/jpeg`, `image/png`, `image/webp`, `application/octet-stream`과 service size limit을 기준으로 한다
+- page delete는 hard delete다
 - `original_image`는 immutable asset가 아니라 현재 page snapshot의 일부이며 교체 가능하다
 - `UI engine <-> model engine` 상세 wire shape는 이번 단계에서 canonical contract로 고정하지 않는다
 - `model engine -> service engine` 직접 통신 범위는 auth/usage다
 
-## Storage And Project Questions
+## Remaining Storage / Project Questions
 
-### 1. ID Authority
-
-질문:
-
-- `project.id`, `page.id`는 누가 생성하는가
-- UI의 client-generated id를 표준으로 둘 것인가
-- id format에 제약을 둘 것인가
-
-왜 필요한가:
-
-- create API의 validation과 conflict 처리 규칙이 여기서 결정된다
-
-결정 필요 항목:
-
-- authority: `UI engine` 또는 `service_engine`
-- format: UUID, ULID, custom string 등
-
-### 2. Page Ordering
-
-질문:
-
-- `page.index`는 삭제/삽입 시 재정렬하는가
-- 중간 hole을 허용하는가
-- drag reorder를 v1 범위에 넣는가
-
-왜 필요한가:
-
-- `GET /projects/{project_id}/pages` 정렬 규칙과 삭제 후 후처리가 달라진다
+아래 항목만 아직 의도적으로 열어 둔다.
 
 ### 3. Project Status Semantics
 
@@ -79,82 +61,7 @@ v1 boundary 문서에서 일부 전제는 이미 고정했고, 일부 항목은 
 ## Snapshot Contract Questions
 
 ### 5. Complete Snapshot Strictness
-
-질문:
-
-- `POST /pages`, `PUT /snapshot`에서 `metadata`, `original_image`, `layer_blob`, `thumbnail` 네 part를 항상 모두 요구하는가
-- 첫 저장 시 `layer_blob`이 아직 없으면 empty blob을 보내는가
-- 아니면 layer-less snapshot을 허용하는가
-
-왜 필요한가:
-
-- multipart parser와 request validation을 strict path로 설계하려면 명확해야 한다
-
-### 6. Thumbnail Fetch Contract
-
-질문:
-
-- `thumbnail_url`은 service proxy URL인가
-- presigned/object URL인가
-- 로그인 세션이 필요한 private URL인가
-
-왜 필요한가:
-
-- page list 응답 shape는 이미 잡았지만 thumbnail fetch 인증 모델은 아직 열려 있다
-
-현재 문서 기본값:
-
-- `thumbnail_url`은 fetch 가능한 opaque URL
-
-### 7. Binary Storage Backend
-
-질문:
-
-- snapshot binary를 DB BLOB으로 저장하는가
-- object storage에 두고 DB에는 metadata/path만 저장하는가
-
-왜 필요한가:
-
-- 이건 public contract보다 구현 전략 문제지만 migration, infra, size limit에 직접 영향이 있다
-
-### 8. Upload Limits And Media Validation
-
-질문:
-
-- `original_image`, `thumbnail`의 허용 media type은 무엇인가
-- 최대 업로드 크기는 얼마인가
-- `layer_blob` 최대 크기 제한을 둘 것인가
-
-왜 필요한가:
-
-- 서버 보호와 오류 응답 규칙을 미리 정해야 한다
-
-### 9. Delete Semantics
-
-질문:
-
-- page 삭제 후 `project.page_count`만 갱신하면 되는가
-- 뒤 page들의 `index`를 당겨야 하는가
-- soft delete가 필요한가
-
-왜 필요한가:
-
-- delete endpoint 구현과 project summary consistency에 영향이 있다
-
-### 10. Snapshot Load Transport Final Check
-
-질문:
-
-- `GET /pages/{page_id}/snapshot` 응답을 정말 `multipart/mixed`로 갈 것인가
-- 아니면 `metadata JSON + binary URL들` 구조로 단순화할 것인가
-
-왜 필요한가:
-
-- 브라우저 구현 난이도와 캐시 전략이 달라진다
-
-현재 문서 기본값:
-
-- `multipart/mixed`
+Resolved in current implementation.
 
 ## UI / Model Questions
 

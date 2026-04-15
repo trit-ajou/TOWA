@@ -17,6 +17,17 @@ FastAPI 기반 `service_engine` 초안입니다.
 - `POST /usage/jobs/{job_id}/capture`
 - `POST /usage/jobs/{job_id}/release`
 - `GET /usage/jobs/{job_id}`
+- `POST /api/v1/projects`
+- `GET /api/v1/projects`
+- `GET /api/v1/projects/{project_id}`
+- `PATCH /api/v1/projects/{project_id}`
+- `DELETE /api/v1/projects/{project_id}`
+- `GET /api/v1/projects/{project_id}/pages`
+- `POST /api/v1/projects/{project_id}/pages`
+- `GET /api/v1/pages/{page_id}/snapshot`
+- `PUT /api/v1/pages/{page_id}/snapshot`
+- `DELETE /api/v1/pages/{page_id}`
+- `GET /api/v1/pages/{page_id}/thumbnail`
 
 합의된 v1 target boundary:
 

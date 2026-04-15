@@ -18,6 +18,9 @@ EXPECTED_TABLES = {
     "usage_jobs",
     "credit_holds",
     "credit_ledger",
+    "projects",
+    "pages",
+    "page_snapshots",
 }
 
 
@@ -51,6 +54,15 @@ def test_alembic_upgrade_head_creates_expected_schema(
 
         usage_columns = {column["name"] for column in inspector.get_columns("usage_jobs")}
         assert {"operation_kind", "request_ref", "estimated_units"}.issubset(usage_columns)
+
+        project_columns = {column["name"] for column in inspector.get_columns("projects")}
+        assert {"thumbnail_url", "source_lang", "target_lang", "config"}.issubset(project_columns)
+
+        page_columns = {column["name"] for column in inspector.get_columns("pages")}
+        assert {"project_id", "index", "status"}.issubset(page_columns)
+
+        snapshot_columns = {column["name"] for column in inspector.get_columns("page_snapshots")}
+        assert {"metadata_json", "original_image_bytes", "layer_blob_bytes", "thumbnail_bytes"}.issubset(snapshot_columns)
 
         user_id = str(uuid4())
         with engine.begin() as connection:

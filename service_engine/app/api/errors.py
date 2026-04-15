@@ -24,6 +24,14 @@ from app.modules.billing.service import (
     UsageJobConflictError,
     UsageJobNotFoundError,
 )
+from app.modules.projects.service import (
+    PageConflictError,
+    PageNotFoundError,
+    ProjectConflictError,
+    ProjectNotFoundError,
+    ProjectStorageError,
+    SnapshotValidationError,
+)
 
 
 @dataclass(slots=True)
@@ -210,6 +218,61 @@ def raise_usage_http_error(exc: Exception) -> None:
         raise APIError(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             code="validation_error",
+            message=str(exc),
+        ) from exc
+    raise_auth_http_error(exc)
+
+
+def raise_project_http_error(exc: Exception) -> None:
+    if isinstance(exc, ProjectNotFoundError):
+        raise APIError(
+            status_code=status.HTTP_404_NOT_FOUND,
+            code="project_not_found",
+            message=str(exc),
+        ) from exc
+    if isinstance(exc, PageNotFoundError):
+        raise APIError(
+            status_code=status.HTTP_404_NOT_FOUND,
+            code="page_not_found",
+            message=str(exc),
+        ) from exc
+    if isinstance(exc, SnapshotValidationError):
+        raise APIError(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            code="validation_error",
+            message=str(exc),
+        ) from exc
+    if isinstance(exc, ProjectConflictError):
+        raise APIError(
+            status_code=status.HTTP_409_CONFLICT,
+            code="project_conflict",
+            message=str(exc),
+            details={"reason": exc.reason} if exc.reason else None,
+        ) from exc
+    if isinstance(exc, PageConflictError):
+        raise APIError(
+            status_code=status.HTTP_409_CONFLICT,
+            code="page_conflict",
+            message=str(exc),
+            details={"reason": exc.reason} if exc.reason else None,
+        ) from exc
+    if isinstance(exc, (StaleDataError, IntegrityError)):
+        raise APIError(
+            status_code=status.HTTP_409_CONFLICT,
+            code="concurrent_update_conflict",
+            message="Concurrent update conflict. Retry the request.",
+            retryable=True,
+        ) from exc
+    if isinstance(exc, ValueError):
+        raise APIError(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            code="validation_error",
+            message=str(exc),
+        ) from exc
+    if isinstance(exc, ProjectStorageError):
+        raise APIError(
+            status_code=status.HTTP_409_CONFLICT,
+            code="project_conflict",
             message=str(exc),
         ) from exc
     raise_auth_http_error(exc)
