@@ -30,7 +30,10 @@
 
 ## Workspace
 - 이 프로젝트는 만화 번역을 위한 통합 워크스테이션 with AI 개발 프로젝트입니다.
-- UI engine, model engine, service engine으로 구성되며, `service_engine` 브랜치에서는 각 엔진의 통신 레이어와 service engine을 담당합니다. UI engine과 model engine의 세부 구현은 건드리지 않습니다.
+- UI engine, model engine, service engine으로 나눕니다.
+- `service_engine` 브랜치에서는 각 엔진의 통신 레이어와 service engine을 담당합니다. UI engine과 model engine의 세부 구현은 건드리지 않습니다.
+- `ui_engine` 브랜치에서는 UI engine의 세부 구현을 담당합니다.
+- `model_engine` 브랜치에서는 model engine의 세부 구현을 담당합니다.
 - 빌드와 테스트 모두 Docker를 사용합니다.
 
 ## Subagent Usage
