@@ -11,7 +11,7 @@
 - 사람 진입은 `UI engine`
 - 세션, credit, usage 기록 authority는 `service engine`
 - cloud `project/page` 저장 authority도 `service engine`이 가진다
-- 현재 구현은 `dev login + usage`가 먼저 있고, storage API는 이 브랜치의 target boundary다
+- 현재 구현은 `dev login + usage + project/page storage API`까지 포함한다
 
 즉, 최종 SaaS 전체를 먼저 구현하는 대신 다른 engine이 맞출 수 있는 저장/정산 경계부터 먼저 고정한 단계다.
 
@@ -75,6 +75,7 @@
 - 잔액, 예약, 확정 차감 처리
 - usage idempotency 보장
 - cloud project/page snapshot 저장/조회
+- private page thumbnail fetch
 - 공통 error envelope 유지
 
 ## Fixed Design Choices For v1
@@ -91,9 +92,14 @@
 - page snapshot transport는 `multipart`를 사용한다
 - page summary와 full snapshot은 분리한다
 - page save 정책은 `last-write-wins`다
+- page create는 append-only다
+- page delete는 hard delete + dense reindex다
 - `original image`는 immutable이 아니라 current page snapshot의 일부다
 - `layer_blob`과 project `config`는 service 기준 opaque payload다
 - `textBlocks`는 service 기준 구조화된 page metadata다
+- project `thumbnail_url`은 nullable opaque metadata다
+- page summary `thumbnail_url`은 private service URL이다
+- snapshot binary backend는 현재 DB BLOB이다
 - AI 결과를 project/page에 최종 반영하는 주체는 `UI engine`이다
 - `model engine -> service engine` 직접 통신 범위는 auth/usage로 제한한다
 
@@ -106,6 +112,7 @@
 - hold TTL 기본값은 `30분`이다
 - standalone의 project/page 저장은 UI 내부 IndexedDB가 담당한다
 - cloud의 project/page 저장은 service API가 담당한다
+- project cover 선택과 cover 깨짐 후속 갱신은 UI가 담당한다
 
 ## Non-Goals For This Phase
 
@@ -118,6 +125,8 @@
 - export 포맷 상세
 - revision/lock/conflict resolution
 - collaboration/real-time sync
+- page middle insert / reorder
+- project/page trash
 - bitmappery blob introspection
 - `UI <-> model` 상세 wire contract 고정
 
