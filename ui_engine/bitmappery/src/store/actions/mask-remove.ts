@@ -28,12 +28,12 @@ import { type BitMapperyState } from "@/store";
 export const removeMask = ( store: Store<BitMapperyState>, layer: Layer, index: number ): void => {
     const mask = layer.mask;
 
-    const commit = () => store.commit( "updateLayer", { index, opts: { mask: null } });
+    const commit = () => store.commit( "bmp/updateLayer", { index, opts: { mask: null } });
     commit();
 
     enqueueState( `maskRemove_${index}`, {
         undo() {
-            store.commit( "updateLayer", { index, opts: { mask } });
+            store.commit( "bmp/updateLayer", { index, opts: { mask } });
         },
         redo: commit,
     });

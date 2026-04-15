@@ -26,12 +26,12 @@ import { enqueueState } from "@/factories/history-state-factory";
 import { type BitMapperyState } from "@/store";
 
 export const removeLayer = ( store: Store<BitMapperyState>, layer: Layer, index: number ): void => {
-    const commit = () => store.commit( "removeLayer", index );
+    const commit = () => store.commit( "bmp/removeLayer", index );
     commit();
   
     enqueueState( `layerRemove_${index}`, {
         undo() {
-            store.commit( "insertLayerAtIndex", { index, layer });
+            store.commit( "bmp/insertLayerAtIndex", { index, layer });
         },
         redo: commit,
     });

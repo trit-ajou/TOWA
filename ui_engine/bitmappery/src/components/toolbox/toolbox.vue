@@ -34,7 +34,7 @@
                 class="component__header-button button--ghost"
                 @click="collapsed = !collapsed"
             >
-                <img :src="`assets/images/icon-${collapsed ? 'expand' : 'collapse'}.svg`" />
+                <img :src="`/assets/images/icon-${collapsed ? 'expand' : 'collapse'}.svg`" />
             </button>
         </div>
         <!-- click.stop.prevent is to prevent document scroll on double tap on iOS -->
@@ -80,7 +80,7 @@
                 :disabled="tool.disabled"
                 @click="handleToolClick( tool )"
             >
-                <img :src="`./assets/icons/tool-${tool.icon}.svg`" />
+                <img :src="`/assets/icons/tool-${tool.icon}.svg`" />
             </button>
             <div class="wrapper input color-panel">
                 <label v-t="'color'" class="color-panel__label"></label>
@@ -119,11 +119,11 @@ type ToolDef = {
 export default {
     i18n: { messages },
     computed: {
-        ...mapState([
+        ...mapState("bmp", [
             "toolboxOpened",
             "openedPanels",
         ]),
-        ...mapGetters([
+        ...mapGetters("bmp", [
             "activeTool",
             "activeDocument",
             "activeLayer",
@@ -255,14 +255,14 @@ export default {
         },
     },
     methods: {
-        ...mapMutations([
+        ...mapMutations("bmp", [
             "addLayer",
             "setActiveTool",
             "setToolboxOpened",
             "setOpenedPanel",
             "setActiveColor",
         ]),
-        ...mapActions([
+        ...mapActions("bmp", [
             "undo",
             "redo",
         ]),

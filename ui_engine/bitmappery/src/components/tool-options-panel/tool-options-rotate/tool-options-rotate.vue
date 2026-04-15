@@ -85,7 +85,7 @@ export default {
         max: 360,
     }),
     computed: {
-        ...mapGetters([
+        ...mapGetters("bmp", [
             "activeLayer",
             "activeLayerIndex",
             "activeLayerTransform",
@@ -101,7 +101,7 @@ export default {
         }
     },
     methods: {
-        ...mapMutations([
+        ...mapMutations("bmp", [
             "updateLayerTransform",
         ]),
         update( rotation: number ): void {

@@ -54,16 +54,16 @@ export const mergeLayerDown = async (
     const commit = (): void => {
         let i = layerIndices.length;
         while ( i-- ) {
-            store.commit( "removeLayer", layerIndices[ i ] );
+            store.commit( "bmp/removeLayer", layerIndices[ i ] );
         }
-        store.commit( "insertLayerAtIndex", { index: mergeIndex, layer: newLayer });
+        store.commit( "bmp/insertLayerAtIndex", { index: mergeIndex, layer: newLayer });
     };
     commit();
 
     enqueueState( `merge_${mergeIndex}_${layers.length}`, {
         undo() {
-            store.commit( "removeLayer", mergeIndex );
-            layers.forEach(( layer, index ) => store.commit( "insertLayerAtIndex", { index: layerIndices[ index ], layer }));
+            store.commit( "bmp/removeLayer", mergeIndex );
+            layers.forEach(( layer, index ) => store.commit( "bmp/insertLayerAtIndex", { index: layerIndices[ index ], layer }));
         },
         redo: commit,
     });

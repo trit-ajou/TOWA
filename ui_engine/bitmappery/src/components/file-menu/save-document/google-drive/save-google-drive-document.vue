@@ -69,7 +69,7 @@ export default {
         this.loading = false;
     },
     methods: {
-        ...mapMutations([
+        ...mapMutations("bmp", [
             "openDialog",
             "showNotification",
             "setLoading",

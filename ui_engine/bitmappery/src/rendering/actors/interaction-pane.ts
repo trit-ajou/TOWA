@@ -149,11 +149,11 @@ export default class InteractionPane extends sprite {
     }
 
     getActiveDocument(): Document {
-        return getCanvasInstance().store.getters.activeDocument;
+        return getCanvasInstance().store.getters["bmp/activeDocument"];
     }
 
     getActiveLayer(): Layer {
-        return getCanvasInstance().store.getters.activeLayer;
+        return getCanvasInstance().store.getters["bmp/activeLayer"];
     }
 
     resetSelection(): void {
@@ -239,7 +239,7 @@ export default class InteractionPane extends sprite {
             selectionToSet = activeSelection; // no overlap handling necessary, we can commit the whole active selection to history
         }
         this._selectionClosed = true;
-        this.canvas.store.commit( "setActiveSelection", [ ...selectionToSet ]);
+        this.canvas.store.commit( "bmp/setActiveSelection", [ ...selectionToSet ]);
         applySelection( getCanvasInstance().store, this.getActiveDocument(), currentSelection );
     }
 
@@ -265,7 +265,7 @@ export default class InteractionPane extends sprite {
                     const renderer = layerRenderers[ i ];
                     // if the renderers Bitmap contents are non-transparent at the given coordinate, make it the active layer
                     if ( !isInsideTransparentArea( renderer.getBitmap() as HTMLCanvasElement, x - renderer.getX(), y - renderer.getY() )) {
-                        this.canvas.store.commit( "setActiveLayer", renderer.layer );
+                        this.canvas.store.commit( "bmp/setActiveLayer", renderer.layer );
                         break;
                     }
                 }
@@ -288,7 +288,7 @@ export default class InteractionPane extends sprite {
                     }));
                     activeSelection = [ ...activeSelection, selectedShape ];
         
-                    this.canvas.store.commit( "setActiveSelection", activeSelection );
+                    this.canvas.store.commit( "bmp/setActiveSelection", activeSelection );
                     completeSelection = true;
                 }
                 else if ( !this._selectionClosed || isShiftKeyDown || isAltKeyDown ) {
@@ -302,7 +302,7 @@ export default class InteractionPane extends sprite {
                     let selectionShape: Shape = getLastShape( activeSelection );
                     if ( !selectionShape ) {
                         selectionShape = [];
-                        this.canvas.store.commit( "setActiveSelection", [ selectionShape ]);
+                        this.canvas.store.commit( "bmp/setActiveSelection", [ selectionShape ]);
                     }
                     // selection mode, set the click coordinate as the first point in the selection
                     const firstPoint = selectionShape[ 0 ];

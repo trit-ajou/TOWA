@@ -28,12 +28,12 @@ import { type BitMapperyState } from "@/store";
 export const rotateLayer = ( store: Store<BitMapperyState>, layer: Layer, index: number, rotation: number ): void => {
     const oldRotation = layer.transform.rotation;
     
-    const commit = () => store.commit( "updateLayerTransform", { index, transform: { rotation } });
+    const commit = () => store.commit( "bmp/updateLayerTransform", { index, transform: { rotation } });
     commit();
 
     enqueueState( `rotation_${index}`, {
         undo(): void {
-            store.commit( "updateLayerTransform", { index, transform: { rotation: oldRotation } });
+            store.commit( "bmp/updateLayerTransform", { index, transform: { rotation: oldRotation } });
         },
         redo(): void {
             commit();

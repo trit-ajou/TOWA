@@ -97,7 +97,7 @@ export default {
         allVisible : true,
     }),
     computed: {
-        ...mapGetters([
+        ...mapGetters("bmp", [
             "activeDocument",
             "layers",
         ]),
@@ -114,7 +114,7 @@ export default {
         focus( this.$refs.widthInput );
     },
     methods: {
-        ...mapMutations([
+        ...mapMutations("bmp", [
             "closeModal",
             "setLoading",
             "unsetLoading",

@@ -82,7 +82,7 @@ export default {
         layerId: null,
     }),
     computed: {
-        ...mapGetters([
+        ...mapGetters("bmp", [
             "activeDocument",
             "activeLayer",
             "activeLayerMask",

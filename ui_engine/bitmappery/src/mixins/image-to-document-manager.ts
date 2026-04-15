@@ -38,7 +38,7 @@ let importPDF: ThirdPartyServiceImport;
 
 export default {
     computed: {
-        ...mapGetters([
+        ...mapGetters("bmp", [
             "activeDocument",
             "fileTarget",
             "layers",
@@ -48,7 +48,7 @@ export default {
         this.acceptedFileTypes = ACCEPTED_FILE_EXTENSIONS.map( ext => `.${ext}` ).join( "," );
     },
     methods: {
-        ...mapMutations([
+        ...mapMutations("bmp", [
             "setActiveDocumentSize",
             "addNewDocument",
             "addLayer",
@@ -58,7 +58,7 @@ export default {
             "showNotification",
             "unsetLoading",
         ]),
-        ...mapActions([
+        ...mapActions("bmp", [
             "addImage",
             "loadDocument",
         ]),

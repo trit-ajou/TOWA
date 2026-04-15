@@ -75,7 +75,7 @@ export default {
         max: MAX_ZOOM,
     }),
     computed: {
-        ...mapGetters([
+        ...mapGetters("bmp", [
             "activeDocument",
             "zoomOptions",
             "canvasDimensions",
@@ -94,7 +94,7 @@ export default {
         }
     },
     methods: {
-        ...mapMutations([
+        ...mapMutations("bmp", [
             "setToolOptionValue",
         ]),
         setBestFit() {

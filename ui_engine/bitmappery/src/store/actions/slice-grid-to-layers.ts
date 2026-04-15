@@ -56,15 +56,15 @@ export const sliceGridToLayers = async (
 
     // commit changes, add to state history
     const commit = async (): Promise<void> => {
-        store.commit( "replaceLayers", slicedLayers );
-        store.commit( "setActiveDocumentSize", { width: tileWidth, height: tileHeight });
+        store.commit( "bmp/replaceLayers", slicedLayers );
+        store.commit( "bmp/setActiveDocumentSize", { width: tileWidth, height: tileHeight });
     };
     commit();
     
     enqueueState( "slice-to-layers", {
         undo(): void {
-            store.commit( "replaceLayers", originalLayers );
-            store.commit( "setActiveDocumentSize", { width: originalWidth, height: originalHeight });
+            store.commit( "bmp/replaceLayers", originalLayers );
+            store.commit( "bmp/setActiveDocumentSize", { width: originalWidth, height: originalHeight });
         },
         redo: commit,
     });

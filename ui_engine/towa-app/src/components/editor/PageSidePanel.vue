@@ -69,10 +69,14 @@ const statusColors: Record<string, string> = {
         >
           <div class="relative">
             <img
+              v-if="page.thumbnail"
               :src="page.thumbnail"
               :alt="`${page.index}p`"
               class="w-full aspect-[2/3] object-cover"
             />
+            <div v-else class="w-full aspect-[2/3] bg-towa-bg flex items-center justify-center text-towa-text-muted text-xs">
+              {{ page.index }}p
+            </div>
             <span
               class="absolute top-1 right-1 text-[8px] font-medium text-white px-1 py-0.5 rounded"
               :class="statusColors[page.status] ?? 'bg-gray-500'"

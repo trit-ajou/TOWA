@@ -3,17 +3,31 @@
 
 /* responsiveness mixins */
 
-// phones
+// phones (uses container query so layout responds to bitmappery's
+// actual container size, not the viewport — this lets bitmappery be
+// embedded in a smaller area and still use the mobile layout correctly)
 @mixin mobile {
-    @media (max-width: #{variables.$mobile-width}) {
+    @container bitmappery (max-width: #{variables.$mobile-width}) {
         @content;
+    }
+    // fallback for standalone use when no container is defined
+    @supports not (container-type: inline-size) {
+        @media (max-width: #{variables.$mobile-width}) {
+            @content;
+        }
     }
 }
 
 // anything above phone resolution (e.g. tablet/laptop/desktop)
 @mixin large {
-    @media (min-width: #{variables.$mobile-width}) {
+    @container bitmappery (min-width: #{variables.$mobile-width}) {
         @content;
+    }
+    // fallback for standalone use when no container is defined
+    @supports not (container-type: inline-size) {
+        @media (min-width: #{variables.$mobile-width}) {
+            @content;
+        }
     }
 }
 

@@ -83,7 +83,8 @@ const translate = ( key: string, optArgs?: any ): string => {
     return typeof translator === "function" ? translator?.( key, optArgs ) as string : key;
 }
 
-export default {
+const storeConfig = {
+    namespaced: true,
     modules: {
         canvas,
         document,
@@ -351,3 +352,5 @@ export default {
         },
     },
 };
+
+export default storeConfig;

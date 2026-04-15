@@ -78,7 +78,7 @@ export default {
         max: MAX_ZOOM,
     }),
     computed: {
-        ...mapGetters([
+        ...mapGetters("bmp", [
             "activeLayer",
             "activeLayerIndex",
             "activeLayerTransform",

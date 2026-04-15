@@ -31,10 +31,14 @@ const statusConfig = computed(() => {
   >
     <div class="relative aspect-[2/3] bg-towa-bg overflow-hidden">
       <img
+        v-if="page.thumbnail"
         :src="page.thumbnail"
         :alt="`페이지 ${page.index}`"
         class="w-full h-full object-cover"
       />
+      <div v-else class="w-full h-full flex items-center justify-center text-towa-text-muted text-sm">
+        {{ page.index }}p
+      </div>
       <span
         class="absolute top-2 right-2 text-[10px] font-medium text-white px-1.5 py-0.5 rounded-full"
         :class="statusConfig.color"

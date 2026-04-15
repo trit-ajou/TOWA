@@ -107,7 +107,7 @@ export default {
         },
     },
     computed: {
-        ...mapGetters([
+        ...mapGetters("bmp", [
             "activeDocument",
             "activeLayer",
             "activeLayerIndex",
@@ -121,7 +121,7 @@ export default {
         },
     },
     methods: {
-        ...mapMutations([
+        ...mapMutations("bmp", [
             "setClonedFilters",
             "showNotification",
         ]),

@@ -37,12 +37,12 @@ export const duplicateLayer = ( store: Store<BitMapperyState>, layerToClone: Lay
         mask: layerToClone.mask ? cloneCanvas( layerToClone.mask ) : null
     });
 
-    const commit = () => store.commit( "insertLayerAtIndex", { index: indexToAdd, layer });
+    const commit = () => store.commit( "bmp/insertLayerAtIndex", { index: indexToAdd, layer });
     commit();
     
     enqueueState( `duplicate_${indexToAdd}`, {
         undo(): void {
-            store.commit( "removeLayer", indexToAdd );
+            store.commit( "bmp/removeLayer", indexToAdd );
         },
         redo: commit,
     });

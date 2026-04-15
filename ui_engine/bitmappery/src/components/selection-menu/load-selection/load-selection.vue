@@ -73,7 +73,7 @@ export default {
         name: "",
     }),
     computed: {
-        ...mapGetters([
+        ...mapGetters("bmp", [
             "activeDocument",
         ]),
         selections() {
@@ -87,7 +87,7 @@ export default {
         this.name = this.selections[ 0 ].value;
     },
     methods: {
-        ...mapMutations([
+        ...mapMutations("bmp", [
             "closeModal",
             "setActiveTool",
         ]),

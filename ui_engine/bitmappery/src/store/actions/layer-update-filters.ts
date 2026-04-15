@@ -28,10 +28,10 @@ import type { BitMapperyState } from "@/store";
 export const updateLayerFilters = ( store: Store<BitMapperyState>, index: number, orgFilters: Filters, filters: Filters ): void => {
     enqueueState( `filters_${index}`, {
         undo(): void {
-            store.commit( "updateLayer", { index, opts: { filters: orgFilters } });
+            store.commit( "bmp/updateLayer", { index, opts: { filters: orgFilters } });
         },
         redo(): void {
-            store.commit( "updateLayer", { index, opts: { filters }});
+            store.commit( "bmp/updateLayer", { index, opts: { filters }});
         },
     });
 };

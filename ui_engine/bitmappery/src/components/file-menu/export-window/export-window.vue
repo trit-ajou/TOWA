@@ -216,11 +216,11 @@ export default {
         hasCloudStorage : supportsDropbox() || supportsGoogleDrive() || supportsS3(),
     }),
     computed: {
-        ...mapState([
+        ...mapState("bmp", [
             "loadingStates",
             "windowSize",
         ]),
-        ...mapGetters([
+        ...mapGetters("bmp", [
             "activeDocument",
             "isLoading",
         ]),
@@ -329,7 +329,7 @@ export default {
         this.snapshot = null;
     },
     methods: {
-        ...mapMutations([
+        ...mapMutations("bmp", [
             "closeModal",
             "setLoading",
             "unsetLoading",
