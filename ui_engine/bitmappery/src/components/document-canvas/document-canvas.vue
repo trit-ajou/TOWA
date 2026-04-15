@@ -260,6 +260,17 @@ export default {
         await this.$nextTick();
         this.cacheContainerSize();
         this.scaleWrapper();
+        // clean up stale canvas instance from previous navigation cycle:
+        // when the parent (ProjectView) unmounts, it commits closeActiveDocument
+        // but this component's watcher may not fire because the component is already
+        // being torn down. The stale singleton reference then blocks canvas recreation.
+        const staleCanvas = getCanvasInstance();
+        if ( staleCanvas ) {
+            this.removeTouchListeners();
+            staleCanvas.dispose();
+            setCanvasInstance( null );
+            lastDocument = null;
+        }
         // if document already exists at mount time (e.g. towa-app auto-created it),
         // trigger canvas creation that the watcher would normally handle
         if ( this.activeDocument?.layers && !getCanvasInstance() ) {

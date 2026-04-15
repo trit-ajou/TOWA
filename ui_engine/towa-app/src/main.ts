@@ -36,16 +36,14 @@ app.directive('tooltip', vTooltip)
 const fileAdapter = createFileAdapter()
 app.provide(FILE_ADAPTER_KEY, fileAdapter)
 
-// store 모듈에 adapter 주입 (동기적으로 즉시 실행 — Promise지만 실제로는 즉시 resolve)
+// store 모듈에 adapter 주입
 store.dispatch('projects/init', fileAdapter)
 store.dispatch('pages/init', fileAdapter)
 
-// 앱을 먼저 마운트 (bitmappery 캔버스 초기화가 DOM에 의존)
-app.mount('#app')
-
-// 마운트 후 비동기로 데이터 로드
-async function initFileSystem() {
+// DB 초기화 → 데이터 로드 → 마운트 (순서 보장)
+async function init() {
   await seedDummyDataIfEmpty(fileAdapter)
   await store.dispatch('projects/loadAll')
+  app.mount('#app')
 }
-initFileSystem()
+init()

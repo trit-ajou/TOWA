@@ -194,8 +194,10 @@ async function addPages(files: File[]) {
         <PageGrid
           :pages="filteredPages"
           :selected-page-id="selectedPageId"
+          :project-id="projectId"
           @open-edit="selectAndEdit"
           @open-detail="selectAndDetail"
+          @add-pages="addPages"
         />
       </div>
     </template>

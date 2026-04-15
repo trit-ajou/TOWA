@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, watch, nextTick } from 'vue'
+import { computed, watch, nextTick, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
 import { useStore } from 'vuex'
 // @ts-expect-error bitmappery component (JS/Vue)
@@ -40,6 +40,19 @@ watch(
 watch(showCanvas, (visible) => {
   if (visible) {
     nextTick(() => window.dispatchEvent(new Event('resize')))
+  }
+})
+
+// ProjectView unmount 시 bitmappery 문서 정리
+// (홈으로 돌아가면 ProjectView가 통째로 unmount되는데,
+//  이때 canvas-service의 참조를 정리하지 않으면 다음 진입 시 캔버스가 재생성되지 않음)
+onBeforeUnmount(() => {
+  const docs = store.state.bmp?.document?.documents
+  if (docs) {
+    // 모든 열린 문서 닫기
+    while (store.getters['bmp/activeDocument']) {
+      store.commit('bmp/closeActiveDocument')
+    }
   }
 })
 </script>

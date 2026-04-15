@@ -1,4 +1,8 @@
 import type { FileAdapter, ProjectRecord, PageRecord } from '@/file-adapter'
+// @ts-expect-error bitmappery JS module
+import DocumentFactory from '@bitmappery/factories/document-factory'
+// @ts-expect-error bitmappery JS module
+import LayerFactory from '@bitmappery/factories/layer-factory'
 
 const seedProjects: ProjectRecord[] = [
   {
@@ -151,12 +155,12 @@ function createSeedPages(projectId: string, count: number): PageRecord[] {
 }
 
 /**
- * Canvas로 placeholder 썸네일 생성 (텍스트 기반).
+ * Canvas로 placeholder 이미지 생성 (텍스트 기반).
  * 브라우저 환경에서만 동작.
  */
-function generatePlaceholderThumbnail(text: string, bgColor: string, fgColor: string): Promise<Blob> {
-  const w = 200
-  const h = 300
+function generatePlaceholderImage(
+  text: string, bgColor: string, fgColor: string, w: number, h: number,
+): Promise<Blob> {
   const canvas = document.createElement('canvas')
   canvas.width = w
   canvas.height = h
@@ -178,6 +182,23 @@ function generatePlaceholderThumbnail(text: string, bgColor: string, fgColor: st
   })
 }
 
+function blobToCanvas(blob: Blob): Promise<HTMLCanvasElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => {
+      const canvas = document.createElement('canvas')
+      canvas.width = img.width
+      canvas.height = img.height
+      const ctx = canvas.getContext('2d')!
+      ctx.drawImage(img, 0, 0)
+      URL.revokeObjectURL(img.src)
+      resolve(canvas)
+    }
+    img.onerror = reject
+    img.src = URL.createObjectURL(blob)
+  })
+}
+
 const projectThumbnailConfig: Record<string, { text: string; bg: string; fg: string }> = {
   'proj-1': { text: 'ONE\nPIECE', bg: '#1a1230', fg: '#9569B4' },
   'proj-2': { text: 'JJK\n271', bg: '#1e1510', fg: '#e84a8a' },
@@ -196,21 +217,54 @@ const projectThumbnailConfig: Record<string, { text: string; bg: string; fg: str
  */
 export async function seedDummyDataIfEmpty(adapter: FileAdapter): Promise<boolean> {
   const existing = await adapter.listProjects()
-  if (existing.length > 0) return false
+  if (existing.length > 0) {
+    // 기존 데이터가 있지만 page-layers가 없으면 (이전 버전 seed) 전체 재생성
+    const firstPageLayers = await adapter.getLayerData('proj-1-page-1')
+    if (firstPageLayers) return false
+    // page-layers 없음 → DB 초기화 후 재생성
+    for (const p of existing) {
+      await adapter.deleteProject(p.id)
+    }
+  }
 
   // 프로젝트 저장
   for (const project of seedProjects) {
     await adapter.saveProject(project)
 
-    // 페이지 저장 + 각 페이지 썸네일 생성
+    // 페이지 저장 + 원본 이미지 + bitmappery 문서 + 썸네일
     const thumbConfig = projectThumbnailConfig[project.id]
+    const bg = thumbConfig?.bg ?? '#1a1726'
+    const fg = thumbConfig?.fg ?? '#4a4560'
     const pages = createSeedPages(project.id, project.pageCount)
     for (const page of pages) {
       await adapter.savePage(page)
-      // 페이지별 placeholder 썸네일
-      const bg = thumbConfig?.bg ?? '#1a1726'
-      const fg = thumbConfig?.fg ?? '#4a4560'
-      const thumbBlob = await generatePlaceholderThumbnail(`P${page.index}`, bg, fg)
+
+      // 원본 이미지 (800×1200)
+      const imgBlob = await generatePlaceholderImage(
+        `${project.name}\nPage ${page.index}`, bg, fg, 800, 1200,
+      )
+      await adapter.saveOriginalImage(page.id, imgBlob)
+
+      // bitmappery 문서 생성 → 직렬화 → page-layers에 저장
+      const imgCanvas = await blobToCanvas(imgBlob)
+      const doc = DocumentFactory.create({
+        name: `page-${page.id}`,
+        width: imgCanvas.width,
+        height: imgCanvas.height,
+        layers: [
+          LayerFactory.create({
+            name: 'original',
+            source: imgCanvas,
+            width: imgCanvas.width,
+            height: imgCanvas.height,
+          }),
+        ],
+      })
+      const docBlob = await DocumentFactory.toBlob(doc)
+      await adapter.saveLayerData(page.id, docBlob)
+
+      // 썸네일 (200×300)
+      const thumbBlob = await generatePlaceholderImage(`P${page.index}`, bg, fg, 200, 300)
       await adapter.saveThumbnail(page.id, thumbBlob)
     }
   }
