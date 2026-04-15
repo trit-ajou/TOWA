@@ -1,6 +1,16 @@
 import { getDB, type ProjectRecord, type PageRecord } from './db'
 import type { FileAdapter, PageSummary, PageSnapshot } from './contracts'
 
+/**
+ * Vue reactive Proxy는 IndexedDB의 structuredClone이 복제하지 못함
+ * (`DataCloneError: [object Array] could not be cloned`).
+ * IDB에 쓰기 직전에 JSON을 통해 plain 객체로 변환한다.
+ * Blob/File은 JSON으로 직렬화 불가하므로 별도 처리(이 함수 사용 금지).
+ */
+function sanitize<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T
+}
+
 export class LocalFileAdapter implements FileAdapter {
 
   // --- Project CRUD ---
@@ -22,12 +32,12 @@ export class LocalFileAdapter implements FileAdapter {
       throw new Error(`Project already exists: ${project.id}`)
     }
     const now = new Date().toISOString()
-    const record: ProjectRecord = {
+    const record: ProjectRecord = sanitize({
       ...project,
       pageCount: project.pageCount ?? 0,
       createdAt: project.createdAt || now,
       updatedAt: project.updatedAt || now,
-    }
+    })
     await db.put('projects', record)
     return record
   }
@@ -38,12 +48,12 @@ export class LocalFileAdapter implements FileAdapter {
     if (!existing) {
       throw new Error(`Project not found: ${id}`)
     }
-    const updated: ProjectRecord = {
+    const updated: ProjectRecord = sanitize({
       ...existing,
       ...patch,
       id, // id는 절대 변경 불가
       updatedAt: new Date().toISOString(),
-    }
+    })
     await db.put('projects', updated)
     return updated
   }
@@ -127,7 +137,7 @@ export class LocalFileAdapter implements FileAdapter {
       projectId,
       index: newIndex,
       status: snapshot.page.status,
-      textBlocks: snapshot.page.textBlocks,
+      textBlocks: sanitize(snapshot.page.textBlocks),
     }
 
     // Atomic transaction: pages + 3 binary stores
