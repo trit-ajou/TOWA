@@ -7,7 +7,8 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import Select, func, select, update
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, contains_eager, joinedload
+from sqlalchemy.orm.attributes import set_committed_value
 
 from app.core.clock import utcnow
 from app.db.enums import PageStatus, ProjectStatus
@@ -133,15 +134,22 @@ def _load_page(
             Page.id == page_id,
             Project.user_id == user_id,
         )
-        .options(joinedload(Page.project))
+        .options(contains_eager(Page.project))
     )
-    if include_snapshot:
+    if include_snapshot and not for_update:
         statement = statement.options(joinedload(Page.snapshot))
     if for_update:
         statement = statement.with_for_update()
     page = session.scalar(statement)
     if page is None:
         raise PageNotFoundError(f"Page {page_id} was not found.")
+    if include_snapshot and for_update:
+        snapshot = session.scalar(
+            select(PageSnapshot)
+            .where(PageSnapshot.page_id == page.id)
+            .with_for_update(),
+        )
+        set_committed_value(page, "snapshot", snapshot)
     return page
 
 

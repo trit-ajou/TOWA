@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from sqlalchemy import text
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -41,3 +42,26 @@ def sqlite_session_factory(tmp_path: Path):
 def postgres_test_url() -> str | None:
     return os.getenv("TEST_DATABASE_URL")
 
+
+@pytest.fixture
+def postgres_session_factory(
+    postgres_test_url: str | None,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    if not postgres_test_url:
+        pytest.skip("TEST_DATABASE_URL is required for PostgreSQL tests.")
+
+    monkeypatch.setenv("DATABASE_URL", postgres_test_url)
+    get_settings.cache_clear()
+
+    engine = make_engine(postgres_test_url)
+    try:
+        with engine.begin() as connection:
+            connection.execute(text("DROP SCHEMA IF EXISTS public CASCADE"))
+            connection.execute(text("CREATE SCHEMA public"))
+        Base.metadata.create_all(engine)
+        session_factory = make_session_factory(engine)
+        yield session_factory
+    finally:
+        Base.metadata.drop_all(engine)
+        engine.dispose()

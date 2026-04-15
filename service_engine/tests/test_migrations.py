@@ -11,13 +11,16 @@ from sqlalchemy.exc import IntegrityError
 
 from app.core.settings import get_settings
 
-EXPECTED_TABLES = {
+INITIAL_REVISION = "20260325_000001"
+BASE_TABLES = {
     "users",
     "auth_sessions",
     "credit_accounts",
     "usage_jobs",
     "credit_holds",
     "credit_ledger",
+}
+STORAGE_TABLES = {
     "projects",
     "pages",
     "page_snapshots",
@@ -43,14 +46,23 @@ def test_alembic_upgrade_head_creates_expected_schema(
     finally:
         reset_engine.dispose()
 
-    alembic_config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
-    command.upgrade(alembic_config, "head")
+    service_engine_dir = Path(__file__).resolve().parents[1]
+    alembic_config = Config(str(service_engine_dir / "alembic.ini"))
+    alembic_config.set_main_option("script_location", str(service_engine_dir / "alembic"))
+    command.upgrade(alembic_config, INITIAL_REVISION)
 
     engine = create_engine(postgres_test_url)
     try:
         inspector = inspect(engine)
         table_names = set(inspector.get_table_names())
-        assert EXPECTED_TABLES.issubset(table_names)
+        assert BASE_TABLES.issubset(table_names)
+        assert STORAGE_TABLES.isdisjoint(table_names)
+
+        command.upgrade(alembic_config, "head")
+
+        inspector = inspect(engine)
+        table_names = set(inspector.get_table_names())
+        assert BASE_TABLES.union(STORAGE_TABLES).issubset(table_names)
 
         usage_columns = {column["name"] for column in inspector.get_columns("usage_jobs")}
         assert {"operation_kind", "request_ref", "estimated_units"}.issubset(usage_columns)

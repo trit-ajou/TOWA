@@ -4,6 +4,7 @@ import json
 from email.parser import BytesParser
 from email.policy import default
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import sessionmaker
 
@@ -261,6 +262,29 @@ def test_page_thumbnail_is_private_to_project_owner(sqlite_session_factory: sess
 
     assert response.status_code == 404
     _assert_error(response.json(), code="page_not_found")
+
+
+@pytest.mark.postgres
+def test_page_snapshot_update_works_on_postgresql(postgres_session_factory: sessionmaker) -> None:
+    client = _build_test_client(postgres_session_factory)
+    session_key = _login(client)
+    _create_project(client, session_key)
+
+    create_response = client.post(
+        f"/api/v1/projects/{PROJECT_ID}/pages",
+        files=_snapshot_files(page_id=PAGE_ID_1, index=1),
+        headers=_session_headers(session_key),
+    )
+    assert create_response.status_code == 200
+
+    update_response = client.put(
+        f"/api/v1/pages/{PAGE_ID_1}/snapshot",
+        files=_snapshot_files(page_id=PAGE_ID_1, index=1, status="done"),
+        headers=_session_headers(session_key),
+    )
+
+    assert update_response.status_code == 200
+    assert update_response.json()["page"]["status"] == "done"
 
 
 def test_page_create_rejects_invalid_media_type(sqlite_session_factory: sessionmaker) -> None:
