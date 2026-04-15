@@ -10,6 +10,7 @@
 - `OCR_CAPABILITY.md`: OCR capability 공통 계약 초안
 - `TROUBLESHOOTING.md`: OCR/번역 실행 중 관측한 문제와 threshold 튜닝 기록
 - `SESSION_AND_CREDENTIAL_IMPLEMENTATION.md`: 세션, usage, provider credential 구현 준비 문서
+- `SERVING_PLAN.md`: `API + Inference` 통합 서빙 컨테이너 전략과 단일 serving image 전환 계획
 - `SPEC.md`, `../docs/http-contract.md`: 외부 엔진 경계와 SaaS/local 계약 참고
 
 ## 이번에 구현한 범위
@@ -45,11 +46,13 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - OCR/번역 튜닝 기록용 `TROUBLESHOOTING.md` 추가
 - 세션/credential 책임과 실제 API 함수 기준 호환성을 정리한 `SESSION_AND_CREDENTIAL_IMPLEMENTATION.md` 추가
 - `UI_MODEL_CONTRACT_DRAFT.md` 추가
+- `SERVING_PLAN.md` 추가
 - `/v1/jobs`가 `multipart(metadata + primary_bitmap)` 입력을 수신할 수 있게 확장
 - metadata의 `upload://primary_bitmap` descriptor를 request 시점에 `file://...` artifact로 물질화
 - multipart request fingerprint에 uploaded bitmap sha256을 포함해 idempotency 충돌 판정을 안정화
 - `GET /v1/jobs/{job_id}` 응답에 `document_patch` 필드 추가
 - UI migration 전환을 위해 legacy JSON create와 full `document` 응답도 임시로 함께 유지
+- 장기 이상형인 `API / Worker` 분리 전에, 현재 단계에서는 `API + Inference` 통합 서빙 컨테이너를 먼저 만들기로 전략을 정리
 
 ### 1. Canonical IR
 
