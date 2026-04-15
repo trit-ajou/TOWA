@@ -17,7 +17,7 @@
 Docker 기준:
 
 ```bash
-cd /Users/kmins/02_Programming/git/TOWA_fix/model_engine
+cd model_engine
 docker compose -f docker-compose.inference.yml run --build --rm ocr-sample
 ```
 
