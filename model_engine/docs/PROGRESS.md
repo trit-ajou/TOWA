@@ -2,6 +2,8 @@
 
 ## 기준 문서
 
+`model_engine` 문서는 `docs/` 아래에 정리한다.
+
 - `README.md`: 현재 `model_engine` 내부 구현 기준서
 - `PLAN.md`: 확정/미확정 범위 판단 기준
 - `IMPLEMENTATION_SUMMARY.md`: 현재 실제 구현 완료 범위 요약
@@ -33,7 +35,11 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - `StageRuntimeContext`에 SaaS usage wiring 필드 추가
 - service usage hold/capture/release 테스트 추가
 - OpenAI-compatible translation adapter 추가
+- `model_engine/.runtime/runtime_config.json` 기반 local runtime config 로더 추가
 - Docker Compose translation 기본 base URL을 host `127.0.0.1:1234/v1` 대응용 `host.docker.internal:1234/v1`로 설정
+- `Tencent HY-MT` 구체 모델 병합 예시는 제거하고 generic custom runtime 방향으로 정리
+- OCR stage에 `MangaOcr()` recognizer 재사용, region merge, `vertical_rtl` reading order, density/area 기반 `needs_review` 마킹 추가
+- OCR/번역 튜닝 기록용 `TROUBLESHOOTING.md` 추가
 
 ### 1. Canonical IR
 
@@ -314,6 +320,72 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - 기본 모델은 `gemini-3.1-flash-lite-preview`
 - 결과 응답은 JSON으로 강제하고, block id 또는 순서 기준으로 번역 결과를 원문 block에 다시 병합한다.
 
+### 9-3. Built-in OpenAI-compatible Translation
+
+구현 파일:
+
+- `builtin_models/openai_compatible_translation.py`
+- `config/runtime_config.py`
+- `tests/test_openai_compatible_translation.py`
+- `tests/test_runtime_config.py`
+- `scripts/run_translation_sample.py`
+- `scripts/run_pipeline_sample.py`
+
+구현 내용:
+
+- built-in `translation` capability에 OpenAI-compatible adapter 추가
+- LM Studio, Ollama OpenAI-compatible endpoint, custom proxy를 공통 경로로 사용
+- API key가 없어도 동작 가능한 local server 경로와, Bearer key가 필요한 proxy 경로를 모두 허용
+- `env > runtime_config.json > default` 우선순위로 local runtime config를 해석
+- 기본 translation backend를 OpenAI-compatible로 전환하고, Vertex는 명시적 backend 선택으로 유지
+
+비고:
+
+- 현재 기본 base URL은 host 실행 시 `http://127.0.0.1:1234/v1`, Docker 실행 시 `http://host.docker.internal:1234/v1`
+- 현재 구현은 page block 전체를 한 번의 LLM 호출로 보내는 batch translation 방식이다.
+- JSON 출력은 provider/prompt 기반으로 유도하지만, provider별 strict structured output 보강은 아직 남아 있다.
+
+남은 보완:
+
+- JSON repair path 추가
+- `block_id` 누락 시 positional fallback 제거 또는 제한
+- OCR `needs_review`/warning 정보를 prompt에 반영
+- 많은 block에 대한 chunking 정책
+- retry/backoff 및 provider compatibility 보강
+- glossary / term map 추가
+
+### 9-4. OCR Post-processing / Reading Order
+
+구현 파일:
+
+- `builtin_models/manga_ocr.py`
+- `tests/test_manga_ocr.py`
+- `scripts/run_ocr_sample.py`
+- `scripts/run_translation_sample.py`
+- `scripts/run_pipeline_sample.py`
+
+구현 내용:
+
+- `MangaOcr()` 인스턴스를 OCR stage 내에서 1회만 생성하고 재사용
+- detection region들을 OCR 전에 merge해 crop 수를 줄이고 말풍선/문장 단위 인식 가능성을 높임
+- 세로쓰기 일본어 만화 기준 `reading_order_mode=vertical_rtl` 정렬 추가
+- `min_ocr_region_area_*`, `max_text_density_per_1000_px2`, `small_region_long_text_*` 규칙으로 환각 의심 block을 `needs_review`로 마킹
+- 모든 OCR block에 density/area/text length debug 값을 `style_hint`에 기록
+
+비고:
+
+- 현재 기본 threshold는 `max_text_density_per_1000_px2=1.5`
+- 환각 의심 block은 기본적으로 삭제하지 않고 `style_hint.ocr_status=needs_review`로 보존한다.
+- threshold 근거와 샘플별 튜닝 규칙은 `TROUBLESHOOTING.md`에 정리한다.
+
+남은 보완:
+
+- `needs_review` block crop debug artifact 저장
+- 실제 샘플 여러 장 기준 density/area 분포 수집
+- `manga-ocr` confidence 대체 지표 또는 logits 기반 confidence 조사
+- UI에서 `needs_review` block 시각 강조
+- merge 규칙을 말풍선/세로열 단위로 더 정교화
+
 ### 10. Model Merge / Adapter Registry
 
 구현 파일:
@@ -391,7 +463,7 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - `builtin_models/craft_text_detection.py`
 - `builtin_models/__init__.py`
 - `scripts/run_craft_sample.py`
-- `samples/images/README.md`
+- `SAMPLE_IMAGES.md`
 
 구현 내용:
 

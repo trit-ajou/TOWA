@@ -229,7 +229,7 @@ service 책임:
 - 이 경로는 개발용 bridge다
 - 최종 UI가 service API를 model bridge를 통해 우회 호출하는 구조를 기본 계약으로 삼지는 않는다
 
-자세한 내용은 [model_engine/API_CONTRACT.md](/home/user/dev/TOWA/model_engine/API_CONTRACT.md)를 따른다.
+자세한 내용은 [model_engine/docs/API_CONTRACT.md](model_engine/docs/API_CONTRACT.md)를 따른다.
 
 ## UI -> Model
 

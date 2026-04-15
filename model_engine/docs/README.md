@@ -12,6 +12,8 @@
 
 ## 1. 이 문서의 역할
 
+`model_engine` 문서는 `docs/` 아래에 모은다.
+
 - `SPEC.md`: 제품/엔진 간 역할과 장기 아키텍처
 - `API_CONTRACT.md`: 현재 서비스 엔진과의 외부 wire contract
 - `README.md`(이 문서): `model_engine` 내부 구현 명세
@@ -1386,6 +1388,24 @@ v1에서는 planner를 규칙 기반으로 시작한다.
 - 응답은 JSON으로 강제하고, `block_id -> translated_text` 매핑으로 다시 병합한다.
 - `block_id`가 빠진 응답은 입력 순서 fallback을 허용하되 warning을 남긴다.
 - 일부 block이 비면 stage는 `partial`로 기록할 수 있다.
+
+현재 보완된 점:
+
+- OCR 결과는 block별 호출이 아니라 page block 전체를 모아 한 번의 LLM 호출로 번역한다.
+- OpenAI-compatible backend는 LM Studio, Ollama OpenAI-compatible endpoint, custom proxy를 같은 contract로 받는다.
+- local runtime 값은 `env > .runtime/runtime_config.json > default` 우선순위로 해석한다.
+- OCR stage가 `style_hint.ocr_status=needs_review`, `ocr_warnings`, density/area/text length를 남기므로, 번역 전후 분석 기준점이 생겼다.
+
+현재 남아 있는 보완 항목:
+
+- provider별 strict structured output 강제 강화
+- fenced code block, prefix/suffix 설명문 등을 복구하는 JSON repair path 추가
+- `block_id` 누락 시 positional fallback 의존도 축소 또는 제거
+- OCR `needs_review`/warning 정보를 번역 prompt에 전달하는 경로 추가
+- block 수가 많은 페이지용 chunking 정책
+- timeout, `429`, `5xx`, local warm-up 지연에 대한 retry/backoff
+- glossary / term map / 이름 고정 번역 규칙
+- provider별 응답 shape 편차에 대한 compatibility 보강
 
 권장 `stage_config`:
 

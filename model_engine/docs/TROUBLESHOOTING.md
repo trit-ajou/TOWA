@@ -229,10 +229,35 @@ max_source_regions_per_block
 번역은 현재 OCR block들을 모아서 한 번의 LLM 요청으로 처리한다.
 즉 블록마다 LLM을 호출하는 구조는 아니다.
 
-## 6. 다음 개선 후보
+## 6. 현재까지 반영된 내용
 
-- 실제 샘플 여러 장에서 `max_text_density_per_1000_px2` 분포 수집
-- `needs_review` 블록만 crop debug image로 저장하는 옵션 추가
-- UI에서 `style_hint.ocr_status == "needs_review"` 블록 강조 표시
-- `manga-ocr` 내부 logits 기반 confidence 추출 가능성 조사
-- `small_region_long_text` 규칙을 UI 텍스트/손글씨/효과음 별로 세분화
+- OCR stage에서 `MangaOcr()` recognizer를 region마다 새로 만들지 않고 stage 내에서 재사용한다.
+- detection region을 OCR 전에 merge하고 기본 padding을 늘려 말풍선/문장 단위 crop 가능성을 높였다.
+- 세로쓰기 일본어 만화 기준 `reading_order_mode=vertical_rtl` 정렬을 추가했다.
+- density / area / small-region-long-text 규칙으로 환각 의심 OCR block을 `style_hint.ocr_status=needs_review`로 마킹한다.
+- 모든 OCR block에 `ocr_text_density_per_1000_px2`, `ocr_region_area_px`, `ocr_text_length`를 남겨 threshold 튜닝 근거를 확보했다.
+- translation backend 기본 경로를 OpenAI-compatible로 정리했고, LM Studio / Ollama / custom proxy를 같은 contract로 받도록 했다.
+- translation은 OCR block마다 따로 호출하지 않고, page block 전체를 한 번의 LLM 요청으로 batch translation 한다.
+- local 실행용 provider 설정은 `.runtime/runtime_config.json`으로 분리하고 Git ignore 상태로 유지한다.
+
+## 7. 아직 해결해야 하는 내용
+
+### OCR 쪽
+
+- 실제 샘플 여러 장에서 `max_text_density_per_1000_px2`와 `ocr_region_area_px` 분포를 수집해 threshold를 더 안정화
+- `needs_review` block만 crop debug image로 저장하는 옵션 추가
+- `small_region_long_text` 규칙을 UI 텍스트 / 손글씨 / 효과음 기준으로 세분화
+- `manga-ocr` 내부 logits 기반 confidence 또는 대체 quality score 조사
+- merge 규칙을 단순 bbox 거리 기반에서 세로열 / 말풍선 단위에 더 맞게 조정
+- UI에서 `style_hint.ocr_status == "needs_review"` block 강조 표시
+
+### Translation / LLM 호출 쪽
+
+- provider별 strict structured output 강제 강화
+- fenced code block, prefix/suffix 설명문 등을 허용하는 JSON repair path 추가
+- `block_id` 누락 시 positional fallback 의존도 축소 또는 제거
+- OCR `needs_review`, `ocr_warnings`를 번역 prompt에 반영해 과도한 자연화 억제
+- block 수가 많은 페이지용 chunking 정책 추가
+- timeout, `429`, `5xx`, local warm-up 지연에 대한 retry/backoff 추가
+- glossary / term map / 이름 고정 번역 규칙 추가
+- provider별 응답 shape 편차 대응 보강

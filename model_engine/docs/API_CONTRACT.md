@@ -1,7 +1,7 @@
 # Model Engine HTTP Contract v0
 
 `model_engine`이 외부와 주고받는 HTTP 계약 요약본이다.
-세 엔진 전체 관점의 기준 문서는 [INTER_ENGINE_HTTP.md](/home/user/dev/TOWA/INTER_ENGINE_HTTP.md)다.
+세 엔진 전체 관점의 기준 문서는 [INTER_ENGINE_HTTP.md](../../INTER_ENGINE_HTTP.md)다.
 
 ## Current Implemented Endpoints
 
@@ -54,7 +54,7 @@
 - `POST /v1/jobs`
 - `GET /v1/jobs/{job_id}`
 
-요청/응답 shape는 [INTER_ENGINE_HTTP.md](/home/user/dev/TOWA/INTER_ENGINE_HTTP.md)의 `UI -> Model` 섹션을 따른다.
+요청/응답 shape는 [INTER_ENGINE_HTTP.md](../../INTER_ENGINE_HTTP.md)의 `UI -> Model` 섹션을 따른다.
 
 현재 성격:
 
