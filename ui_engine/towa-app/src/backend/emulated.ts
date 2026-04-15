@@ -7,8 +7,14 @@ import type {
   AuthBackend,
   AuthRequestOptions,
   CurrentSessionInfo,
+  FilesBackend,
   LoginInput,
   LoginResult,
+  PageSnapshotPayload,
+  PageSummaryDto,
+  ProjectCreateInput,
+  ProjectDto,
+  ProjectPatchInput,
   TransportStageReport,
 } from './contracts'
 import { BackendError, ensureSessionKey } from './errors'
@@ -235,7 +241,296 @@ export function createEmulatedAppBackend(): AppBackend {
     },
   }
 
-  return { auth, aiJobs }
+  const files: FilesBackend = createEmulatedFilesBackend()
+
+  return { auth, aiJobs, files }
+}
+
+// --- FilesBackend emulated (in-memory implementation) ---
+
+interface EmulatedPageRecord {
+  // summary fields
+  id: string
+  projectId: string
+  index: number
+  status: string
+  updatedAt: string
+  // snapshot payload
+  metadata: PageSnapshotPayload['metadata']
+  originalImage: Blob
+  layerBlob: Blob
+  thumbnail: Blob
+}
+
+export function createEmulatedFilesBackend(): FilesBackend {
+  const projects = new Map<string, ProjectDto>()
+  const pages = new Map<string, EmulatedPageRecord>()
+  const pagesByProject = new Map<string, string[]>()
+
+  function getPageCount(projectId: string): number {
+    return (pagesByProject.get(projectId) || []).length
+  }
+
+  function toSummary(record: EmulatedPageRecord): PageSummaryDto {
+    return {
+      id: record.id,
+      projectId: record.projectId,
+      index: record.index,
+      status: record.status,
+      thumbnailUrl: null,
+      updatedAt: record.updatedAt,
+    }
+  }
+
+  return {
+    async listProjects(opts: AuthRequestOptions): Promise<ProjectDto[]> {
+      ensureSessionKey(opts.sessionKey)
+      return Array.from(projects.values()).map((p) => clone(p))
+    },
+
+    async getProject(projectId: string, opts: AuthRequestOptions): Promise<ProjectDto> {
+      ensureSessionKey(opts.sessionKey)
+      const project = projects.get(projectId)
+      if (!project) {
+        throw new BackendError({
+          code: 'project_not_found',
+          message: `Project ${projectId} not found`,
+          retryable: false,
+          details: null,
+        })
+      }
+      return clone({ ...project, pageCount: getPageCount(projectId) })
+    },
+
+    async createProject(input: ProjectCreateInput, opts: AuthRequestOptions): Promise<ProjectDto> {
+      ensureSessionKey(opts.sessionKey)
+      if (projects.has(input.id)) {
+        throw new BackendError({
+          code: 'project_conflict',
+          message: `Project ${input.id} already exists`,
+          retryable: false,
+          details: null,
+        })
+      }
+      const now = new Date().toISOString()
+      const project: ProjectDto = {
+        id: input.id,
+        name: input.name,
+        thumbnailUrl: input.thumbnailUrl ?? null,
+        sourceLang: input.sourceLang,
+        targetLang: input.targetLang,
+        pageCount: 0,
+        status: input.status ?? 'todo',
+        folder: input.folder ?? '',
+        config: input.config ?? {},
+        createdAt: now,
+        updatedAt: now,
+      }
+      projects.set(input.id, project)
+      pagesByProject.set(input.id, [])
+      return clone(project)
+    },
+
+    async updateProject(projectId: string, patch: ProjectPatchInput, opts: AuthRequestOptions): Promise<ProjectDto> {
+      ensureSessionKey(opts.sessionKey)
+      const project = projects.get(projectId)
+      if (!project) {
+        throw new BackendError({
+          code: 'project_not_found',
+          message: `Project ${projectId} not found`,
+          retryable: false,
+          details: null,
+        })
+      }
+      if (patch.name !== undefined) project.name = patch.name
+      if (patch.thumbnailUrl !== undefined) project.thumbnailUrl = patch.thumbnailUrl ?? null
+      if (patch.sourceLang !== undefined) project.sourceLang = patch.sourceLang
+      if (patch.targetLang !== undefined) project.targetLang = patch.targetLang
+      if (patch.status !== undefined) project.status = patch.status
+      if (patch.folder !== undefined) project.folder = patch.folder
+      if (patch.config !== undefined) project.config = patch.config
+      project.updatedAt = new Date().toISOString()
+      project.pageCount = getPageCount(projectId)
+      return clone(project)
+    },
+
+    async deleteProject(projectId: string, opts: AuthRequestOptions): Promise<void> {
+      ensureSessionKey(opts.sessionKey)
+      if (!projects.has(projectId)) {
+        throw new BackendError({
+          code: 'project_not_found',
+          message: `Project ${projectId} not found`,
+          retryable: false,
+          details: null,
+        })
+      }
+      // Delete all pages belonging to this project
+      const pageIds = pagesByProject.get(projectId) || []
+      for (const pid of pageIds) {
+        pages.delete(pid)
+      }
+      pagesByProject.delete(projectId)
+      projects.delete(projectId)
+    },
+
+    async listPageSummaries(projectId: string, opts: AuthRequestOptions): Promise<PageSummaryDto[]> {
+      ensureSessionKey(opts.sessionKey)
+      const pageIds = pagesByProject.get(projectId)
+      if (!pageIds) {
+        throw new BackendError({
+          code: 'project_not_found',
+          message: `Project ${projectId} not found`,
+          retryable: false,
+          details: null,
+        })
+      }
+      return pageIds.map((pid) => {
+        const record = pages.get(pid)!
+        return toSummary(record)
+      })
+    },
+
+    async createPage(projectId: string, snapshot: PageSnapshotPayload, opts: AuthRequestOptions): Promise<PageSummaryDto> {
+      ensureSessionKey(opts.sessionKey)
+      const pageIds = pagesByProject.get(projectId)
+      if (!pageIds) {
+        throw new BackendError({
+          code: 'project_not_found',
+          message: `Project ${projectId} not found`,
+          retryable: false,
+          details: null,
+        })
+      }
+      const pageId = snapshot.metadata.page.id
+      if (pages.has(pageId)) {
+        throw new BackendError({
+          code: 'page_conflict',
+          message: `Page ${pageId} already exists`,
+          retryable: false,
+          details: null,
+        })
+      }
+      const expectedIndex = pageIds.length + 1
+      if (snapshot.metadata.page.index !== expectedIndex) {
+        throw new BackendError({
+          code: 'page_conflict',
+          message: `Expected index ${expectedIndex}, got ${snapshot.metadata.page.index}`,
+          retryable: false,
+          details: { reason: 'index_invalid' },
+        })
+      }
+      const now = new Date().toISOString()
+      const record: EmulatedPageRecord = {
+        id: pageId,
+        projectId,
+        index: snapshot.metadata.page.index,
+        status: snapshot.metadata.page.status,
+        updatedAt: now,
+        metadata: clone(snapshot.metadata),
+        originalImage: snapshot.originalImage,
+        layerBlob: snapshot.layerBlob,
+        thumbnail: snapshot.thumbnail,
+      }
+      pages.set(pageId, record)
+      pageIds.push(pageId)
+      // Update project pageCount
+      const project = projects.get(projectId)
+      if (project) {
+        project.pageCount = getPageCount(projectId)
+        project.updatedAt = now
+      }
+      return toSummary(record)
+    },
+
+    async savePageSnapshot(pageId: string, snapshot: PageSnapshotPayload, opts: AuthRequestOptions): Promise<PageSummaryDto> {
+      ensureSessionKey(opts.sessionKey)
+      const existing = pages.get(pageId)
+      if (!existing) {
+        throw new BackendError({
+          code: 'page_not_found',
+          message: `Page ${pageId} not found`,
+          retryable: false,
+          details: null,
+        })
+      }
+      const now = new Date().toISOString()
+      existing.status = snapshot.metadata.page.status
+      existing.updatedAt = now
+      existing.metadata = clone(snapshot.metadata)
+      existing.originalImage = snapshot.originalImage
+      existing.layerBlob = snapshot.layerBlob
+      existing.thumbnail = snapshot.thumbnail
+      return toSummary(existing)
+    },
+
+    async getPageSnapshot(pageId: string, opts: AuthRequestOptions): Promise<PageSnapshotPayload> {
+      ensureSessionKey(opts.sessionKey)
+      const record = pages.get(pageId)
+      if (!record) {
+        throw new BackendError({
+          code: 'page_not_found',
+          message: `Page ${pageId} not found`,
+          retryable: false,
+          details: null,
+        })
+      }
+      return {
+        metadata: clone(record.metadata),
+        originalImage: record.originalImage,
+        layerBlob: record.layerBlob,
+        thumbnail: record.thumbnail,
+      }
+    },
+
+    async deletePage(pageId: string, opts: AuthRequestOptions): Promise<void> {
+      ensureSessionKey(opts.sessionKey)
+      const record = pages.get(pageId)
+      if (!record) {
+        throw new BackendError({
+          code: 'page_not_found',
+          message: `Page ${pageId} not found`,
+          retryable: false,
+          details: null,
+        })
+      }
+      const projectId = record.projectId
+      pages.delete(pageId)
+      // Remove from pagesByProject and reindex
+      const pageIds = pagesByProject.get(projectId)
+      if (pageIds) {
+        const idx = pageIds.indexOf(pageId)
+        if (idx !== -1) {
+          pageIds.splice(idx, 1)
+        }
+        // Reindex remaining pages to 1..N
+        for (let i = 0; i < pageIds.length; i++) {
+          const p = pages.get(pageIds[i])!
+          p.index = i + 1
+          p.metadata.page.index = i + 1
+        }
+      }
+      // Update project pageCount
+      const project = projects.get(projectId)
+      if (project) {
+        project.pageCount = getPageCount(projectId)
+        project.updatedAt = new Date().toISOString()
+      }
+    },
+
+    async getPageThumbnail(pageId: string, opts: AuthRequestOptions): Promise<Blob> {
+      ensureSessionKey(opts.sessionKey)
+      const record = pages.get(pageId)
+      if (!record) {
+        throw new BackendError({
+          code: 'page_not_found',
+          message: `Page ${pageId} not found`,
+          retryable: false,
+          details: null,
+        })
+      }
+      return record.thumbnail
+    },
+  }
 }
 
 function clone<T>(value: T): T {
