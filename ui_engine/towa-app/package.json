@@ -29,7 +29,7 @@
     "vue-select": "^4.0.0-beta.6",
     "vuedraggable": "^4.1.0",
     "vuex": "^4.1.0",
-    "zcanvas": "^6.0.5"
+    "zcanvas": "^5.1.8"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.3",
