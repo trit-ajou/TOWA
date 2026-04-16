@@ -5,6 +5,7 @@ import { fileURLToPath, URL } from 'node:url'
 import path from 'node:path'
 import type { Plugin } from 'vite'
 
+const towaAppEntry = fileURLToPath(new URL('./src/main.ts', import.meta.url))
 const towaAppSrc = fileURLToPath(new URL('./src', import.meta.url))
 const bitmapperySrc = fileURLToPath(new URL('../bitmappery/src', import.meta.url))
 
@@ -27,8 +28,35 @@ function smartAliasResolver(): Plugin {
   }
 }
 
+/**
+ * bitmappery 소스는 towa-app 루트 바깥에 있으므로, bare import를 기본 Node
+ * 알고리즘에 맡기면 `towa-app/node_modules`를 찾지 못한다.
+ * bitmappery 내부 bare import는 towa-app 엔트리 기준으로 다시 해석해
+ * 실행 주체인 towa-app의 node_modules를 authoritative source로 고정한다.
+ */
+function bitmapperyBareImportResolver(): Plugin {
+  return {
+    name: 'bitmappery-bare-import-resolver',
+    enforce: 'pre',
+    resolveId(source, importer) {
+      if (!importer?.includes(`${path.sep}bitmappery${path.sep}`)) return null
+      if (
+        source.startsWith('.') ||
+        source.startsWith('/') ||
+        source.startsWith('@/') ||
+        source.startsWith('@bitmappery')
+      ) {
+        return null
+      }
+
+      return this.resolve(source, towaAppEntry, { skipSelf: true })
+    },
+  }
+}
+
 export default defineConfig({
   plugins: [
+    bitmapperyBareImportResolver(),
     smartAliasResolver(),
     vue(),
     tailwindcss(),
@@ -59,7 +87,7 @@ export default defineConfig({
     },
   },
   worker: {
-    plugins: () => [smartAliasResolver()],
+    plugins: () => [bitmapperyBareImportResolver(), smartAliasResolver()],
   },
   server: {
     fs: {

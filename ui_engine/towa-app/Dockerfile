@@ -1,12 +1,17 @@
 FROM node:20-alpine
 
-WORKDIR /app
+WORKDIR /app/towa-app
 
-COPY package*.json ./
+COPY towa-app/package*.json ./
 
 RUN npm ci
 
-COPY . .
+WORKDIR /app
+
+COPY bitmappery ./bitmappery
+COPY towa-app ./towa-app
+
+WORKDIR /app/towa-app
 
 EXPOSE 5173
 
