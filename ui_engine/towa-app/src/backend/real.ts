@@ -418,11 +418,18 @@ async function requestBlob(url: string, init: RequestInit): Promise<Blob> {
 function buildSnapshotMultipart(payload: PageSnapshotPayload): FormData {
   const formData = new FormData()
   const metaJson = toSnapshotMetaJson(payload.metadata)
-  formData.append('metadata', new Blob([JSON.stringify(metaJson)], { type: 'application/json' }))
+  formData.append('metadata', new Blob([JSON.stringify(metaJson)], { type: 'application/json' }), 'metadata.json')
   formData.append('original_image', payload.originalImage)
-  formData.append('layer_blob', payload.layerBlob)
+  formData.append('layer_blob', toOctetStreamBlob(payload.layerBlob), 'layer-blob.bin')
   formData.append('thumbnail', payload.thumbnail)
   return formData
+}
+
+function toOctetStreamBlob(blob: Blob): Blob {
+  if (blob.type === 'application/octet-stream') {
+    return blob
+  }
+  return new Blob([blob], { type: 'application/octet-stream' })
 }
 
 function toSnapshotMetaJson(meta: PageSnapshotPayload['metadata']): unknown {

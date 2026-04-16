@@ -451,7 +451,7 @@ describe('real FilesBackend', () => {
     vi.restoreAllMocks()
   })
 
-  it('sends multipart FormData with correct parts for savePageSnapshot', async () => {
+  it('normalizes layer_blob to application/octet-stream for savePageSnapshot', async () => {
     vi.mocked(fetch).mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -473,7 +473,10 @@ describe('real FilesBackend', () => {
       modelEngineUrl: 'http://localhost:8100',
     })
 
-    const snapshot = makeSnapshot({ pageId: TEST_PAGE_ID_1, projectId: TEST_PROJECT_ID, index: 1 })
+    const snapshot = {
+      ...makeSnapshot({ pageId: TEST_PAGE_ID_1, projectId: TEST_PROJECT_ID, index: 1 }),
+      layerBlob: new Blob(['layer'], { type: 'text/plain;charset=utf-8' }),
+    }
     const result = await backend.savePageSnapshot(TEST_PAGE_ID_1, snapshot, { sessionKey: 'demo-session' })
 
     expect(result.id).toBe(TEST_PAGE_ID_1)
@@ -493,6 +496,8 @@ describe('real FilesBackend', () => {
     expect(body.get('original_image')).toBeTruthy()
     expect(body.get('layer_blob')).toBeTruthy()
     expect(body.get('thumbnail')).toBeTruthy()
+    expect(body.get('layer_blob')).toBeInstanceOf(Blob)
+    expect((body.get('layer_blob') as Blob).type).toBe('application/octet-stream')
   })
 
   it('parses multipart/mixed response for getPageSnapshot', async () => {
