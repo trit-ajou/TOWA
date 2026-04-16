@@ -5,7 +5,7 @@ import { useRoute, useRouter } from 'vue-router'
 import type { EditMode } from '@/store/modules/editor'
 import type { PageStatus } from '@/types/page'
 import type { PageSnapshot } from '@/file-adapter'
-import { useFileAdapter } from '@/composables/useFileAdapter'
+import { createUlid } from '@/utils/ulid'
 import ProjectDashboard from '@/components/project/ProjectDashboard.vue'
 import PageGrid from '@/components/project/PageGrid.vue'
 // @ts-expect-error bitmappery JS module
@@ -18,7 +18,6 @@ defineOptions({ name: 'ProjectHomeTab' })
 const store = useStore()
 const route = useRoute()
 const router = useRouter()
-const fileAdapter = useFileAdapter()
 
 const projectId = computed(() => route.params.id as string)
 const project = computed(() => store.getters['projects/byId'](projectId.value))
@@ -89,7 +88,7 @@ async function addPages(files: File[]) {
     const file = files[i]
     const currentCount = allPages.value.length
     const pageIndex = currentCount + 1
-    const pageId = `${pid}-page-${pageIndex}`
+    const pageId = createUlid()
 
     // 원본 이미지 blob
     const originalImage = file as Blob

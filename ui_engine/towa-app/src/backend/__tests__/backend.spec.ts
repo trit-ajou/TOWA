@@ -5,6 +5,11 @@ import { createAppBackend } from '@/backend/index'
 import { createEmulatedAppBackend, createEmulatedFilesBackend } from '@/backend/emulated'
 import { createRealAppBackend, createRealFilesBackend, parseMultipartMixed } from '@/backend/real'
 import type { PageSnapshotPayload } from '@/backend/contracts'
+import { createUlid, isCanonicalUlid } from '@/utils/ulid'
+
+const TEST_PROJECT_ID = '01ARZ3NDEKTSV4RRFFQ69G5FAV'
+const TEST_PAGE_ID_1 = '01ARZ3NDEKTSV4RRFFQ69G5FAW'
+const TEST_PAGE_ID_2 = '01ARZ3NDEKTSV4RRFFQ69G5FAX'
 
 describe('real backend adapters', () => {
   beforeEach(() => {
@@ -316,14 +321,14 @@ function makeSnapshot(overrides: {
   return {
     metadata: {
       page: {
-        id: overrides.pageId ?? 'page-1',
-        projectId: overrides.projectId ?? 'proj-1',
+        id: overrides.pageId ?? TEST_PAGE_ID_1,
+        projectId: overrides.projectId ?? TEST_PROJECT_ID,
         index: overrides.index ?? 1,
         status: overrides.status ?? 'waiting',
         textBlocks: [
           {
             id: 'tb-1',
-            pageId: overrides.pageId ?? 'page-1',
+            pageId: overrides.pageId ?? TEST_PAGE_ID_1,
             bbox: { x: 10, y: 20, width: 100, height: 50 },
             original: 'hello',
             translated: '안녕',
@@ -348,45 +353,45 @@ describe('emulated FilesBackend', () => {
 
     // Create project
     const project = await files.createProject(
-      { id: 'proj-1', name: 'Test', sourceLang: 'ja', targetLang: 'ko' },
+      { id: TEST_PROJECT_ID, name: 'Test', sourceLang: 'ja', targetLang: 'ko' },
       opts,
     )
-    expect(project.id).toBe('proj-1')
+    expect(project.id).toBe(TEST_PROJECT_ID)
     expect(project.pageCount).toBe(0)
 
     // Create page 1
-    const snap1 = makeSnapshot({ pageId: 'page-1', projectId: 'proj-1', index: 1 })
-    const summary1 = await files.createPage('proj-1', snap1, opts)
+    const snap1 = makeSnapshot({ pageId: TEST_PAGE_ID_1, projectId: TEST_PROJECT_ID, index: 1 })
+    const summary1 = await files.createPage(TEST_PROJECT_ID, snap1, opts)
     expect(summary1.index).toBe(1)
 
     // Create page 2
-    const snap2 = makeSnapshot({ pageId: 'page-2', projectId: 'proj-1', index: 2 })
-    const summary2 = await files.createPage('proj-1', snap2, opts)
+    const snap2 = makeSnapshot({ pageId: TEST_PAGE_ID_2, projectId: TEST_PROJECT_ID, index: 2 })
+    const summary2 = await files.createPage(TEST_PROJECT_ID, snap2, opts)
     expect(summary2.index).toBe(2)
 
     // List pages
-    const summaries = await files.listPageSummaries('proj-1', opts)
+    const summaries = await files.listPageSummaries(TEST_PROJECT_ID, opts)
     expect(summaries).toHaveLength(2)
 
     // Save page snapshot (update status)
-    const updatedSnap = makeSnapshot({ pageId: 'page-1', projectId: 'proj-1', index: 1, status: 'in-progress' })
-    const saved = await files.savePageSnapshot('page-1', updatedSnap, opts)
+    const updatedSnap = makeSnapshot({ pageId: TEST_PAGE_ID_1, projectId: TEST_PROJECT_ID, index: 1, status: 'in-progress' })
+    const saved = await files.savePageSnapshot(TEST_PAGE_ID_1, updatedSnap, opts)
     expect(saved.status).toBe('in-progress')
 
     // Get page snapshot
-    const loaded = await files.getPageSnapshot('page-1', opts)
+    const loaded = await files.getPageSnapshot(TEST_PAGE_ID_1, opts)
     expect(loaded.metadata.page.status).toBe('in-progress')
     expect(loaded.metadata.page.textBlocks).toHaveLength(1)
 
     // Delete page 1 → page 2 should become index 1
-    await files.deletePage('page-1', opts)
-    const remaining = await files.listPageSummaries('proj-1', opts)
+    await files.deletePage(TEST_PAGE_ID_1, opts)
+    const remaining = await files.listPageSummaries(TEST_PROJECT_ID, opts)
     expect(remaining).toHaveLength(1)
-    expect(remaining[0].id).toBe('page-2')
+    expect(remaining[0].id).toBe(TEST_PAGE_ID_2)
     expect(remaining[0].index).toBe(1)
 
     // Project pageCount should be updated
-    const proj = await files.getProject('proj-1', opts)
+    const proj = await files.getProject(TEST_PROJECT_ID, opts)
     expect(proj.pageCount).toBe(1)
   })
 
@@ -395,13 +400,13 @@ describe('emulated FilesBackend', () => {
     const opts = { sessionKey: 'test-key' }
 
     await files.createProject(
-      { id: 'proj-1', name: 'Test', sourceLang: 'ja', targetLang: 'ko' },
+      { id: TEST_PROJECT_ID, name: 'Test', sourceLang: 'ja', targetLang: 'ko' },
       opts,
     )
 
     // Try to create page with index 5 when it should be 1
-    const snap = makeSnapshot({ pageId: 'page-1', projectId: 'proj-1', index: 5 })
-    await expect(files.createPage('proj-1', snap, opts)).rejects.toMatchObject({
+    const snap = makeSnapshot({ pageId: TEST_PAGE_ID_1, projectId: TEST_PROJECT_ID, index: 5 })
+    await expect(files.createPage(TEST_PROJECT_ID, snap, opts)).rejects.toMatchObject({
       payload: {
         code: 'page_conflict',
         details: { reason: 'index_invalid' },
@@ -414,16 +419,16 @@ describe('emulated FilesBackend', () => {
     const opts = { sessionKey: 'test-key' }
 
     await files.createProject(
-      { id: 'proj-1', name: 'Test', sourceLang: 'ja', targetLang: 'ko' },
+      { id: TEST_PROJECT_ID, name: 'Test', sourceLang: 'ja', targetLang: 'ko' },
       opts,
     )
 
-    const snap1 = makeSnapshot({ pageId: 'page-1', projectId: 'proj-1', index: 1 })
-    await files.createPage('proj-1', snap1, opts)
+    const snap1 = makeSnapshot({ pageId: TEST_PAGE_ID_1, projectId: TEST_PROJECT_ID, index: 1 })
+    await files.createPage(TEST_PROJECT_ID, snap1, opts)
 
     // Same page id again
-    const snap2 = makeSnapshot({ pageId: 'page-1', projectId: 'proj-1', index: 2 })
-    await expect(files.createPage('proj-1', snap2, opts)).rejects.toMatchObject({
+    const snap2 = makeSnapshot({ pageId: TEST_PAGE_ID_1, projectId: TEST_PROJECT_ID, index: 2 })
+    await expect(files.createPage(TEST_PROJECT_ID, snap2, opts)).rejects.toMatchObject({
       payload: { code: 'page_conflict' },
     })
   })
@@ -451,8 +456,8 @@ describe('real FilesBackend', () => {
       new Response(
         JSON.stringify({
           page: {
-            id: 'page-1',
-            project_id: 'proj-1',
+            id: TEST_PAGE_ID_1,
+            project_id: TEST_PROJECT_ID,
             index: 1,
             status: 'in-progress',
             thumbnail_url: null,
@@ -468,12 +473,12 @@ describe('real FilesBackend', () => {
       modelEngineUrl: 'http://localhost:8100',
     })
 
-    const snapshot = makeSnapshot({ pageId: 'page-1', projectId: 'proj-1', index: 1 })
-    const result = await backend.savePageSnapshot('page-1', snapshot, { sessionKey: 'demo-session' })
+    const snapshot = makeSnapshot({ pageId: TEST_PAGE_ID_1, projectId: TEST_PROJECT_ID, index: 1 })
+    const result = await backend.savePageSnapshot(TEST_PAGE_ID_1, snapshot, { sessionKey: 'demo-session' })
 
-    expect(result.id).toBe('page-1')
+    expect(result.id).toBe(TEST_PAGE_ID_1)
     expect(fetch).toHaveBeenCalledWith(
-      'http://localhost:8000/api/v1/pages/page-1/snapshot',
+      `http://localhost:8000/api/v1/pages/${TEST_PAGE_ID_1}/snapshot`,
       expect.objectContaining({ method: 'PUT' }),
     )
 
@@ -494,14 +499,14 @@ describe('real FilesBackend', () => {
     const boundary = 'test-boundary-123'
     const metadataJson = JSON.stringify({
       page: {
-        id: 'page-1',
-        project_id: 'proj-1',
+        id: TEST_PAGE_ID_1,
+        project_id: TEST_PROJECT_ID,
         index: 1,
         status: 'waiting',
         text_blocks: [
           {
             id: 'tb-1',
-            page_id: 'page-1',
+            page_id: TEST_PAGE_ID_1,
             bbox: { x: 10, y: 20, width: 100, height: 50 },
             original: 'hello',
             translated: '안녕',
@@ -545,11 +550,11 @@ describe('real FilesBackend', () => {
 
     const payload = await parseMultipartMixed(response)
 
-    expect(payload.metadata.page.id).toBe('page-1')
-    expect(payload.metadata.page.projectId).toBe('proj-1')
+    expect(payload.metadata.page.id).toBe(TEST_PAGE_ID_1)
+    expect(payload.metadata.page.projectId).toBe(TEST_PROJECT_ID)
     expect(payload.metadata.page.textBlocks).toHaveLength(1)
     expect(payload.metadata.page.textBlocks[0].fontSize).toBe(14)
-    expect(payload.metadata.page.textBlocks[0].pageId).toBe('page-1')
+    expect(payload.metadata.page.textBlocks[0].pageId).toBe(TEST_PAGE_ID_1)
 
     const imgText = await payload.originalImage.text()
     expect(imgText).toBe('IMGDATA')
@@ -600,5 +605,14 @@ describe('real FilesBackend', () => {
     ).rejects.toMatchObject({
       payload: { code: 'session_key_required' },
     })
+  })
+
+  it('creates canonical ULIDs for new project/page IDs', () => {
+    const projectId = createUlid()
+    const pageId = createUlid()
+
+    expect(isCanonicalUlid(projectId)).toBe(true)
+    expect(isCanonicalUlid(pageId)).toBe(true)
+    expect(projectId).not.toBe(pageId)
   })
 })

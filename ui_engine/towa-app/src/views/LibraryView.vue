@@ -6,6 +6,7 @@ import type { Project, ProjectStatus } from '@/types/project'
 import type { FolderNode } from '@/types/folder'
 import type { PreviewItem } from '@/components/home/FolderCard.vue'
 import { useModal } from '@/composables/useModal'
+import { createUlid } from '@/utils/ulid'
 import HomeSidebar from '@/components/home/HomeSidebar.vue'
 import ProjectGrid from '@/components/home/ProjectGrid.vue'
 import CreateProjectModal from '@/components/home/CreateProjectModal.vue'
@@ -95,7 +96,7 @@ function selectProject(project: Project) {
 
 function createProject(form: { name: string; sourceLang: string; targetLang: string; autoDetect: boolean; autoInpaint: boolean; autoTranslate: boolean; inferenceMode: 'local' | 'cloud'; files: File[] }) {
   const newProject: Project = {
-    id: `proj-${Date.now()}`,
+    id: createUlid(),
     name: form.name,
     thumbnail: `https://placehold.co/400x560/1e1e32/0db0bc?text=${encodeURIComponent(form.name)}`,
     sourceLang: form.sourceLang,

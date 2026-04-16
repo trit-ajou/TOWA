@@ -2,14 +2,20 @@ import type { FileAdapter, ProjectRecord } from '@/file-adapter'
 import type { PageSnapshotMeta, PageSnapshot } from '@/file-adapter/contracts'
 import type { PageStatus } from '@/types/page'
 import type { TextBlock } from '@/types/text-block'
+import { createUlid } from '@/utils/ulid'
 // @ts-expect-error bitmappery JS module
 import DocumentFactory from '@bitmappery/factories/document-factory'
 // @ts-expect-error bitmappery JS module
 import LayerFactory from '@bitmappery/factories/layer-factory'
 
-const seedProjects: ProjectRecord[] = [
+interface SeedProjectSpec extends Omit<ProjectRecord, 'id'> {
+  coverText: string
+  coverBg: string
+  coverFg: string
+}
+
+const seedProjects: SeedProjectSpec[] = [
   {
-    id: 'proj-1',
     name: '원피스 1122화 — 화염의 기사',
     sourceLang: 'ja',
     targetLang: 'ko',
@@ -19,9 +25,11 @@ const seedProjects: ProjectRecord[] = [
     status: 'in-progress',
     folder: '주간연재/점프',
     config: { autoDetect: true, autoInpaint: true, autoTranslate: false, inferenceMode: 'cloud' },
+    coverText: 'ONE\nPIECE',
+    coverBg: '#1a1230',
+    coverFg: '#9569B4',
   },
   {
-    id: 'proj-2',
     name: '주술회전 271화 — 사후',
     sourceLang: 'ja',
     targetLang: 'ko',
@@ -31,9 +39,11 @@ const seedProjects: ProjectRecord[] = [
     status: 'done',
     folder: '주간연재/점프',
     config: { autoDetect: true, autoInpaint: true, autoTranslate: true, inferenceMode: 'cloud' },
+    coverText: 'JJK\n271',
+    coverBg: '#1e1510',
+    coverFg: '#e84a8a',
   },
   {
-    id: 'proj-3',
     name: '블루 록 282화',
     sourceLang: 'ja',
     targetLang: 'ko',
@@ -43,9 +53,11 @@ const seedProjects: ProjectRecord[] = [
     status: 'in-progress',
     folder: '주간연재/매거진',
     config: { autoDetect: true, autoInpaint: true, autoTranslate: false, inferenceMode: 'cloud' },
+    coverText: 'BLUE\nLOCK',
+    coverBg: '#0d1a2a',
+    coverFg: '#4a90d9',
   },
   {
-    id: 'proj-4',
     name: '나 혼자만 레벨업 시즌2 42화',
     sourceLang: 'ko',
     targetLang: 'en',
@@ -55,9 +67,11 @@ const seedProjects: ProjectRecord[] = [
     status: 'in-progress',
     folder: '웹툰/네이버',
     config: { autoDetect: true, autoInpaint: true, autoTranslate: true, inferenceMode: 'cloud' },
+    coverText: 'SL\nS2',
+    coverBg: '#15102a',
+    coverFg: '#A78BFA',
   },
   {
-    id: 'proj-5',
     name: '킹덤 789화 — 낙양의 함락',
     sourceLang: 'ja',
     targetLang: 'ko',
@@ -67,9 +81,11 @@ const seedProjects: ProjectRecord[] = [
     status: 'todo',
     folder: '주간연재',
     config: { autoDetect: true, autoInpaint: true, autoTranslate: false, inferenceMode: 'cloud' },
+    coverText: 'KINGDOM\n789',
+    coverBg: '#1a1a0d',
+    coverFg: '#C8B560',
   },
   {
-    id: 'proj-6',
     name: '전독시 외전 — 소설 속 엑스트라',
     sourceLang: 'ko',
     targetLang: 'ja',
@@ -79,9 +95,11 @@ const seedProjects: ProjectRecord[] = [
     status: 'in-progress',
     folder: '웹툰/카카오',
     config: { autoDetect: true, autoInpaint: false, autoTranslate: false, inferenceMode: 'local' },
+    coverText: 'ORV\nEX',
+    coverBg: '#101520',
+    coverFg: '#5B9EA6',
   },
   {
-    id: 'proj-7',
     name: '요츠바랑! 15권 번역',
     sourceLang: 'ja',
     targetLang: 'ko',
@@ -91,9 +109,11 @@ const seedProjects: ProjectRecord[] = [
     status: 'in-progress',
     folder: '단행본',
     config: { autoDetect: true, autoInpaint: true, autoTranslate: false, inferenceMode: 'cloud' },
+    coverText: 'YOTSU\nBA',
+    coverBg: '#15201a',
+    coverFg: '#4ADE80',
   },
   {
-    id: 'proj-8',
     name: '단편 — 고양이 소녀의 하루',
     sourceLang: 'ja',
     targetLang: 'ko',
@@ -103,6 +123,9 @@ const seedProjects: ProjectRecord[] = [
     status: 'done',
     folder: '',
     config: { autoDetect: true, autoInpaint: true, autoTranslate: true, inferenceMode: 'cloud' },
+    coverText: 'CAT\nGIRL',
+    coverBg: '#1a1020',
+    coverFg: '#C084FC',
   },
 ]
 
@@ -189,17 +212,6 @@ function blobToCanvas(blob: Blob): Promise<HTMLCanvasElement> {
   })
 }
 
-const projectThumbnailConfig: Record<string, { text: string; bg: string; fg: string }> = {
-  'proj-1': { text: 'ONE\nPIECE', bg: '#1a1230', fg: '#9569B4' },
-  'proj-2': { text: 'JJK\n271', bg: '#1e1510', fg: '#e84a8a' },
-  'proj-3': { text: 'BLUE\nLOCK', bg: '#0d1a2a', fg: '#4a90d9' },
-  'proj-4': { text: 'SL\nS2', bg: '#15102a', fg: '#a78bfa' },
-  'proj-5': { text: 'KINGDOM\n789', bg: '#1a1a0d', fg: '#c8b560' },
-  'proj-6': { text: 'ORV\nEX', bg: '#101520', fg: '#5b9ea6' },
-  'proj-7': { text: 'YOTSU\nBA', bg: '#15201a', fg: '#4ade80' },
-  'proj-8': { text: 'CAT\nGIRL', bg: '#1a1020', fg: '#c084fc' },
-}
-
 /**
  * IndexedDB가 비어있으면 더미 데이터를 seed로 삽입.
  * 이미 데이터가 있으면 아무것도 하지 않음.
@@ -207,28 +219,33 @@ const projectThumbnailConfig: Record<string, { text: string; bg: string; fg: str
  */
 export async function seedDummyDataIfEmpty(adapter: FileAdapter): Promise<boolean> {
   const existing = await adapter.listProjects()
-  if (existing.length > 0) {
-    // 기존 데이터가 있지만 snapshot이 없으면 (이전 버전 seed) 전체 재생성
-    const firstSnapshot = await adapter.getPageSnapshot('proj-1-page-1')
-    if (firstSnapshot) return false
-    // snapshot 없음 → DB 초기화 후 재생성
-    for (const p of existing) {
-      await adapter.deleteProject(p.id)
-    }
-  }
+  if (existing.length > 0) return false
 
   const statuses: PageStatus[] = ['done', 'in-progress', 'ai-processing', 'waiting']
 
-  for (const project of seedProjects) {
+  for (const seed of seedProjects) {
+    const project: ProjectRecord = {
+      id: createUlid(),
+      name: seed.name,
+      sourceLang: seed.sourceLang,
+      targetLang: seed.targetLang,
+      pageCount: seed.pageCount,
+      createdAt: seed.createdAt,
+      updatedAt: seed.updatedAt,
+      status: seed.status,
+      folder: seed.folder,
+      config: seed.config,
+      thumbnailUrl: seed.thumbnailUrl,
+    }
+
     // pageCount를 0으로 시작 (createPage가 increment)
     await adapter.createProject({ ...project, pageCount: 0 })
 
-    const thumbConfig = projectThumbnailConfig[project.id]
-    const bg = thumbConfig?.bg ?? '#1a1726'
-    const fg = thumbConfig?.fg ?? '#4a4560'
+    const bg = seed.coverBg
+    const fg = seed.coverFg
 
     for (let i = 0; i < project.pageCount; i++) {
-      const pageId = `${project.id}-page-${i + 1}`
+      const pageId = createUlid()
       const status = statuses[Math.min(i, statuses.length - 1)]
       const textBlocks = createSeedTextBlocks(pageId, status)
 
@@ -255,7 +272,7 @@ export async function seedDummyDataIfEmpty(adapter: FileAdapter): Promise<boolea
       const layerBlob = await DocumentFactory.toBlob(doc)
 
       // 썸네일 (200x300)
-      const thumbnail = await generatePlaceholderImage(`P${i + 1}`, bg, fg, 200, 300)
+      const thumbnail = await generatePlaceholderImage(`${seed.coverText}\nP${i + 1}`, bg, fg, 200, 300)
 
       const pageMeta: PageSnapshotMeta = {
         id: pageId,
