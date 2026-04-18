@@ -37,63 +37,40 @@ FastAPI 기반 `service_engine` 초안입니다.
 
 ## Python Environment
 
-의존성은 로컬 Python이 아니라 `service_engine/.venv`에만 설치해서 사용합니다.
+공식 개발 경로는 로컬 `venv`가 아니라 Docker입니다.
 
-### 1. 표준 venv 생성
+루트 `docker-compose.yml`은 전체 엔진 통합 실행용이고, `service_engine/docker-compose.dev.yml`은 `service_engine` 단독 개발용입니다.
 
-```bash
-cd service_engine
-python3 -m venv .venv
-```
-
-### 2. venv 활성화
-
-```bash
-source .venv/bin/activate
-```
-
-### 3. 의존성 설치
-
-```bash
-python3 -m pip install -r requirements-dev.txt
-```
-
-### 4. 테스트 실행
-
-```bash
-python3 -m pytest
-```
-
-### 5. 서버 실행
-
-```bash
-python3 -m uvicorn app.main:app --reload
-```
-
-### 6. 마이그레이션 적용
-
-```bash
-.venv/bin/python -m app.cli.dev_admin migrate
-```
-
-## If `python3 -m venv` Fails
-
-일부 환경에서는 `ensurepip`가 빠져 있어서 기본 `venv` 생성이 실패할 수 있습니다.
-그 경우 아래 순서로 `pip` 없는 venv를 만든 뒤, `get-pip.py`로 venv 안에만 `pip`를 넣습니다.
+### 1. 개발 서버 시작
 
 ```bash
 cd service_engine
-python3 -m venv --without-pip .venv
-curl -fsSL https://bootstrap.pypa.io/get-pip.py -o /tmp/get-pip.py
-.venv/bin/python /tmp/get-pip.py
-.venv/bin/python -m pip install -r requirements-dev.txt
+docker compose -f docker-compose.dev.yml up --build service-engine-dev
 ```
 
-이후 명령은 아래처럼 `.venv` 기준으로 실행하면 됩니다.
+서버는 `http://localhost:8000`에서 열리고, 코드 변경은 bind mount + `uvicorn --reload`로 즉시 반영됩니다.
+
+### 2. 테스트 실행
 
 ```bash
-.venv/bin/pytest
-.venv/bin/uvicorn app.main:app --reload
+cd service_engine
+docker compose -f docker-compose.dev.yml run --rm service-engine-test
+```
+
+이 경로는 테스트 전용 PostgreSQL을 함께 사용하므로 `@pytest.mark.postgres` 테스트도 skip되지 않습니다.
+
+### 3. 로그 확인
+
+```bash
+cd service_engine
+docker compose -f docker-compose.dev.yml logs -f service-engine-dev
+```
+
+### 4. 종료 및 정리
+
+```bash
+cd service_engine
+docker compose -f docker-compose.dev.yml down -v
 ```
 
 ## Dev CLI
@@ -103,7 +80,9 @@ curl -fsSL https://bootstrap.pypa.io/get-pip.py -o /tmp/get-pip.py
 ### Seed User
 
 ```bash
-.venv/bin/python -m app.cli.dev_admin seed-user \
+cd service_engine
+docker compose -f docker-compose.dev.yml run --rm service-engine-dev \
+  python3 -m app.cli.dev_admin seed-user \
   --email user@example.com \
   --nickname tester \
   --initial-balance 1000
@@ -112,7 +91,9 @@ curl -fsSL https://bootstrap.pypa.io/get-pip.py -o /tmp/get-pip.py
 ### Grant Credits
 
 ```bash
-.venv/bin/python -m app.cli.dev_admin grant-credits \
+cd service_engine
+docker compose -f docker-compose.dev.yml run --rm service-engine-dev \
+  python3 -m app.cli.dev_admin grant-credits \
   --email user@example.com \
   --units 500
 ```
@@ -120,7 +101,9 @@ curl -fsSL https://bootstrap.pypa.io/get-pip.py -o /tmp/get-pip.py
 ### Reset Credits
 
 ```bash
-.venv/bin/python -m app.cli.dev_admin reset-credits \
+cd service_engine
+docker compose -f docker-compose.dev.yml run --rm service-engine-dev \
+  python3 -m app.cli.dev_admin reset-credits \
   --email user@example.com \
   --balance 1000
 ```
@@ -129,6 +112,6 @@ curl -fsSL https://bootstrap.pypa.io/get-pip.py -o /tmp/get-pip.py
 
 ## Notes
 
-- `.venv/`는 Git에 포함하지 않습니다.
-- 시스템 Python이나 `~/.local` user site에 패키지를 설치하지 않는 것을 기준으로 합니다.
-- PostgreSQL migration 테스트는 `TEST_DATABASE_URL`이 있어야 실행됩니다.
+- 로컬 `venv`는 공식 개발 경로가 아니며 필요하지 않습니다.
+- 루트 `docker compose up --build`는 전체 엔진 통합 실행용입니다.
+- `service-engine-test` compose 서비스가 `TEST_DATABASE_URL`을 자동으로 설정합니다.
