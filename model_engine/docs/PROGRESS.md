@@ -11,6 +11,7 @@
 - `TROUBLESHOOTING.md`: OCR/번역 실행 중 관측한 문제와 threshold 튜닝 기록
 - `SESSION_AND_CREDENTIAL_IMPLEMENTATION.md`: 세션, usage, provider credential 구현 준비 문서
 - `SERVING_PLAN.md`: `API + Inference` 통합 서빙 컨테이너 전략과 단일 serving image 전환 계획
+- `NEXT_SESSION_HANDOFF.md`: 다음 세션 시작 시 바로 읽을 상태 요약과 우선순위 메모
 - `SPEC.md`, `../docs/http-contract.md`: 외부 엔진 경계와 SaaS/local 계약 참고
 
 ## 이번에 구현한 범위
@@ -47,6 +48,7 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - 세션/credential 책임과 실제 API 함수 기준 호환성을 정리한 `SESSION_AND_CREDENTIAL_IMPLEMENTATION.md` 추가
 - `UI_MODEL_CONTRACT_DRAFT.md` 추가
 - `SERVING_PLAN.md` 추가
+- `NEXT_SESSION_HANDOFF.md` 추가
 - `/v1/jobs`가 `multipart(metadata + primary_bitmap)` 입력을 수신할 수 있게 확장
 - metadata의 `upload://primary_bitmap` descriptor를 request 시점에 `file://...` artifact로 물질화
 - multipart request fingerprint에 uploaded bitmap sha256을 포함해 idempotency 충돌 판정을 안정화

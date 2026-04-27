@@ -21,6 +21,7 @@
 - `SESSION_AND_CREDENTIAL_IMPLEMENTATION.md`: cloud/standalone 기준 세션, usage, provider credential 책임과 구현 포인트
 - `UI_MODEL_CONTRACT_DRAFT.md`: `UI engine <-> model engine` concrete contract 최소 합의안 draft
 - `SERVING_PLAN.md`: `API + Inference` 통합 서빙 컨테이너 전략과 단계별 구현 계획
+- `NEXT_SESSION_HANDOFF.md`: 다음 세션에서 바로 구현을 재개하기 위한 handoff 메모
 
 즉, 앞으로 `model_engine` 구현 판단은 이 README를 직접 기준으로 한다.
 
