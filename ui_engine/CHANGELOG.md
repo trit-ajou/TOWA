@@ -4,6 +4,21 @@
 
 ---
 
+## 2026-05-06
+
+### 00:05 — 문서 정리 (Project_Plan, TODO, design docs)
+- `Project_Plan.md`: 7~8주차 완료 항목 추가, 남은 구현 사항 갱신 (F1/F2/F6 완료, F8 Electron + F9 cloud 통합 + F10 의존성 정리 추가), 9~12주차 계획 재정의
+- `TODO.md`: 다음 할 일을 우선순위 순으로 정리, 보고서/연구노트/main 머지 완료 항목 추가, Electron 추가
+- `docs/design-file-system.md`: FileAdapter 인터페이스를 7주차 snapshot 중심으로 갱신, ULID 도입 섹션 추가
+- `docs/ui_to_service.md`: 7주차 실 구현 반영 (분리 GET/PUT → snapshot multipart 통합)
+
+## 2026-04-28
+
+### (오전) — main 머지: ui_engine 8주차 작업 통합
+- `Merge ui_engine: Cloud mode integration and CRUD UI` 머지 커밋 생성 (`--no-ff`)
+- 11커밋 / 37파일 / +4955-736 변경 main에 반영
+- 포함 작업: FilesBackend SDK + CloudFileAdapter, auth 모듈, snapshot 인터페이스 리팩터링, 프로젝트/페이지 CRUD UI, ULID 도입, Docker 빌드 정비, zcanvas v5 pin, layer_blob MIME 정규화, IDB DataCloneError 수정
+
 ## 2026-04-27
 
 ### 15:24 — 프로젝트 생성 후 자동 이동 + 프로젝트 삭제 UI
