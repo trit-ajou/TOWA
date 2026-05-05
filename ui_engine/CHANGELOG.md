@@ -4,6 +4,36 @@
 
 ---
 
+## 2026-04-27
+
+### 15:24 — 프로젝트 생성 후 자동 이동 + 프로젝트 삭제 UI
+- LibraryView.vue: `createProject` async로 변경, 생성 완료 후 `/project/:id`로 자동 이동
+- ProjectCard.vue: hover 시 우측 상단에 삭제 버튼 표시 (Trash2 아이콘, `@click.stop`으로 카드 클릭과 분리), `BaseCard`에 `group` class 전달
+- ProjectGrid.vue: `deleteProject` emit 추가, `@delete`를 상위로 전달
+- LibraryView.vue: `confirmDeleteProject` / `deleteProject` 핸들러 추가, `BaseModal` + `BaseButton` 삭제 확인 모달 구현
+
+### 15:23 — 페이지 삭제 UI 구현
+- PageThumbnail.vue: hover overlay에 삭제 버튼 추가 (Trash2 아이콘, red-600 스타일), `delete` emit 정의
+- PageGrid.vue: `deletePage` emit 추가, PageThumbnail의 `@delete` 이벤트를 상위로 전달
+- ProjectHomeTab.vue: `confirmDeletePage` / `deletePage` 핸들러 추가, `useModal` + `BaseModal` + `BaseButton` 활용한 삭제 확인 모달 구현, vertical/horizontal 레이아웃 양쪽 PageGrid에 `@delete-page` 연결
+
+---
+
+## 2026-04-16
+
+### 00:17 — Cloud 모드 연동 (service_engine 파일 저장 API)
+- FilesBackend SDK 추가 (real: multipart HTTP + snake_case 변환, emulated: 메모리 stub)
+- FileAdapter를 snapshot 중심 인터페이스로 전면 리팩터링 (createPage/savePageSnapshot/getPageSnapshot)
+- LocalFileAdapter 재작성 (IDB 스키마 유지, delete 시 dense index reindex)
+- Vuex auth 모듈 신규 (sessionKey/user/creditBalance, localStorage 세션 복원)
+- 기존 LoginModal/AppNavbar/SettingsModal을 auth 스토어에 연결 (password→nickname)
+- CloudFileAdapter 신규 (backend.files.* 위임, ProjectDto↔ProjectRecord 변환)
+- main.ts에 deployment mode 분기 (standalone: seed+IDB, cloud: 세션 복원→서버 로드)
+- IDB DataCloneError 수정 (Vue reactive proxy → sanitize 헬퍼로 JSON 정규화)
+- mock HTTP 서버로 전 endpoint wire 검증 완료 (multipart 4파트, Bearer, snake_case)
+
+---
+
 ## 2026-04-09
 
 ### 10:03 — 파일 시스템 구현 (IndexedDB 기반)

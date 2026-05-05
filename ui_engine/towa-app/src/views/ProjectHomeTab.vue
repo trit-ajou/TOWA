@@ -3,17 +3,24 @@ import { computed, ref } from 'vue'
 import { useStore } from 'vuex'
 import { useRoute, useRouter } from 'vue-router'
 import type { EditMode } from '@/store/modules/editor'
-import type { Page, PageStatus } from '@/types/page'
-import { useFileAdapter } from '@/composables/useFileAdapter'
+import type { PageStatus } from '@/types/page'
+import type { PageSnapshot } from '@/file-adapter'
+import { createUlid } from '@/utils/ulid'
+import { useModal } from '@/composables/useModal'
 import ProjectDashboard from '@/components/project/ProjectDashboard.vue'
 import PageGrid from '@/components/project/PageGrid.vue'
+import BaseModal from '@/components/common/BaseModal.vue'
+import BaseButton from '@/components/common/BaseButton.vue'
+// @ts-expect-error bitmappery JS module
+import DocumentFactory from '@bitmappery/factories/document-factory'
+// @ts-expect-error bitmappery JS module
+import LayerFactory from '@bitmappery/factories/layer-factory'
 
 defineOptions({ name: 'ProjectHomeTab' })
 
 const store = useStore()
 const route = useRoute()
 const router = useRouter()
-const fileAdapter = useFileAdapter()
 
 const projectId = computed(() => route.params.id as string)
 const project = computed(() => store.getters['projects/byId'](projectId.value))
@@ -23,6 +30,42 @@ const lastEditMode = computed<EditMode>(() => store.getters['editor/lastEditMode
 const layout = computed(() => store.getters['editor/projectHomeLayout'])
 
 const statusFilter = ref<PageStatus | 'all'>('all')
+
+const deleteModal = useModal()
+const pageToDeleteId = ref<string | null>(null)
+
+const pageToDeleteIndex = computed(() => {
+  if (!pageToDeleteId.value) return null
+  const page = allPages.value.find((p: { id: string }) => p.id === pageToDeleteId.value)
+  return page?.index ?? null
+})
+
+function confirmDeletePage(pageId: string) {
+  pageToDeleteId.value = pageId
+  deleteModal.open()
+}
+
+async function deletePage() {
+  if (!pageToDeleteId.value) return
+  const pid = projectId.value
+  await store.dispatch('pages/removePage', { projectId: pid, pageId: pageToDeleteId.value })
+
+  const proj = project.value
+  if (proj) {
+    await store.dispatch('projects/update', {
+      ...proj,
+      pageCount: allPages.value.length,
+      updatedAt: new Date().toISOString(),
+    })
+  }
+
+  if (selectedPageId.value === pageToDeleteId.value) {
+    store.commit('editor/SET_SELECTED_PAGE', null)
+  }
+
+  deleteModal.close()
+  pageToDeleteId.value = null
+}
 
 const statusChips = [
   { value: 'all' as const, label: '전체' },
@@ -79,42 +122,79 @@ function generateThumbnail(file: File, maxW = 200, maxH = 300): Promise<Blob> {
 
 async function addPages(files: File[]) {
   const pid = projectId.value
-  const currentCount = allPages.value.length
 
   for (let i = 0; i < files.length; i++) {
     const file = files[i]
-    const pageIndex = currentCount + i + 1
-    const pageId = `${pid}-page-${pageIndex}`
+    const currentCount = allPages.value.length
+    const pageIndex = currentCount + 1
+    const pageId = createUlid()
+
+    // 원본 이미지 blob
+    const originalImage = file as Blob
 
     // 썸네일 생성
-    const thumbBlob = await generateThumbnail(file)
-    const thumbUrl = URL.createObjectURL(thumbBlob)
+    const thumbnail = await generateThumbnail(file)
 
-    // 페이지 객체 생성
-    const page: Page = {
-      id: pageId,
-      projectId: pid,
-      index: pageIndex,
-      thumbnail: thumbUrl,
-      status: 'waiting',
-      textBlocks: [],
+    // bitmappery document 생성 → layerBlob
+    const imgCanvas = await blobToCanvas(file)
+    const doc = DocumentFactory.create({
+      name: `page-${pageId}`,
+      width: imgCanvas.width,
+      height: imgCanvas.height,
+      layers: [
+        LayerFactory.create({
+          name: 'original',
+          source: imgCanvas,
+          width: imgCanvas.width,
+          height: imgCanvas.height,
+        }),
+      ],
+    })
+    const layerBlob = await DocumentFactory.toBlob(doc) as Blob
+
+    const snapshot: PageSnapshot = {
+      page: {
+        id: pageId,
+        projectId: pid,
+        index: pageIndex,
+        status: 'waiting',
+        textBlocks: [],
+      },
+      originalImage,
+      layerBlob,
+      thumbnail,
     }
 
-    // IndexedDB에 저장 + Vuex에 추가
-    await store.dispatch('pages/addPage', { page, imageBlob: file })
-    await fileAdapter.saveThumbnail(pageId, thumbBlob)
-    store.commit('pages/SET_THUMBNAIL_URL', { pageId, url: thumbUrl })
+    // createPage (snapshot) → IndexedDB + Vuex
+    await store.dispatch('pages/addPage', { projectId: pid, snapshot })
   }
 
-  // 프로젝트 pageCount 업데이트
+  // 프로젝트 pageCount/updatedAt 갱신 (createPage가 이미 갱신하지만 Vuex도 동기화)
   const proj = project.value
   if (proj) {
     await store.dispatch('projects/update', {
       ...proj,
-      pageCount: currentCount + files.length,
+      pageCount: allPages.value.length,
       updatedAt: new Date().toISOString(),
     })
   }
+}
+
+function blobToCanvas(blob: Blob): Promise<HTMLCanvasElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => {
+      const canvas = document.createElement('canvas')
+      canvas.width = img.width
+      canvas.height = img.height
+      const ctx = canvas.getContext('2d')!
+      ctx.drawImage(img, 0, 0)
+      URL.revokeObjectURL(img.src)
+      resolve(canvas)
+    }
+    img.onerror = reject
+    img.src = URL.createObjectURL(blob)
+  })
 }
 </script>
 
@@ -157,6 +237,7 @@ async function addPages(files: File[]) {
             @open-edit="selectAndEdit"
             @open-detail="selectAndDetail"
             @add-pages="addPages"
+            @delete-page="confirmDeletePage"
           />
         </div>
       </div>
@@ -198,8 +279,23 @@ async function addPages(files: File[]) {
           @open-edit="selectAndEdit"
           @open-detail="selectAndDetail"
           @add-pages="addPages"
+          @delete-page="confirmDeletePage"
         />
       </div>
     </template>
   </main>
+
+  <BaseModal
+    title="페이지 삭제"
+    :open="deleteModal.isOpen.value"
+    @close="deleteModal.close()"
+  >
+    <p class="text-sm text-towa-text-muted">
+      <span class="font-medium text-towa-text">{{ pageToDeleteIndex }}페이지</span>를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.
+    </p>
+    <template #footer>
+      <BaseButton variant="secondary" size="sm" @click="deleteModal.close()">취소</BaseButton>
+      <BaseButton variant="danger" size="sm" @click="deletePage">삭제</BaseButton>
+    </template>
+  </BaseModal>
 </template>

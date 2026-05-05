@@ -76,7 +76,7 @@ const projects: Module<ProjectsState, unknown> = {
     async create({ commit, state }, project: Project) {
       const adapter = state.fileAdapter
       if (adapter) {
-        await adapter.saveProject(toRecord(project))
+        await adapter.createProject(toRecord(project))
       }
       commit('ADD_PROJECT', project)
     },
@@ -84,7 +84,7 @@ const projects: Module<ProjectsState, unknown> = {
     async update({ commit, state }, project: Project) {
       const adapter = state.fileAdapter
       if (adapter) {
-        await adapter.saveProject(toRecord(project))
+        await adapter.updateProject(project.id, toRecord(project))
       }
       commit('UPDATE_PROJECT', project)
     },

@@ -1,22 +1,11 @@
 import type { Module } from 'vuex'
 import type { Page } from '@/types/page'
-import type { FileAdapter, PageRecord } from '@/file-adapter'
+import type { FileAdapter, PageSnapshot } from '@/file-adapter'
 
 interface PagesState {
   byProject: Record<string, Page[]>
   fileAdapter: FileAdapter | null
   thumbnailUrls: Record<string, string>  // pageId → Blob URL (메모리 관리용)
-}
-
-// PageRecord (DB) → Page (UI). thumbnail은 별도로 설정.
-function toPage(record: PageRecord): Page {
-  return { ...record }
-}
-
-// Page (UI) → PageRecord (DB). thumbnail, originalImage 제거.
-function toRecord(page: Page): PageRecord {
-  const { thumbnail: _, originalImage: _2, ...record } = page
-  return record as PageRecord
 }
 
 const pages: Module<PagesState, unknown> = {
@@ -69,6 +58,13 @@ const pages: Module<PagesState, unknown> = {
         delete state.thumbnailUrls[pageId]
       }
     },
+    /** deletePage 후 dense reindex 반영용 */
+    REINDEX_PAGES(state, projectId: string) {
+      const list = state.byProject[projectId]
+      if (!list) return
+      list.sort((a, b) => a.index - b.index)
+      list.forEach((p, i) => { p.index = i + 1 })
+    },
     SET_THUMBNAIL_URL(state, { pageId, url }: { pageId: string; url: string }) {
       // 기존 Blob URL이 있으면 해제
       const old = state.thumbnailUrls[pageId]
@@ -86,38 +82,58 @@ const pages: Module<PagesState, unknown> = {
       const adapter = state.fileAdapter
       if (!adapter) return
 
-      const records = await adapter.listPages(projectId)
-      const pageList = records.map(toPage)
+      const summaries = await adapter.listPageSummaries(projectId)
+      const pageList: Page[] = []
 
-      // 썸네일 Blob URL 생성
-      for (const page of pageList) {
-        const thumbBlob = await adapter.getThumbnail(page.id)
+      for (const s of summaries) {
+        const thumbBlob = await adapter.getThumbnailBlob(s.id)
+        let thumbnail: string | undefined
         if (thumbBlob) {
           const url = URL.createObjectURL(thumbBlob)
-          page.thumbnail = url
-          commit('SET_THUMBNAIL_URL', { pageId: page.id, url })
+          thumbnail = url
+          commit('SET_THUMBNAIL_URL', { pageId: s.id, url })
         }
+
+        // PageSummary에는 textBlocks가 없으므로, 필요하면 snapshot에서 가져와야 하지만
+        // project view에서는 textBlocks 불필요. 빈 배열로 초기화.
+        pageList.push({
+          id: s.id,
+          projectId: s.projectId,
+          index: s.index,
+          status: s.status,
+          thumbnail,
+          textBlocks: [],
+        })
       }
 
       commit('SET_PAGES', { projectId, pages: pageList })
     },
 
-    async addPage({ commit, state }, { page, imageBlob }: { page: Page; imageBlob?: Blob }) {
+    async addPage({ commit, state }, { projectId, snapshot }: { projectId: string; snapshot: PageSnapshot }) {
       const adapter = state.fileAdapter
-      if (adapter) {
-        await adapter.savePage(toRecord(page))
-        if (imageBlob) {
-          await adapter.saveOriginalImage(page.id, imageBlob)
-        }
+      if (!adapter) return
+
+      const summary = await adapter.createPage(projectId, snapshot)
+
+      // 썸네일 Blob URL 생성
+      const thumbUrl = URL.createObjectURL(snapshot.thumbnail)
+      commit('SET_THUMBNAIL_URL', { pageId: summary.id, url: thumbUrl })
+
+      const page: Page = {
+        id: summary.id,
+        projectId: summary.projectId,
+        index: summary.index,
+        status: summary.status,
+        thumbnail: thumbUrl,
+        textBlocks: snapshot.page.textBlocks,
       }
       commit('ADD_PAGE', page)
     },
 
     async updatePage({ commit, state }, page: Page) {
-      const adapter = state.fileAdapter
-      if (adapter) {
-        await adapter.savePage(toRecord(page))
-      }
+      // metadata만 업데이트 (snapshot 전체 저장이 아닌 경우)
+      // 실제로는 savePageSnapshot을 usePageLoader에서 호출
+      // 여기서는 Vuex state만 업데이트
       commit('UPDATE_PAGE', page)
     },
 
@@ -127,6 +143,8 @@ const pages: Module<PagesState, unknown> = {
         await adapter.deletePage(pageId)
       }
       commit('REMOVE_PAGE', { projectId, pageId })
+      // dense reindex 반영
+      commit('REINDEX_PAGES', projectId)
     },
   },
 }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useStore } from 'vuex'
 import { Settings, Download, Trash2, MoreHorizontal, User, LogIn, LogOut } from 'lucide-vue-next'
@@ -17,15 +17,10 @@ const projectMenu = useModal()
 const userMenu = useModal()
 const loginModal = useModal()
 const { isCloud } = useDeploymentMode()
-const isLoggedIn = ref(false)
-
-function handleLogin() {
-  isLoggedIn.value = true
-  loginModal.close()
-}
+const isLoggedIn = computed(() => store.getters['auth/isLoggedIn'])
 
 function handleLogout() {
-  isLoggedIn.value = false
+  store.dispatch('auth/logout')
   userMenu.close()
 }
 const settingsModal = useModal()
@@ -191,8 +186,8 @@ function switchTab(tab: ProjectTab) {
           <!-- Cloud: logged in -->
           <template v-if="isCloud && isLoggedIn">
             <div class="px-3 py-2 border-b border-towa-border">
-              <div class="text-sm font-medium text-towa-text">사용자</div>
-              <div class="text-xs text-towa-text-muted">user@example.com</div>
+              <div class="text-sm font-medium text-towa-text">{{ store.state.auth.user?.nickname || '사용자' }}</div>
+              <div class="text-xs text-towa-text-muted">{{ store.state.auth.user?.email }}</div>
             </div>
           </template>
           <!-- Cloud: not logged in -->
@@ -227,8 +222,8 @@ function switchTab(tab: ProjectTab) {
       </div>
     </div>
 
-    <LoginModal :open="loginModal.isOpen.value" @close="loginModal.close()" @login="handleLogin" />
+    <LoginModal :open="loginModal.isOpen.value" @close="loginModal.close()" @login="loginModal.close()" />
 
-    <SettingsModal :open="settingsModal.isOpen.value" @close="settingsModal.close()" />
+    <SettingsModal :open="settingsModal.isOpen.value" @close="settingsModal.close()" @open-login="loginModal.open()" />
   </nav>
 </template>

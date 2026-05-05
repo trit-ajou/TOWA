@@ -11,19 +11,25 @@
     "typecheck": "vue-tsc --noEmit"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1030.0",
     "@simonwep/pickr": "^1.9.1",
     "buffer": "^6.0.3",
     "contactjs": "^2.1.7",
+    "dropbox": "^10.34.0",
     "floating-vue": "^5.2.2",
+    "gifshot": "^0.4.5",
     "idb": "^8.0.3",
     "lucide-vue-next": "^0.460.0",
+    "pdfjs-dist": "^4.10.38",
+    "psd.js": "^3.9.2",
+    "tiny-script-loader": "^2.2.2",
     "vue": "^3.5.13",
     "vue-i18n": "^11.3.0",
     "vue-router": "^4.5.0",
-    "vue-select": "^3.20.4",
-    "vuedraggable": "^2.24.3",
+    "vue-select": "^4.0.0-beta.6",
+    "vuedraggable": "^4.1.0",
     "vuex": "^4.1.0",
-    "zcanvas": "^6.0.5"
+    "zcanvas": "^5.1.8"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.3",
