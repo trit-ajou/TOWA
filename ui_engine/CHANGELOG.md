@@ -4,6 +4,21 @@
 
 ---
 
+## 2026-04-27
+
+### 15:24 — 프로젝트 생성 후 자동 이동 + 프로젝트 삭제 UI
+- LibraryView.vue: `createProject` async로 변경, 생성 완료 후 `/project/:id`로 자동 이동
+- ProjectCard.vue: hover 시 우측 상단에 삭제 버튼 표시 (Trash2 아이콘, `@click.stop`으로 카드 클릭과 분리), `BaseCard`에 `group` class 전달
+- ProjectGrid.vue: `deleteProject` emit 추가, `@delete`를 상위로 전달
+- LibraryView.vue: `confirmDeleteProject` / `deleteProject` 핸들러 추가, `BaseModal` + `BaseButton` 삭제 확인 모달 구현
+
+### 15:23 — 페이지 삭제 UI 구현
+- PageThumbnail.vue: hover overlay에 삭제 버튼 추가 (Trash2 아이콘, red-600 스타일), `delete` emit 정의
+- PageGrid.vue: `deletePage` emit 추가, PageThumbnail의 `@delete` 이벤트를 상위로 전달
+- ProjectHomeTab.vue: `confirmDeletePage` / `deletePage` 핸들러 추가, `useModal` + `BaseModal` + `BaseButton` 활용한 삭제 확인 모달 구현, vertical/horizontal 레이아웃 양쪽 PageGrid에 `@delete-page` 연결
+
+---
+
 ## 2026-04-16
 
 ### 00:17 — Cloud 모드 연동 (service_engine 파일 저장 API)

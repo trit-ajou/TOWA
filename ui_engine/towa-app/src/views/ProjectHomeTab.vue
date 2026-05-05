@@ -6,8 +6,11 @@ import type { EditMode } from '@/store/modules/editor'
 import type { PageStatus } from '@/types/page'
 import type { PageSnapshot } from '@/file-adapter'
 import { createUlid } from '@/utils/ulid'
+import { useModal } from '@/composables/useModal'
 import ProjectDashboard from '@/components/project/ProjectDashboard.vue'
 import PageGrid from '@/components/project/PageGrid.vue'
+import BaseModal from '@/components/common/BaseModal.vue'
+import BaseButton from '@/components/common/BaseButton.vue'
 // @ts-expect-error bitmappery JS module
 import DocumentFactory from '@bitmappery/factories/document-factory'
 // @ts-expect-error bitmappery JS module
@@ -27,6 +30,42 @@ const lastEditMode = computed<EditMode>(() => store.getters['editor/lastEditMode
 const layout = computed(() => store.getters['editor/projectHomeLayout'])
 
 const statusFilter = ref<PageStatus | 'all'>('all')
+
+const deleteModal = useModal()
+const pageToDeleteId = ref<string | null>(null)
+
+const pageToDeleteIndex = computed(() => {
+  if (!pageToDeleteId.value) return null
+  const page = allPages.value.find((p: { id: string }) => p.id === pageToDeleteId.value)
+  return page?.index ?? null
+})
+
+function confirmDeletePage(pageId: string) {
+  pageToDeleteId.value = pageId
+  deleteModal.open()
+}
+
+async function deletePage() {
+  if (!pageToDeleteId.value) return
+  const pid = projectId.value
+  await store.dispatch('pages/removePage', { projectId: pid, pageId: pageToDeleteId.value })
+
+  const proj = project.value
+  if (proj) {
+    await store.dispatch('projects/update', {
+      ...proj,
+      pageCount: allPages.value.length,
+      updatedAt: new Date().toISOString(),
+    })
+  }
+
+  if (selectedPageId.value === pageToDeleteId.value) {
+    store.commit('editor/SET_SELECTED_PAGE', null)
+  }
+
+  deleteModal.close()
+  pageToDeleteId.value = null
+}
 
 const statusChips = [
   { value: 'all' as const, label: '전체' },
@@ -198,6 +237,7 @@ function blobToCanvas(blob: Blob): Promise<HTMLCanvasElement> {
             @open-edit="selectAndEdit"
             @open-detail="selectAndDetail"
             @add-pages="addPages"
+            @delete-page="confirmDeletePage"
           />
         </div>
       </div>
@@ -239,8 +279,23 @@ function blobToCanvas(blob: Blob): Promise<HTMLCanvasElement> {
           @open-edit="selectAndEdit"
           @open-detail="selectAndDetail"
           @add-pages="addPages"
+          @delete-page="confirmDeletePage"
         />
       </div>
     </template>
   </main>
+
+  <BaseModal
+    title="페이지 삭제"
+    :open="deleteModal.isOpen.value"
+    @close="deleteModal.close()"
+  >
+    <p class="text-sm text-towa-text-muted">
+      <span class="font-medium text-towa-text">{{ pageToDeleteIndex }}페이지</span>를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.
+    </p>
+    <template #footer>
+      <BaseButton variant="secondary" size="sm" @click="deleteModal.close()">취소</BaseButton>
+      <BaseButton variant="danger" size="sm" @click="deletePage">삭제</BaseButton>
+    </template>
+  </BaseModal>
 </template>

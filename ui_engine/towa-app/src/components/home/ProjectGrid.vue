@@ -16,6 +16,7 @@ defineEmits<{
   select: [project: Project]
   create: []
   openFolder: [folderName: string]
+  deleteProject: [project: Project]
 }>()
 </script>
 
@@ -47,6 +48,7 @@ defineEmits<{
       :key="project.id"
       :project="project"
       @click="$emit('select', project)"
+      @delete="$emit('deleteProject', project)"
     />
   </div>
 </template>

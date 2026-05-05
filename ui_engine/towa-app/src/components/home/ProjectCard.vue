@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { Project } from '@/types/project'
-import { FileText } from 'lucide-vue-next'
+import { FileText, Trash2 } from 'lucide-vue-next'
 import BaseCard from '@/components/common/BaseCard.vue'
 
 const props = defineProps<{
@@ -10,6 +10,7 @@ const props = defineProps<{
 
 defineEmits<{
   click: []
+  delete: []
 }>()
 
 const langLabel = computed(() => {
@@ -28,7 +29,7 @@ const statusBadge = computed(() => {
 </script>
 
 <template>
-  <BaseCard hoverable @click="$emit('click')">
+  <BaseCard class="group" hoverable @click="$emit('click')">
     <div class="aspect-[3/4] bg-towa-bg overflow-hidden relative">
       <img
         v-if="project.thumbnail"
@@ -38,6 +39,16 @@ const statusBadge = computed(() => {
       />
       <div v-else class="w-full h-full flex items-center justify-center text-towa-text-muted text-xs px-2 text-center">
         {{ project.name }}
+      </div>
+      <!-- Delete button on hover -->
+      <div class="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+        <button
+          class="p-1 rounded-md bg-black/60 text-white/80 hover:bg-red-600 hover:text-white transition-colors"
+          @click.stop="$emit('delete')"
+          title="프로젝트 삭제"
+        >
+          <Trash2 :size="14" />
+        </button>
       </div>
       <!-- Overlay badges -->
       <div class="absolute top-1.5 left-1.5 flex items-center gap-1">
