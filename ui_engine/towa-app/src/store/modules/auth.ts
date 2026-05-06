@@ -138,6 +138,29 @@ const auth: Module<AuthState, unknown> = {
       commit('CLEAR_SESSION')
       localStorage.removeItem(STORAGE_KEY)
     },
+
+    async refreshCredit({ state, commit }) {
+      if (!ctx.auth || !state.sessionKey) return
+      try {
+        const info: CurrentSessionInfo = await ctx.auth.getCurrentUser({
+          sessionKey: state.sessionKey,
+        })
+        commit('SET_CREDIT', info.creditBalance)
+        const raw = localStorage.getItem(STORAGE_KEY)
+        if (raw) {
+          try {
+            const parsed = JSON.parse(raw) as PersistedSession
+            parsed.creditBalance = info.creditBalance
+            parsed.reservedUnits = info.reservedUnits
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed))
+          } catch {
+            // ignore
+          }
+        }
+      } catch {
+        // 토큰 무효화는 다른 호출에서 처리됨
+      }
+    },
   },
 }
 

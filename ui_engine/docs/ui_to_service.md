@@ -1,82 +1,61 @@
-# UI Engine → Service Engine: 파일 저장 API 요청 명세
+# UI Engine → Service Engine: 파일 저장 API 명세
 
-UI 엔진에서 필요한 파일 저장/조회 API를 정리한 문서.
-service_engine 팀이 이 API를 구현하면, UI 엔진은 `CloudFileAdapter`를 만들어서 즉시 연동 가능.
+UI 엔진이 cloud 모드에서 사용하는 파일 저장/조회 API 명세.
+
+> **상태**: 7주차에 SDK 측 구현 완료 (`towa-app/src/backend/`). service_engine 측 실 구현/통합 테스트 진행 중.
 
 ---
 
-## 0. 현재 SDK 상태와 필요한 변경
+## 0. SDK 구조 (구현 완료)
 
-### 현재 SDK가 제공하는 것 (`towa-app/src/backend/`)
+### `AppBackend` 인터페이스 (`towa-app/src/backend/contracts.ts`)
 
 ```typescript
-// backend/contracts.ts — AppBackend 인터페이스
 interface AppBackend {
-  auth: AuthBackend        // devLogin, getCurrentUser
-  aiJobs: AiJobsBackend    // createJob, getJob
+  auth: AuthBackend         // 인증 (devLogin, getCurrentUser, logout)
+  aiJobs: AiJobsBackend     // AI 작업 (createJob, getJob)
+  files: FilesBackend       // 파일 저장 — 이 문서의 범위
 }
 ```
 
-- `AuthBackend`: `POST /auth/dev/login`, `GET /auth/me`
-- `AiJobsBackend`: `POST /v1/jobs`, `GET /v1/jobs/:id`
-- `real.ts`에 실제 HTTP 호출 구현, `emulated.ts`에 더미 구현
+### `FilesBackend` 인터페이스
 
-### SDK에 없는 것 (이 문서에서 요청하는 것)
-
-**파일 저장/조회 API가 전혀 없음.** 프로젝트 CRUD, 페이지 CRUD, 이미지/레이어/썸네일 바이너리 저장 — 전부 새로 필요.
-
-### SDK 수정 방안
-
-두 가지 선택지:
-
-**A. `AppBackend`에 `files` 속성 추가 (권장)**
 ```typescript
-// SDK 변경: AppBackend에 files 추가
-interface AppBackend {
-  auth: AuthBackend
-  aiJobs: AiJobsBackend
-  files: FilesBackend       // ← 새로 추가
-}
-
 interface FilesBackend {
   // 프로젝트 CRUD
-  listProjects(): Promise<ProjectRecord[]>
-  getProject(id: string): Promise<ProjectRecord>
-  createProject(project: ProjectRecord): Promise<ProjectRecord>
-  updateProject(id: string, project: ProjectRecord): Promise<ProjectRecord>
-  deleteProject(id: string): Promise<void>
+  listProjects(options): Promise<ProjectDto[]>
+  getProject(projectId, options): Promise<ProjectDto>
+  createProject(input, options): Promise<ProjectDto>
+  updateProject(projectId, patch, options): Promise<ProjectDto>
+  deleteProject(projectId, options): Promise<void>
 
-  // 페이지 CRUD
-  listPages(projectId: string): Promise<PageRecord[]>
-  getPage(pageId: string): Promise<PageRecord>
-  createPage(projectId: string, page: PageRecord): Promise<PageRecord>
-  updatePage(pageId: string, page: PageRecord): Promise<PageRecord>
-  deletePage(pageId: string): Promise<void>
+  // 페이지 요약 목록 (썸네일 URL 포함)
+  listPageSummaries(projectId, options): Promise<PageSummaryDto[]>
 
-  // 바이너리
-  getImage(pageId: string): Promise<Blob>
-  putImage(pageId: string, blob: Blob): Promise<void>
-  getLayers(pageId: string): Promise<Blob | null>
-  putLayers(pageId: string, blob: Blob): Promise<void>
-  getThumbnail(pageId: string): Promise<Blob | null>
-  putThumbnail(pageId: string, blob: Blob): Promise<void>
+  // 페이지 snapshot CRUD (multipart)
+  createPage(projectId, snapshot, options): Promise<PageSummaryDto>
+  savePageSnapshot(pageId, snapshot, options): Promise<PageSummaryDto>
+  getPageSnapshot(pageId, options): Promise<PageSnapshotPayload>
+  deletePage(pageId, options): Promise<void>
+
+  // 썸네일 (bearer-authed binary fetch)
+  getPageThumbnail(pageId, options): Promise<Blob>
 }
 ```
 
-이렇게 하면 기존 SDK 패턴(real/emulated 분리, `requestJson` 유틸리티)을 그대로 따를 수 있음.
-UI 쪽에서는 `CloudFileAdapter`가 `AppBackend.files`를 호출하면 끝.
+### snapshot 중심 설계
 
-**B. FileAdapter를 SDK와 별개로 구현**
+페이지 데이터(메타데이터 + 원본 이미지 + 레이어 blob + 썸네일)를 **snapshot 단위로 묶어서 multipart 한 번에** 처리한다. 초기 설계에서는 이미지/레이어/썸네일을 각각 별도 PUT으로 보낼 계획이었지만, 7주차 리팩터링에서 다음 이유로 통합:
 
-UI가 직접 fetch로 서버 API를 호출. SDK를 건드리지 않아도 되지만, 인증 헤더 처리나 에러 핸들링을 중복 구현해야 함.
+- 페이지 저장이 원자적 (4파트가 모두 일관된 상태로 저장됨)
+- 네트워크 왕복 1회로 감소
+- 부분 실패 처리가 단순 (전체 저장 or 전체 실패)
 
-→ **A 방안을 권장합니다.** 기존 패턴과 일관성 유지 + 인증/에러 처리 재사용.
+### 구현 (`real.ts` / `emulated.ts`)
 
-### 바이너리 전송 관련 SDK 변경
-
-현재 `real.ts`의 `requestJson()`은 JSON만 처리. 바이너리(Blob) 전송을 위해:
-- `requestBlob(url, init)` 함수 추가 필요 (응답을 `response.blob()`으로 처리)
-- PUT 시 `Content-Type: application/octet-stream` 또는 `image/png` 설정
+- `real.ts`: 실제 HTTP 호출. `buildSnapshotMultipart()` 헬퍼가 4파트 FormData를 구성, `parseMultipartMixed()`가 응답 파싱
+- `emulated.ts`: 메모리 기반 stub (테스트/개발용)
+- `requestJson()`, `requestBlob()`, `requestMultipart()` 등 공통 유틸리티
 
 ---
 
@@ -199,36 +178,35 @@ PUT    /api/v1/pages/:id                     → PageRecord (메타 수정)
 DELETE /api/v1/pages/:id                     → 204 (페이지 + 관련 바이너리 전체 삭제)
 ```
 
-### 3.3 바이너리 (원본 이미지)
+### 3.3 페이지 snapshot (multipart)
+
+**페이지 생성 + 저장: multipart 요청 1회로 통합**
 
 ```
-GET    /api/v1/pages/:id/image               → Blob (image/png or image/jpeg)
-PUT    /api/v1/pages/:id/image               → 204 (Content-Type: image/*)
+POST   /api/v1/projects/:pid/pages/snapshot  → PageSummaryDto (생성)
+PUT    /api/v1/pages/:id/snapshot            → PageSummaryDto (저장)
 ```
 
-- 페이지 생성 시 이미지도 함께 업로드 (또는 별도 PUT)
-- GET은 원본 그대로 반환
+요청 본문 (`multipart/form-data`):
 
-### 3.4 바이너리 (레이어 데이터)
+| 파트 | Content-Type | 내용 |
+|------|--------------|------|
+| `metadata` | `application/json` | `{ page: { id, projectId, index, status, textBlocks } }` |
+| `original_image` | `image/png` 또는 `image/jpeg` | 원본 만화 이미지 (1~5MB) |
+| `layer_blob` | `application/octet-stream` | bitmappery `DocumentFactory.toBlob()` 결과 (opaque, 1~10MB) |
+| `thumbnail` | `image/png` | 캔버스 축소본 (10~50KB) |
 
-```
-GET    /api/v1/pages/:id/layers              → Blob (application/octet-stream)
-PUT    /api/v1/pages/:id/layers              → 204 (Content-Type: application/octet-stream)
-```
+서버 응답: `PageSummaryDto` (id, projectId, index, status, thumbnailUrl)
 
-- bitmappery 직렬화 Blob — 서버는 **opaque**로 취급 (해석 불필요, 그대로 저장/반환)
-- 자동 저장 시 30초 debounce로 PUT 호출
-- 페이지 전환 시에도 PUT 호출
-
-### 3.5 바이너리 (썸네일)
+**페이지 조회: multipart/mixed 응답**
 
 ```
-GET    /api/v1/pages/:id/thumbnail           → Blob (image/png)
-PUT    /api/v1/pages/:id/thumbnail           → 204 (Content-Type: image/png)
+GET    /api/v1/pages/:id/snapshot            → multipart/mixed (4파트)
 ```
 
-- UI가 캔버스 캡처 → 축소 → PNG Blob 생성 → PUT
-- 목록/사이드 패널에서 미리보기용
+응답은 위 4파트와 동일한 구조의 `multipart/mixed`. UI에서 `parseMultipartMixed()`가 분해해서 `PageSnapshotPayload`로 복원.
+
+**디자인 의도**: `layer_blob`은 서버 입장에서 **opaque** — 내용을 해석할 필요 없이 그대로 저장/반환. snake_case 필드명으로 서버 컨벤션과 정렬.
 
 ---
 
@@ -276,36 +254,36 @@ Authorization: Bearer <session_key>
 ### 프로젝트 열기 (편집 진입)
 
 ```
-1. GET /api/v1/projects/:id              → 프로젝트 메타
-2. GET /api/v1/projects/:id/pages/       → 페이지 목록 + textBlocks
-3. GET /api/v1/pages/:id/thumbnail       → 각 페이지 썸네일 (미리보기용)
-4. GET /api/v1/pages/:id/layers          → 현재 페이지의 편집 상태
-   → 없으면 GET /api/v1/pages/:id/image → 원본 이미지로 새 문서 생성
+1. GET  /api/v1/projects/:id                         → 프로젝트 메타
+2. GET  /api/v1/projects/:id/pages                   → 페이지 요약 목록 (썸네일 URL 포함)
+3. GET  /api/v1/pages/:current/snapshot              → 현재 페이지 4파트 (multipart/mixed)
 ```
+
+썸네일은 별도 fetch 없이 page summary의 URL로 `<img>` 직접 로딩.
 
 ### 편집 중 자동 저장 (30초 debounce)
 
 ```
-PUT /api/v1/pages/:id/layers             → bitmappery 직렬화 Blob
-PUT /api/v1/pages/:id/thumbnail          → 캔버스 캡처 썸네일
+PUT  /api/v1/pages/:id/snapshot                      → multipart 4파트 (전체 갱신)
 ```
+
+레이어/썸네일이 동시에 갱신되므로 정합성 유지.
 
 ### 페이지 전환
 
 ```
-1. PUT (이전 페이지 저장)
-2. GET (새 페이지 로드)
+1. PUT  /api/v1/pages/:current/snapshot              → 이전 페이지 저장
+2. GET  /api/v1/pages/:next/snapshot                 → 새 페이지 로드
 ```
 
 ### 새 페이지 추가 (이미지 드래그앤드롭)
 
 ```
-1. POST /api/v1/projects/:pid/pages/     → 페이지 메타 생성
-2. PUT  /api/v1/pages/:id/image          → 원본 이미지 업로드
-3. PUT  /api/v1/pages/:id/layers         → 초기 bitmappery 문서
-4. PUT  /api/v1/pages/:id/thumbnail      → 썸네일
-5. PUT  /api/v1/projects/:id             → pageCount 갱신
+1. POST /api/v1/projects/:pid/pages/snapshot         → 페이지 생성 + 4파트 동시 업로드
+2. PUT  /api/v1/projects/:id                         → pageCount 갱신
 ```
+
+snapshot 통합 덕분에 단계가 5번에서 2번으로 단순화.
 
 ---
 

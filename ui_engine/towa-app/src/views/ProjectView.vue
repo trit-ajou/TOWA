@@ -62,16 +62,20 @@ onBeforeUnmount(() => {
     <!-- 좌측: Teleport target (EditorTab/DetailEditorTab이 PageSidePanel 주입) -->
     <div id="towa-left-panel" class="shrink-0 h-full"></div>
 
-    <!-- 중앙: bitmappery + router-view -->
-    <div class="flex-1 min-w-0 h-full relative">
-      <div v-show="showCanvas" class="bitmappery-layer">
-        <BitMappery />
+    <!-- 중앙: top toolbar + bitmappery + router-view -->
+    <div class="flex-1 min-w-0 h-full relative flex flex-col">
+      <!-- 상단 Teleport target (EditorTab/DetailEditorTab이 AiToolbar 주입) -->
+      <div id="towa-top-toolbar" class="shrink-0"></div>
+      <div class="flex-1 min-h-0 relative">
+        <div v-show="showCanvas" class="bitmappery-layer">
+          <BitMappery />
+        </div>
+        <router-view v-slot="{ Component }">
+          <keep-alive :include="['ProjectHomeTab']">
+            <component :is="Component" />
+          </keep-alive>
+        </router-view>
       </div>
-      <router-view v-slot="{ Component }">
-        <keep-alive :include="['ProjectHomeTab']">
-          <component :is="Component" />
-        </keep-alive>
-      </router-view>
     </div>
 
     <!-- 우측: Teleport target (EditorTab이 TranslationPanel 주입) -->

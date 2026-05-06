@@ -185,53 +185,71 @@ graph TD
 편집 엔진(bitmappery)과 저장소 사이의 추상화 계층.
 deployment mode에 따라 구현체만 교체.
 
-### 인터페이스
+### 인터페이스 (snapshot 중심)
+
+7주차에 cloud 모드 연동을 진행하면서, 단순 load/save 시그니처에서 **snapshot 단위 CRUD**로 인터페이스를 재정의했다. 페이지 하나는 메타데이터 + 원본 이미지 + 레이어 blob + 썸네일을 한 단위(snapshot)로 묶어서 원자적으로 처리한다.
 
 ```typescript
 interface FileAdapter {
-  // 페이지 이미지를 bitmappery document로 로드
-  loadPage(pageId: string): Promise<void>
+  // 프로젝트 CRUD
+  listProjects(): Promise<ProjectRecord[]>
+  getProject(id: string): Promise<ProjectRecord | null>
+  createProject(record: ProjectRecord): Promise<void>
+  updateProject(record: ProjectRecord): Promise<void>
+  deleteProject(id: string): Promise<void>
 
-  // bitmappery의 현재 편집 상태를 저장
-  savePage(pageId: string): Promise<void>
+  // 페이지 CRUD (snapshot 단위)
+  listPageSummaries(projectId: string): Promise<PageSummary[]>
+  getPageSnapshot(pageId: string): Promise<PageSnapshot | null>
+  createPage(projectId: string, snapshot: PageSnapshot): Promise<PageSummary>
+  savePageSnapshot(pageId: string, snapshot: PageSnapshot): Promise<PageSummary>
+  deletePage(pageId: string): Promise<void>
 
-  // 결과물 export (병합된 이미지)
-  exportPage(pageId: string, format: ExportFormat): Promise<Blob>
-
-  // 썸네일 생성/갱신
-  updateThumbnail(pageId: string): Promise<void>
-
-  // 프로젝트 전체 export (ZIP 등)
-  exportProject(projectId: string, format: ExportFormat): Promise<Blob>
+  // 썸네일 (별도 fetch가 가능하도록 분리)
+  getThumbnailBlob(pageId: string): Promise<Blob | null>
 }
 
-type ExportFormat = 'png' | 'jpeg' | 'webp' | 'psd'
+interface PageSnapshot {
+  page: PageMeta            // id, projectId, index, status, textBlocks
+  originalImage: Blob       // 원본 만화 이미지
+  layerBlob: Blob           // bitmappery DocumentFactory.toBlob() 결과
+  thumbnail: Blob           // Canvas 축소본
+}
 ```
+
+이 구조의 장점:
+- 페이지 저장이 원자적 (메타데이터·이미지·레이어·썸네일이 동시에 일관된 상태로 저장)
+- cloud 모드에서 multipart 요청 한 번으로 처리 가능
+- delete 시 dense reindex로 페이지 순서 자동 재정렬
 
 ### 구현체
 
 ```typescript
-// standalone
 class LocalFileAdapter implements FileAdapter {
-  // IndexedDB를 통해 로컬 저장/조회
+  // IndexedDB 6개 object store에 분산 저장
+  // (projects, pages, page-images, page-layers, thumbnails, page-cache)
 }
 
-// cloud
 class CloudFileAdapter implements FileAdapter {
-  // 서비스 엔진 API를 통해 서버 저장/조회
-  // + IndexedDB 캐시 레이어
+  // backend.files.* 메서드에 위임
+  // FilesBackend SDK가 multipart HTTP 요청을 처리
 }
 ```
 
-### 연결
+### deployment mode 분기
 
 ```typescript
-// composables/useFileAdapter.ts
-export function useFileAdapter(): FileAdapter {
-  const { isCloud } = useDeploymentMode()
-  return isCloud.value ? new CloudFileAdapter() : new LocalFileAdapter()
+// file-adapter/index.ts
+export function createFileAdapter(): FileAdapter {
+  return getDeploymentMode() === 'cloud'
+    ? new CloudFileAdapter()
+    : new LocalFileAdapter()
 }
 ```
+
+main.ts에서 모드별 부트스트랩:
+- standalone: seed 데이터 삽입 후 IndexedDB 사용
+- cloud: localStorage에 저장된 세션 복원 → 서버에서 프로젝트 목록 fetch
 
 ---
 
@@ -471,18 +489,32 @@ async function extractEditResult(store: Store): Promise<Blob> {
 
 ---
 
-## 8. 미확정 사항 (병합 시 결정)
+## 8. ID 체계: ULID
 
-아래 항목은 towa-app 파일 시스템 구현과 bitmappery 통합을 실제로 병합하는 시점에 확정:
+7주차에 도입. 프로젝트와 페이지 ID는 모두 [ULID](https://github.com/ulid/spec) (Crockford Base32, 26자)를 사용한다.
 
-- TranslationPanel ↔ bitmappery 텍스트 레이어 연동 디테일
-- File Adapter의 `savePage()`가 어떤 데이터를 어떤 형태로 저장하는지 세부 스펙
+```typescript
+// utils/ulid.ts
+export function createUlid(now = Date.now()): string
+export function isCanonicalUlid(value: string): boolean
+```
+
+ULID를 택한 이유:
+- 시간순 정렬이 가능 (앞 48bit가 timestamp)
+- UUID보다 짧고 가독성 있음
+- 클라이언트에서 충돌 없이 생성 가능 → cloud 동기화 시 ID 충돌 걱정 없음
+
+이전에는 `proj-${Date.now()}` 같은 간단한 형식을 썼는데, cloud 동기화/multi-device 환경을 고려하면 표준 형식이 안전하다.
+
+## 9. 미확정 사항 (향후 결정)
+
+- TranslationPanel ↔ bitmappery 텍스트 레이어 연동 디테일 (양방향 동기화 구현 시)
 - .towa export 포맷 상세 스펙
-- 오프라인 sync 구현
+- 오프라인 sync 구현 (현재는 standalone/cloud 모드 명시적 분기, 자동 sync 없음)
 
 ---
 
-## 9. 향후 확장 고려사항
+## 10. 향후 확장 고려사항
 
 ### 자체 프로젝트 파일 포맷 (.towa)
 - 프로젝트 메타 + 페이지별 레이어 + 텍스트 블록을 하나로 패키징

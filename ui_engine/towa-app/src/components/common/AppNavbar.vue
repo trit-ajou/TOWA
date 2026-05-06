@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useStore } from 'vuex'
-import { Settings, Download, Trash2, MoreHorizontal, User, LogIn, LogOut } from 'lucide-vue-next'
+import { Settings, Download, Trash2, MoreHorizontal, User, LogIn, LogOut, Coins } from 'lucide-vue-next'
 import { useModal } from '@/composables/useModal'
 import { useDeploymentMode } from '@/composables/useDeploymentMode'
 import DropdownMenu from './DropdownMenu.vue'
@@ -18,6 +18,8 @@ const userMenu = useModal()
 const loginModal = useModal()
 const { isCloud } = useDeploymentMode()
 const isLoggedIn = computed(() => store.getters['auth/isLoggedIn'])
+const creditBalance = computed<number>(() => store.state.auth.creditBalance)
+const reservedUnits = computed<number>(() => store.state.auth.reservedUnits)
 
 function handleLogout() {
   store.dispatch('auth/logout')
@@ -148,8 +150,19 @@ function switchTab(tab: ProjectTab) {
     </div>
     <div v-else class="flex-1" />
 
-    <!-- Right: project menu + user profile -->
+    <!-- Right: credit + project menu + user profile -->
     <div class="flex items-center gap-1">
+      <!-- Credit balance (cloud + logged in) -->
+      <div
+        v-if="isCloud && isLoggedIn"
+        class="flex items-center gap-1.5 px-2 py-1 rounded-md bg-towa-bg text-xs mr-1"
+        :title="reservedUnits > 0 ? `보유 ${creditBalance} / 예약 ${reservedUnits}` : `크레딧 ${creditBalance}`"
+      >
+        <Coins :size="14" class="text-towa-accent" />
+        <span class="text-towa-text font-mono">{{ creditBalance }}</span>
+        <span v-if="reservedUnits > 0" class="text-towa-text-muted font-mono">(-{{ reservedUnits }})</span>
+      </div>
+
       <div v-if="isInProject" class="relative">
         <button
           class="p-1.5 rounded hover:bg-towa-surface-light text-towa-text-muted hover:text-towa-text transition-colors"
