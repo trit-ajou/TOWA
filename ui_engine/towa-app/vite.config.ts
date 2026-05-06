@@ -89,11 +89,26 @@ export default defineConfig({
   worker: {
     plugins: () => [bitmapperyBareImportResolver(), smartAliasResolver()],
   },
-  server: {
-    fs: {
-      allow: ['..'],  // allow access to bitmappery assets
-    },
-  },
+  server: (() => {
+    const publicHost = process.env.VITE_PUBLIC_HOST
+    return {
+      host: '0.0.0.0',
+      port: 5173,
+      fs: {
+        allow: ['..'],  // allow access to bitmappery assets
+      },
+      ...(publicHost
+        ? {
+            allowedHosts: [publicHost, `.${publicHost}`],
+            hmr: {
+              host: publicHost,
+              clientPort: 443,
+              protocol: 'wss',
+            },
+          }
+        : {}),
+    }
+  })(),
   define: {
     'global': 'globalThis',
   },

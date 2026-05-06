@@ -6,6 +6,16 @@
 
 ## 2026-05-06
 
+### 17:55 — Cloudflare tunnel 기반 서버 배포 구성
+- 배포 모델 확정: 서버는 main 브랜치만 따라가는 인스턴스. cron 5분 폴링으로 자동 pull + rebuild
+- `deploy.sh` (monorepo 루트): `.env` 부트스트랩(없으면 `.env.deploy`에서 복사) + origin/main 변경 시 git pull + `docker compose up -d --build`. 1회 세팅도 같은 스크립트로 처리
+- `.env.deploy` (monorepo 루트, commit됨): cloud-mode 운영 프리셋. clone 후 별도 편집 불필요
+- `DEPLOY.md` (monorepo 루트): 서버 세팅(`git clone` + `deploy.sh` 한 번) + cloudflared ingress + 운영 가이드
+- `vite.config.ts`: `VITE_PUBLIC_HOST` 환경변수 있을 때만 cloudflare 모드(allowedHosts + wss HMR clientPort 443) 적용. 없으면 로컬 모드 (기존 동작 유지)
+- `.env.example`, `docker-compose.yml`: `VITE_PUBLIC_HOST` 슬롯 추가
+- 단일 도메인 분기 구조: `towa.live` → 5173, `api.towa.live` → 8000, `model.towa.live` → 8100. 모두 호스트 cloudflared가 ingress 처리
+- 도커 자체 구조 변경 없음 (코드 COPY 방식 유지: main push 시 이미지 재빌드로 반영)
+
 ### 10:30 — 프로젝트 생성 시 페이지 업로드 누락 버그 수정
 - 증상: 프로젝트 생성 모달에서 파일을 첨부해 만들면 `project.pageCount`만 파일 수로 기록되고 실제 페이지는 업로드되지 않음. dashboard에 "Np"로 표시되지만 PageGrid는 비어있음
 - `utils/page-from-file.ts` 신규: `buildPageSnapshotFromFile(file, projectId, pageIndex)` — 썸네일 생성 + bitmappery DocumentFactory layerBlob 빌드 + PageSnapshot 반환
