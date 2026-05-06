@@ -7,6 +7,7 @@ import type { FolderNode } from '@/types/folder'
 import type { PreviewItem } from '@/components/home/FolderCard.vue'
 import { useModal } from '@/composables/useModal'
 import { createUlid } from '@/utils/ulid'
+import { buildPageSnapshotFromFile } from '@/utils/page-from-file'
 import HomeSidebar from '@/components/home/HomeSidebar.vue'
 import ProjectGrid from '@/components/home/ProjectGrid.vue'
 import CreateProjectModal from '@/components/home/CreateProjectModal.vue'
@@ -99,13 +100,14 @@ function selectProject(project: Project) {
 }
 
 async function createProject(form: { name: string; sourceLang: string; targetLang: string; autoDetect: boolean; autoInpaint: boolean; autoTranslate: boolean; inferenceMode: 'local' | 'cloud'; files: File[] }) {
+  const projectId = createUlid()
   const newProject: Project = {
-    id: createUlid(),
+    id: projectId,
     name: form.name,
     thumbnail: `https://placehold.co/400x560/1e1e32/0db0bc?text=${encodeURIComponent(form.name)}`,
     sourceLang: form.sourceLang,
     targetLang: form.targetLang,
-    pageCount: form.files.length,
+    pageCount: 0,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     status: 'todo',
@@ -118,11 +120,24 @@ async function createProject(form: { name: string; sourceLang: string; targetLan
     },
   }
   await store.dispatch('projects/create', newProject)
+
+  for (let i = 0; i < form.files.length; i++) {
+    const snapshot = await buildPageSnapshotFromFile(form.files[i], projectId, i + 1)
+    await store.dispatch('pages/addPage', { projectId, snapshot })
+  }
+  if (form.files.length > 0) {
+    await store.dispatch('projects/update', {
+      ...newProject,
+      pageCount: form.files.length,
+      updatedAt: new Date().toISOString(),
+    })
+  }
+
   createModal.close()
-  store.commit('editor/SET_CURRENT_PROJECT', newProject.id)
+  store.commit('editor/SET_CURRENT_PROJECT', projectId)
   store.commit('editor/SET_ACTIVE_TAB', 'home')
   store.commit('editor/SET_SELECTED_PAGE', null)
-  router.push(`/project/${newProject.id}`)
+  router.push(`/project/${projectId}`)
 }
 
 function confirmDeleteProject(project: Project) {

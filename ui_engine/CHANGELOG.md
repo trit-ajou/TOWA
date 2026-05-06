@@ -6,6 +6,25 @@
 
 ## 2026-05-06
 
+### 10:30 — 프로젝트 생성 시 페이지 업로드 누락 버그 수정
+- 증상: 프로젝트 생성 모달에서 파일을 첨부해 만들면 `project.pageCount`만 파일 수로 기록되고 실제 페이지는 업로드되지 않음. dashboard에 "Np"로 표시되지만 PageGrid는 비어있음
+- `utils/page-from-file.ts` 신규: `buildPageSnapshotFromFile(file, projectId, pageIndex)` — 썸네일 생성 + bitmappery DocumentFactory layerBlob 빌드 + PageSnapshot 반환
+- `views/LibraryView.vue`: `createProject`에 페이지 업로드 루프 추가, `pageCount`는 0으로 시작 후 업로드 완료 시점에 update
+- `views/ProjectHomeTab.vue`: 중복 로직(generateThumbnail/blobToCanvas/inline snapshot 빌드) 제거하고 `buildPageSnapshotFromFile` 재사용
+
+### 10:05 — Credit 잔액 UI 표시 + AI 호출 후 자동 갱신
+- `store/modules/auth.ts`: `refreshCredit` 액션 추가 — `getCurrentUser` 호출 후 `creditBalance` 갱신, localStorage도 동기화
+- `components/common/AppNavbar.vue`: 우상단에 크레딧 잔액 chip 추가 (cloud + 로그인 시), Coins 아이콘 + 잔액 + (예약 단위) 표시
+- `components/editor/AiToolbar.vue`: AI job 종료(성공/실패)마다 `auth/refreshCredit` dispatch
+
+### 09:46 — AI 도구 연동 (model_engine /v1/jobs 호출)
+- `composables/useAppBackend.ts` 추가 (AppBackend inject 헬퍼)
+- `main.ts`: `app.provide(APP_BACKEND_KEY, backend)` — AI 호출용 backend를 컴포넌트 트리에 노출
+- `views/ProjectView.vue`: 중앙 영역에 `#towa-top-toolbar` Teleport target 추가, 캔버스 위에 toolbar 슬롯 확보
+- `components/editor/AiToolbar.vue`: placeholder sleep 제거, 실제 `backend.aiJobs.createJob` + polling 연결. cloud/standalone 모드에 따라 `runtime_context.mode=saas|local` 자동 결정. 결과/에러를 toolbar 옆에 작은 status 텍스트로 표시
+- `views/EditorTab.vue`(③ 기본 편집), `views/DetailEditorTab.vue`(④ 상세 편집): AiToolbar를 `#towa-top-toolbar`로 Teleport 마운트
+- model_engine은 기본 PlaceholderJobExecutor로 동작 → API 호출/polling/auth/idempotency/error envelope 검증 가능, 실제 AI 결과는 후속 작업
+
 ### 00:05 — 문서 정리 (Project_Plan, TODO, design docs)
 - `Project_Plan.md`: 7~8주차 완료 항목 추가, 남은 구현 사항 갱신 (F1/F2/F6 완료, F8 Electron + F9 cloud 통합 + F10 의존성 정리 추가), 9~12주차 계획 재정의
 - `TODO.md`: 다음 할 일을 우선순위 순으로 정리, 보고서/연구노트/main 머지 완료 항목 추가, Electron 추가

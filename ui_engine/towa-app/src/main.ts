@@ -8,6 +8,7 @@ import store from './store'
 import { createAppBackend } from './backend'
 import { createFileAdapter } from './file-adapter'
 import { FILE_ADAPTER_KEY } from './composables/useFileAdapter'
+import { APP_BACKEND_KEY } from './composables/useAppBackend'
 import { DEPLOYMENT_MODE } from './config/deployment'
 import { seedDummyDataIfEmpty } from './data/dummy'
 import './app.css'
@@ -36,6 +37,7 @@ app.directive('tooltip', vTooltip)
 
 // 1) Backend SDK (auth + aiJobs + files) — 모드 무관하게 항상 생성
 const backend = createAppBackend()
+app.provide(APP_BACKEND_KEY, backend)
 
 // 2) Auth 모듈에 AuthBackend 주입
 store.dispatch('auth/init', backend.auth)
