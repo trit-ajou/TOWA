@@ -30,6 +30,13 @@ if [ "$LOCAL" != "$REMOTE" ]; then
   NEEDS_BUILD=1
 fi
 
+EXPECTED_SERVICES=$(printf "db\nmodel-engine\nservice-engine\nui-engine\n")
+RUNNING_SERVICES=$(docker compose ps --status running --services 2>/dev/null | sort)
+if [ "$RUNNING_SERVICES" != "$EXPECTED_SERVICES" ]; then
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] some services are not running, will rebuild"
+  NEEDS_BUILD=1
+fi
+
 if [ "$NEEDS_BUILD" -eq 0 ]; then
   exit 0
 fi
