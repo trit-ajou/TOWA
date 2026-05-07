@@ -2,9 +2,9 @@ FROM node:20-alpine
 
 WORKDIR /app/towa-app
 
-COPY towa-app/package*.json ./
+COPY towa-app/package.json ./
 
-RUN npm ci
+RUN npm install --legacy-peer-deps
 
 WORKDIR /app
 

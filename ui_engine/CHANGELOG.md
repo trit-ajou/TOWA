@@ -4,6 +4,19 @@
 
 ---
 
+## 2026-05-07
+
+### 02:30 — ui-engine 컨테이너 빌드 에러 통합 fix
+- 증상: 서버에서 ui-engine 컨테이너가 빌드 통과 후 시작 직후 종료 또는 빌드 자체 실패. 결과 cloudflare 502
+- 시도 흐름 (3단계):
+  1차) `npm ci`가 lock sync 에러로 실패 → host(npm 11)에서 만든 lock이 incomplete. `npm ci --legacy-peer-deps` + lock 재생성으로 우회 시도 → 빌드는 통과했지만 컨테이너 시작 시 rollup 에러
+  2차) lock의 platform 매핑이 누락된 게 원인이라 판단. `npm ci` → `npm install --legacy-peer-deps` 변경 → 같은 rollup 에러 지속 (npm install도 lock을 일부 존중해서 platform 누락 보완 못 함)
+  3차) lock 파일 자체를 컨테이너에 안 가져가게 변경 → 빌드 시점 platform에 맞춘 fresh resolution → 모든 native binary 자동 설치. 해결.
+- `towa-app/Dockerfile`: `COPY towa-app/package.json ./` + `RUN npm install --legacy-peer-deps`. lock 미포함, --legacy-peer-deps는 프로젝트 npm convention
+- `towa-app/package-lock.json`: alpine x64 환경 기준으로 재생성 (호스트 dev 재현성 위해 유지)
+- `DEPLOY.md`: cron 등록 절차 명확화 (절대경로 사용 필수, `crontab -l`/log tail 확인법 추가)
+- 검증: 서버에서 `bash deploy.sh` 결과 ui-engine `Up`, `https://towa.live` 정상 접속
+
 ## 2026-05-06
 
 ### 17:55 — Cloudflare tunnel 기반 서버 배포 구성
