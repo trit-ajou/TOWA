@@ -5,8 +5,11 @@ import { createI18n } from 'vue-i18n'
 import App from './App.vue'
 import router from './router'
 import store from './store'
+import { createAppBackend } from './backend'
 import { createFileAdapter } from './file-adapter'
 import { FILE_ADAPTER_KEY } from './composables/useFileAdapter'
+import { APP_BACKEND_KEY } from './composables/useAppBackend'
+import { DEPLOYMENT_MODE } from './config/deployment'
 import { seedDummyDataIfEmpty } from './data/dummy'
 import './app.css'
 import 'floating-vue/dist/style.css'
@@ -32,18 +35,42 @@ app.use(store)
 app.use(i18n)
 app.directive('tooltip', vTooltip)
 
-// FileAdapter 초기화 + IndexedDB 연동
-const fileAdapter = createFileAdapter()
+// 1) Backend SDK (auth + aiJobs + files) — 모드 무관하게 항상 생성
+const backend = createAppBackend()
+app.provide(APP_BACKEND_KEY, backend)
+
+// 2) Auth 모듈에 AuthBackend 주입
+store.dispatch('auth/init', backend.auth)
+
+// 3) FileAdapter — DEPLOYMENT_MODE에 따라 local/cloud 선택
+const mode = DEPLOYMENT_MODE.value
+const fileAdapter = createFileAdapter(mode, {
+  backend,
+  getSessionKey: () => (store.state as { auth?: { sessionKey: string | null } }).auth?.sessionKey ?? null,
+})
 app.provide(FILE_ADAPTER_KEY, fileAdapter)
 
-// store 모듈에 adapter 주입
+// 4) store 모듈에 adapter 주입
 store.dispatch('projects/init', fileAdapter)
 store.dispatch('pages/init', fileAdapter)
 
-// DB 초기화 → 데이터 로드 → 마운트 (순서 보장)
+// 5) 초기화 순서: cloud면 세션 복원 → (로그인 상태일 때만) 프로젝트 로드, standalone은 seed + 로드
 async function init() {
-  await seedDummyDataIfEmpty(fileAdapter)
-  await store.dispatch('projects/loadAll')
+  if (mode === 'cloud') {
+    await store.dispatch('auth/restoreFromStorage')
+    const isLoggedIn = store.getters['auth/isLoggedIn']
+    if (isLoggedIn) {
+      try {
+        await store.dispatch('projects/loadAll')
+      } catch (e) {
+        // 서버 오류 시 빈 상태로 진입 (UI에서 재시도 안내)
+        console.warn('[init] loadAll failed on cloud boot:', e)
+      }
+    }
+  } else {
+    await seedDummyDataIfEmpty(fileAdapter)
+    await store.dispatch('projects/loadAll')
+  }
   app.mount('#app')
 }
 init()

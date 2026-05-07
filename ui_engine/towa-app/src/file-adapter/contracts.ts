@@ -1,30 +1,63 @@
-import type { ProjectRecord, PageRecord } from './db'
+import type { ProjectRecord } from './db'
+import type { PageStatus } from '@/types/page'
+import type { TextBlock } from '@/types/text-block'
 
 export type ExportFormat = 'png' | 'jpeg' | 'webp' | 'psd'
 
+// --- Snapshot-oriented types (aligned with service_engine page snapshot spec) ---
+
+/** Lightweight page entry for project view lists. */
+export interface PageSummary {
+  id: string
+  projectId: string
+  index: number
+  status: PageStatus
+  /** Private service URL (bearer required) for cloud; undefined for local. */
+  thumbnailUrl?: string | null
+  updatedAt: string
+}
+
+/** Page metadata part of a snapshot (mirrors service `metadata.page`). */
+export interface PageSnapshotMeta {
+  id: string
+  projectId: string
+  index: number
+  status: PageStatus
+  textBlocks: TextBlock[]
+}
+
+/**
+ * Full page snapshot: metadata + three binary blobs.
+ * This is the authoritative unit of edit/save for both local and cloud.
+ */
+export interface PageSnapshot {
+  page: PageSnapshotMeta
+  originalImage: Blob
+  layerBlob: Blob
+  thumbnail: Blob
+}
+
+/**
+ * Snapshot-oriented FileAdapter interface.
+ * Page writes are full-replace multipart snapshots matching the service_engine spec.
+ */
 export interface FileAdapter {
-  // --- Project CRUD ---
+  // Project CRUD
   listProjects(): Promise<ProjectRecord[]>
   getProject(id: string): Promise<ProjectRecord | undefined>
-  saveProject(project: ProjectRecord): Promise<void>
+  createProject(project: ProjectRecord): Promise<ProjectRecord>
+  updateProject(id: string, patch: Partial<ProjectRecord>): Promise<ProjectRecord>
   deleteProject(id: string): Promise<void>
 
-  // --- Page CRUD ---
-  listPages(projectId: string): Promise<PageRecord[]>
-  getPage(pageId: string): Promise<PageRecord | undefined>
-  savePage(page: PageRecord): Promise<void>
+  // Pages (summary list)
+  listPageSummaries(projectId: string): Promise<PageSummary[]>
+
+  // Pages (full snapshot, append-only create + full replace save)
+  getPageSnapshot(pageId: string): Promise<PageSnapshot | undefined>
+  createPage(projectId: string, snapshot: PageSnapshot): Promise<PageSummary>
+  savePageSnapshot(snapshot: PageSnapshot): Promise<PageSummary>
   deletePage(pageId: string): Promise<void>
-  deletePagesByProject(projectId: string): Promise<void>
 
-  // --- Original images (Blob) ---
-  getOriginalImage(pageId: string): Promise<Blob | undefined>
-  saveOriginalImage(pageId: string, blob: Blob): Promise<void>
-
-  // --- Thumbnails (Blob) ---
-  getThumbnail(pageId: string): Promise<Blob | undefined>
-  saveThumbnail(pageId: string, blob: Blob): Promise<void>
-
-  // --- bitmappery layer data (Blob from DocumentFactory.toBlob()) ---
-  getLayerData(pageId: string): Promise<Blob | undefined>
-  saveLayerData(pageId: string, blob: Blob): Promise<void>
+  // Thumbnail blob (bearer-aware path in cloud)
+  getThumbnailBlob(pageId: string): Promise<Blob | undefined>
 }

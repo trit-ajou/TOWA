@@ -4,6 +4,101 @@
 
 ---
 
+## 2026-05-07
+
+### 14:23 — 라이브러리 미로그인 가드 + 새 프로젝트 추론모드 노출 제거
+- 증상 1: cloud 모드에서 로그인 안 한 상태인데 라이브러리 폴더 트리/UI가 노출됨. 폴더 클릭 시 인증 에러
+- 증상 2: 새 프로젝트 모달에 "추론 모드 (클라우드/로컬)" 라디오 노출. 모드 선택은 설정 메뉴(SettingsModal)에서만 다루는 게 맞음
+- `views/LibraryView.vue`: cloud 모드 + 미로그인 분기 추가. 화면 전체를 "로그인 필요" 안내 + 로그인 버튼 + LoginModal 트리거로 대체
+- `views/LibraryView.vue`: `isLoggedIn` watch 추가. 세션 중 로그인 성공 시 `projects/loadAll` 자동 호출 (main.ts 부팅 시 미로그인이라 로드 안 됐던 경우 보완)
+- `components/home/CreateProjectModal.vue`: 추론모드 라디오 UI 제거. `formData.inferenceMode`는 항상 'cloud' default로 유지 (type 호환)
+- 폴더 트리는 `library` store의 하드코드(주간연재/웹툰/단행본)라 미로그인 화면에서도 보이고 있었음 — 가드로 회피. 장기적으로 서버 source로 가야 함 (별도 작업)
+
+### 02:30 — ui-engine 컨테이너 빌드 에러 통합 fix
+- 증상: 서버에서 ui-engine 컨테이너가 빌드 통과 후 시작 직후 종료 또는 빌드 자체 실패. 결과 cloudflare 502
+- 시도 흐름 (3단계):
+  1차) `npm ci`가 lock sync 에러로 실패 → host(npm 11)에서 만든 lock이 incomplete. `npm ci --legacy-peer-deps` + lock 재생성으로 우회 시도 → 빌드는 통과했지만 컨테이너 시작 시 rollup 에러
+  2차) lock의 platform 매핑이 누락된 게 원인이라 판단. `npm ci` → `npm install --legacy-peer-deps` 변경 → 같은 rollup 에러 지속 (npm install도 lock을 일부 존중해서 platform 누락 보완 못 함)
+  3차) lock 파일 자체를 컨테이너에 안 가져가게 변경 → 빌드 시점 platform에 맞춘 fresh resolution → 모든 native binary 자동 설치. 해결.
+- `towa-app/Dockerfile`: `COPY towa-app/package.json ./` + `RUN npm install --legacy-peer-deps`. lock 미포함, --legacy-peer-deps는 프로젝트 npm convention
+- `towa-app/package-lock.json`: alpine x64 환경 기준으로 재생성 (호스트 dev 재현성 위해 유지)
+- `DEPLOY.md`: cron 등록 절차 명확화 (절대경로 사용 필수, `crontab -l`/log tail 확인법 추가)
+- 검증: 서버에서 `bash deploy.sh` 결과 ui-engine `Up`, `https://towa.live` 정상 접속
+
+## 2026-05-06
+
+### 17:55 — Cloudflare tunnel 기반 서버 배포 구성
+- 배포 모델 확정: 서버는 main 브랜치만 따라가는 인스턴스. cron 5분 폴링으로 자동 pull + rebuild
+- `deploy.sh` (monorepo 루트): `.env` 부트스트랩(없으면 `.env.deploy`에서 복사) + origin/main 변경 시 git pull + `docker compose up -d --build`. 1회 세팅도 같은 스크립트로 처리
+- `.env.deploy` (monorepo 루트, commit됨): cloud-mode 운영 프리셋. clone 후 별도 편집 불필요
+- `DEPLOY.md` (monorepo 루트): 서버 세팅(`git clone` + `deploy.sh` 한 번) + cloudflared ingress + 운영 가이드
+- `vite.config.ts`: `VITE_PUBLIC_HOST` 환경변수 있을 때만 cloudflare 모드(allowedHosts + wss HMR clientPort 443) 적용. 없으면 로컬 모드 (기존 동작 유지)
+- `.env.example`, `docker-compose.yml`: `VITE_PUBLIC_HOST` 슬롯 추가
+- 단일 도메인 분기 구조: `towa.live` → 5173, `api.towa.live` → 8000, `model.towa.live` → 8100. 모두 호스트 cloudflared가 ingress 처리
+- 도커 자체 구조 변경 없음 (코드 COPY 방식 유지: main push 시 이미지 재빌드로 반영)
+
+### 10:30 — 프로젝트 생성 시 페이지 업로드 누락 버그 수정
+- 증상: 프로젝트 생성 모달에서 파일을 첨부해 만들면 `project.pageCount`만 파일 수로 기록되고 실제 페이지는 업로드되지 않음. dashboard에 "Np"로 표시되지만 PageGrid는 비어있음
+- `utils/page-from-file.ts` 신규: `buildPageSnapshotFromFile(file, projectId, pageIndex)` — 썸네일 생성 + bitmappery DocumentFactory layerBlob 빌드 + PageSnapshot 반환
+- `views/LibraryView.vue`: `createProject`에 페이지 업로드 루프 추가, `pageCount`는 0으로 시작 후 업로드 완료 시점에 update
+- `views/ProjectHomeTab.vue`: 중복 로직(generateThumbnail/blobToCanvas/inline snapshot 빌드) 제거하고 `buildPageSnapshotFromFile` 재사용
+
+### 10:05 — Credit 잔액 UI 표시 + AI 호출 후 자동 갱신
+- `store/modules/auth.ts`: `refreshCredit` 액션 추가 — `getCurrentUser` 호출 후 `creditBalance` 갱신, localStorage도 동기화
+- `components/common/AppNavbar.vue`: 우상단에 크레딧 잔액 chip 추가 (cloud + 로그인 시), Coins 아이콘 + 잔액 + (예약 단위) 표시
+- `components/editor/AiToolbar.vue`: AI job 종료(성공/실패)마다 `auth/refreshCredit` dispatch
+
+### 09:46 — AI 도구 연동 (model_engine /v1/jobs 호출)
+- `composables/useAppBackend.ts` 추가 (AppBackend inject 헬퍼)
+- `main.ts`: `app.provide(APP_BACKEND_KEY, backend)` — AI 호출용 backend를 컴포넌트 트리에 노출
+- `views/ProjectView.vue`: 중앙 영역에 `#towa-top-toolbar` Teleport target 추가, 캔버스 위에 toolbar 슬롯 확보
+- `components/editor/AiToolbar.vue`: placeholder sleep 제거, 실제 `backend.aiJobs.createJob` + polling 연결. cloud/standalone 모드에 따라 `runtime_context.mode=saas|local` 자동 결정. 결과/에러를 toolbar 옆에 작은 status 텍스트로 표시
+- `views/EditorTab.vue`(③ 기본 편집), `views/DetailEditorTab.vue`(④ 상세 편집): AiToolbar를 `#towa-top-toolbar`로 Teleport 마운트
+- model_engine은 기본 PlaceholderJobExecutor로 동작 → API 호출/polling/auth/idempotency/error envelope 검증 가능, 실제 AI 결과는 후속 작업
+
+### 00:05 — 문서 정리 (Project_Plan, TODO, design docs)
+- `Project_Plan.md`: 7~8주차 완료 항목 추가, 남은 구현 사항 갱신 (F1/F2/F6 완료, F8 Electron + F9 cloud 통합 + F10 의존성 정리 추가), 9~12주차 계획 재정의
+- `TODO.md`: 다음 할 일을 우선순위 순으로 정리, 보고서/연구노트/main 머지 완료 항목 추가, Electron 추가
+- `docs/design-file-system.md`: FileAdapter 인터페이스를 7주차 snapshot 중심으로 갱신, ULID 도입 섹션 추가
+- `docs/ui_to_service.md`: 7주차 실 구현 반영 (분리 GET/PUT → snapshot multipart 통합)
+
+## 2026-04-28
+
+### (오전) — main 머지: ui_engine 8주차 작업 통합
+- `Merge ui_engine: Cloud mode integration and CRUD UI` 머지 커밋 생성 (`--no-ff`)
+- 11커밋 / 37파일 / +4955-736 변경 main에 반영
+- 포함 작업: FilesBackend SDK + CloudFileAdapter, auth 모듈, snapshot 인터페이스 리팩터링, 프로젝트/페이지 CRUD UI, ULID 도입, Docker 빌드 정비, zcanvas v5 pin, layer_blob MIME 정규화, IDB DataCloneError 수정
+
+## 2026-04-27
+
+### 15:24 — 프로젝트 생성 후 자동 이동 + 프로젝트 삭제 UI
+- LibraryView.vue: `createProject` async로 변경, 생성 완료 후 `/project/:id`로 자동 이동
+- ProjectCard.vue: hover 시 우측 상단에 삭제 버튼 표시 (Trash2 아이콘, `@click.stop`으로 카드 클릭과 분리), `BaseCard`에 `group` class 전달
+- ProjectGrid.vue: `deleteProject` emit 추가, `@delete`를 상위로 전달
+- LibraryView.vue: `confirmDeleteProject` / `deleteProject` 핸들러 추가, `BaseModal` + `BaseButton` 삭제 확인 모달 구현
+
+### 15:23 — 페이지 삭제 UI 구현
+- PageThumbnail.vue: hover overlay에 삭제 버튼 추가 (Trash2 아이콘, red-600 스타일), `delete` emit 정의
+- PageGrid.vue: `deletePage` emit 추가, PageThumbnail의 `@delete` 이벤트를 상위로 전달
+- ProjectHomeTab.vue: `confirmDeletePage` / `deletePage` 핸들러 추가, `useModal` + `BaseModal` + `BaseButton` 활용한 삭제 확인 모달 구현, vertical/horizontal 레이아웃 양쪽 PageGrid에 `@delete-page` 연결
+
+---
+
+## 2026-04-16
+
+### 00:17 — Cloud 모드 연동 (service_engine 파일 저장 API)
+- FilesBackend SDK 추가 (real: multipart HTTP + snake_case 변환, emulated: 메모리 stub)
+- FileAdapter를 snapshot 중심 인터페이스로 전면 리팩터링 (createPage/savePageSnapshot/getPageSnapshot)
+- LocalFileAdapter 재작성 (IDB 스키마 유지, delete 시 dense index reindex)
+- Vuex auth 모듈 신규 (sessionKey/user/creditBalance, localStorage 세션 복원)
+- 기존 LoginModal/AppNavbar/SettingsModal을 auth 스토어에 연결 (password→nickname)
+- CloudFileAdapter 신규 (backend.files.* 위임, ProjectDto↔ProjectRecord 변환)
+- main.ts에 deployment mode 분기 (standalone: seed+IDB, cloud: 세션 복원→서버 로드)
+- IDB DataCloneError 수정 (Vue reactive proxy → sanitize 헬퍼로 JSON 정규화)
+- mock HTTP 서버로 전 endpoint wire 검증 완료 (multipart 4파트, Bearer, snake_case)
+
+---
+
 ## 2026-04-09
 
 ### 10:03 — 파일 시스템 구현 (IndexedDB 기반)

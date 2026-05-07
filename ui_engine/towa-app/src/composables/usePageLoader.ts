@@ -11,10 +11,13 @@ import { getCanvasInstance } from '@bitmappery/services/canvas-service'
 
 const pageCache = new PageCache()
 
+/** 원본 이미지 세션 캐시. 탭 종료 시 소멸. */
+const originalImageCache = new Map<string, Blob>()
+
 /**
  * bitmappery 캔버스와 FileAdapter(저장소) 사이의 오케스트레이션.
  * - loadPage: 저장소 → bitmappery에 문서 로드
- * - savePage: bitmappery 현재 상태 → 저장소에 저장
+ * - savePage: bitmappery 현재 상태 → 저장소에 snapshot 저장
  * - switchPage: 현재 페이지 저장+캐시 → 해제 → 새 페이지 로드
  */
 export function usePageLoader() {
@@ -24,8 +27,8 @@ export function usePageLoader() {
   /**
    * pageId에 해당하는 페이지를 bitmappery에 로드.
    * 1) 캐시 확인 (메모리 → IDB 캐시)
-   * 2) page-layers (영구 저장 편집 상태) 확인
-   * 3) page-images (원본 이미지)에서 새 문서 생성
+   * 2) snapshot에서 layerBlob으로 복원, originalImage는 세션 캐시에 보관
+   * 3) 원본 이미지에서 새 문서 생성 (fallback)
    */
   async function loadPage(pageId: string): Promise<void> {
     let doc
@@ -36,26 +39,20 @@ export function usePageLoader() {
       doc = await DocumentFactory.fromBlob(cached)
     }
 
-    // 2) 영구 저장된 편집 상태에서 복원
+    // 2) snapshot에서 복원
     if (!doc) {
-      const layerBlob = await fileAdapter.getLayerData(pageId)
-      if (layerBlob) {
-        doc = await DocumentFactory.fromBlob(layerBlob)
+      const snapshot = await fileAdapter.getPageSnapshot(pageId)
+      if (snapshot) {
+        doc = await DocumentFactory.fromBlob(snapshot.layerBlob)
+        // 원본 이미지를 세션 캐시에 보관
+        originalImageCache.set(pageId, snapshot.originalImage)
       }
     }
 
-    // 3) 원본 이미지에서 새 문서 생성
+    // 3) placeholder fallback
     if (!doc) {
-      const imageBlob = await fileAdapter.getOriginalImage(pageId)
-
-      let canvas: HTMLCanvasElement
-      if (imageBlob) {
-        const image = await createImageFromBlob(imageBlob)
-        canvas = imageToCanvas(image)
-      } else {
-        console.warn(`[PageLoader] No image found for page ${pageId}, using placeholder`)
-        canvas = createPlaceholderCanvas(pageId)
-      }
+      console.warn(`[PageLoader] No snapshot found for page ${pageId}, using placeholder`)
+      const canvas = createPlaceholderCanvas(pageId)
 
       doc = DocumentFactory.create({
         name: `page-${pageId}`,
@@ -79,29 +76,70 @@ export function usePageLoader() {
   }
 
   /**
-   * bitmappery의 현재 편집 상태를 저장소에 저장.
-   * 동시에 캔버스 캡처로 썸네일도 갱신.
+   * bitmappery의 현재 편집 상태를 snapshot으로 저장.
    */
   async function savePage(pageId: string): Promise<void> {
     const doc = store.getters['bmp/activeDocument']
     if (!doc) return
-    const blob = await DocumentFactory.toBlob(doc)
-    await fileAdapter.saveLayerData(pageId, blob)
 
-    // 캔버스 캡처 → 썸네일 갱신
-    await updateThumbnail(pageId)
+    const layerBlob = await DocumentFactory.toBlob(doc)
+
+    // 썸네일 캡처
+    const thumbnail = await captureThumbnail()
+    if (!thumbnail) return // 캔버스 없으면 저장 불가
+
+    // originalImage: 세션 캐시에서 가져옴. 없으면 snapshot에서 재조회
+    let originalImage = originalImageCache.get(pageId)
+    if (!originalImage) {
+      const existingSnapshot = await fileAdapter.getPageSnapshot(pageId)
+      if (existingSnapshot) {
+        originalImage = existingSnapshot.originalImage
+        originalImageCache.set(pageId, originalImage)
+      }
+    }
+    if (!originalImage) {
+      console.warn(`[PageLoader] No originalImage for page ${pageId}, skipping save`)
+      return
+    }
+
+    // page metadata 조회
+    const projectId = store.getters['editor/currentProjectId']
+    const page = store.getters['pages/byId'](projectId, pageId)
+    if (!page) return
+
+    await fileAdapter.savePageSnapshot({
+      page: {
+        id: pageId,
+        projectId: page.projectId,
+        index: page.index,
+        status: page.status,
+        textBlocks: page.textBlocks ?? [],
+      },
+      originalImage,
+      layerBlob,
+      thumbnail,
+    })
+
+    // Vuex store의 페이지 thumbnail Blob URL 갱신
+    const url = URL.createObjectURL(thumbnail)
+    store.commit('pages/SET_THUMBNAIL_URL', { pageId, url })
+    if (projectId) {
+      const pageObj = store.getters['pages/byId'](projectId, pageId)
+      if (pageObj) {
+        store.commit('pages/UPDATE_PAGE', { ...pageObj, thumbnail: url })
+      }
+    }
   }
 
   /**
-   * 현재 bitmappery 캔버스를 캡처하여 썸네일 갱신.
+   * 현재 bitmappery 캔버스를 캡처하여 썸네일 Blob 반환.
    */
-  async function updateThumbnail(pageId: string): Promise<void> {
+  function captureThumbnail(): Promise<Blob | null> {
     const zCanvas = getCanvasInstance()
-    if (!zCanvas) return
+    if (!zCanvas) return Promise.resolve(null)
     const canvasEl = zCanvas.getElement() as HTMLCanvasElement
-    if (!canvasEl) return
+    if (!canvasEl) return Promise.resolve(null)
 
-    // 캔버스를 축소하여 썸네일 생성
     const maxW = 200
     const maxH = 300
     const scale = Math.min(maxW / canvasEl.width, maxH / canvasEl.height, 1)
@@ -114,40 +152,25 @@ export function usePageLoader() {
     const ctx = thumbCanvas.getContext('2d')!
     ctx.drawImage(canvasEl, 0, 0, w, h)
 
-    const thumbBlob = await new Promise<Blob>((resolve) => {
-      thumbCanvas.toBlob((blob) => resolve(blob!), 'image/png')
+    return new Promise<Blob | null>((resolve) => {
+      thumbCanvas.toBlob((blob) => resolve(blob), 'image/png')
     })
-
-    await fileAdapter.saveThumbnail(pageId, thumbBlob)
-
-    // Vuex store의 페이지 thumbnail Blob URL도 갱신
-    const url = URL.createObjectURL(thumbBlob)
-    store.commit('pages/SET_THUMBNAIL_URL', { pageId, url })
-
-    // Page 객체의 thumbnail도 갱신 (UI 반영)
-    const projectId = store.getters['editor/currentProjectId']
-    if (projectId) {
-      const page = store.getters['pages/byId'](projectId, pageId)
-      if (page) {
-        store.commit('pages/UPDATE_PAGE', { ...page, thumbnail: url })
-      }
-    }
   }
 
   /**
    * 페이지 전환: 현재 → 새 페이지.
-   * 1. 현재 페이지 직렬화 + 캐시 + 저장
+   * 1. 현재 페이지 직렬화 + 캐시 + snapshot 저장
    * 2. bitmappery 문서 해제
    * 3. 새 페이지 로드
    */
   async function switchPage(fromPageId: string | null, toPageId: string): Promise<void> {
-    // 1. 현재 페이지 저장 + 캐시 + 썸네일 갱신
+    // 1. 현재 페이지 저장 + 캐시
     let prevDocId: string | null = null
     if (fromPageId) {
       const doc = store.getters['bmp/activeDocument']
       if (doc) {
         prevDocId = doc.id
-        // 썸네일 캡처 (savePage가 처리)
+        // snapshot 저장 (썸네일 포함)
         await savePage(fromPageId)
         // 캐시에도 저장
         const blob = await DocumentFactory.toBlob(doc)
@@ -182,27 +205,6 @@ export function usePageLoader() {
 }
 
 // --- helpers ---
-
-function createImageFromBlob(blob: Blob): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image()
-    img.onload = () => {
-      URL.revokeObjectURL(img.src)
-      resolve(img)
-    }
-    img.onerror = reject
-    img.src = URL.createObjectURL(blob)
-  })
-}
-
-function imageToCanvas(img: HTMLImageElement): HTMLCanvasElement {
-  const canvas = document.createElement('canvas')
-  canvas.width = img.width
-  canvas.height = img.height
-  const ctx = canvas.getContext('2d')!
-  ctx.drawImage(img, 0, 0)
-  return canvas
-}
 
 function createPlaceholderCanvas(pageId: string): HTMLCanvasElement {
   const w = 1000

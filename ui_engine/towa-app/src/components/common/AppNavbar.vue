@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useStore } from 'vuex'
-import { Settings, Download, Trash2, MoreHorizontal, User, LogIn, LogOut } from 'lucide-vue-next'
+import { Settings, Download, Trash2, MoreHorizontal, User, LogIn, LogOut, Coins } from 'lucide-vue-next'
 import { useModal } from '@/composables/useModal'
 import { useDeploymentMode } from '@/composables/useDeploymentMode'
 import DropdownMenu from './DropdownMenu.vue'
@@ -17,15 +17,12 @@ const projectMenu = useModal()
 const userMenu = useModal()
 const loginModal = useModal()
 const { isCloud } = useDeploymentMode()
-const isLoggedIn = ref(false)
-
-function handleLogin() {
-  isLoggedIn.value = true
-  loginModal.close()
-}
+const isLoggedIn = computed(() => store.getters['auth/isLoggedIn'])
+const creditBalance = computed<number>(() => store.state.auth.creditBalance)
+const reservedUnits = computed<number>(() => store.state.auth.reservedUnits)
 
 function handleLogout() {
-  isLoggedIn.value = false
+  store.dispatch('auth/logout')
   userMenu.close()
 }
 const settingsModal = useModal()
@@ -153,8 +150,19 @@ function switchTab(tab: ProjectTab) {
     </div>
     <div v-else class="flex-1" />
 
-    <!-- Right: project menu + user profile -->
+    <!-- Right: credit + project menu + user profile -->
     <div class="flex items-center gap-1">
+      <!-- Credit balance (cloud + logged in) -->
+      <div
+        v-if="isCloud && isLoggedIn"
+        class="flex items-center gap-1.5 px-2 py-1 rounded-md bg-towa-bg text-xs mr-1"
+        :title="reservedUnits > 0 ? `보유 ${creditBalance} / 예약 ${reservedUnits}` : `크레딧 ${creditBalance}`"
+      >
+        <Coins :size="14" class="text-towa-accent" />
+        <span class="text-towa-text font-mono">{{ creditBalance }}</span>
+        <span v-if="reservedUnits > 0" class="text-towa-text-muted font-mono">(-{{ reservedUnits }})</span>
+      </div>
+
       <div v-if="isInProject" class="relative">
         <button
           class="p-1.5 rounded hover:bg-towa-surface-light text-towa-text-muted hover:text-towa-text transition-colors"
@@ -191,8 +199,8 @@ function switchTab(tab: ProjectTab) {
           <!-- Cloud: logged in -->
           <template v-if="isCloud && isLoggedIn">
             <div class="px-3 py-2 border-b border-towa-border">
-              <div class="text-sm font-medium text-towa-text">사용자</div>
-              <div class="text-xs text-towa-text-muted">user@example.com</div>
+              <div class="text-sm font-medium text-towa-text">{{ store.state.auth.user?.nickname || '사용자' }}</div>
+              <div class="text-xs text-towa-text-muted">{{ store.state.auth.user?.email }}</div>
             </div>
           </template>
           <!-- Cloud: not logged in -->
@@ -227,8 +235,8 @@ function switchTab(tab: ProjectTab) {
       </div>
     </div>
 
-    <LoginModal :open="loginModal.isOpen.value" @close="loginModal.close()" @login="handleLogin" />
+    <LoginModal :open="loginModal.isOpen.value" @close="loginModal.close()" @login="loginModal.close()" />
 
-    <SettingsModal :open="settingsModal.isOpen.value" @close="settingsModal.close()" />
+    <SettingsModal :open="settingsModal.isOpen.value" @close="settingsModal.close()" @open-login="loginModal.open()" />
   </nav>
 </template>

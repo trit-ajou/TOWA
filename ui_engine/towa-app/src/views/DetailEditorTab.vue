@@ -5,6 +5,7 @@ import { useRoute } from 'vue-router'
 import { usePageLoader } from '@/composables/usePageLoader'
 import { useAutoSave } from '@/composables/useAutoSave'
 import PageSidePanel from '@/components/editor/PageSidePanel.vue'
+import AiToolbar from '@/components/editor/AiToolbar.vue'
 
 defineOptions({ name: 'DetailEditorTab' })
 
@@ -52,6 +53,10 @@ function setPanelCollapsed(collapsed: boolean) {
 
 <template>
   <div>
+    <Teleport to="#towa-top-toolbar" defer>
+      <AiToolbar />
+    </Teleport>
+
     <Teleport to="#towa-left-panel" defer>
       <PageSidePanel
         :pages="pages"

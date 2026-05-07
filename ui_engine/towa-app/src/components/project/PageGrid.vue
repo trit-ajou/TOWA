@@ -15,6 +15,7 @@ const emit = defineEmits<{
   openEdit: [pageId: string]
   openDetail: [pageId: string]
   addPages: [files: File[]]
+  deletePage: [pageId: string]
 }>()
 
 const fileInput = ref<HTMLInputElement | null>(null)
@@ -91,6 +92,7 @@ function onDragLeave() {
         :selected="page.id === selectedPageId"
         @open-edit="$emit('openEdit', page.id)"
         @open-detail="$emit('openDetail', page.id)"
+        @delete="$emit('deletePage', page.id)"
       />
     </div>
   </div>

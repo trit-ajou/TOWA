@@ -3,17 +3,19 @@ import { computed, ref } from 'vue'
 import { useStore } from 'vuex'
 import { useRoute, useRouter } from 'vue-router'
 import type { EditMode } from '@/store/modules/editor'
-import type { Page, PageStatus } from '@/types/page'
-import { useFileAdapter } from '@/composables/useFileAdapter'
+import type { PageStatus } from '@/types/page'
+import { useModal } from '@/composables/useModal'
 import ProjectDashboard from '@/components/project/ProjectDashboard.vue'
 import PageGrid from '@/components/project/PageGrid.vue'
+import BaseModal from '@/components/common/BaseModal.vue'
+import BaseButton from '@/components/common/BaseButton.vue'
+import { buildPageSnapshotFromFile } from '@/utils/page-from-file'
 
 defineOptions({ name: 'ProjectHomeTab' })
 
 const store = useStore()
 const route = useRoute()
 const router = useRouter()
-const fileAdapter = useFileAdapter()
 
 const projectId = computed(() => route.params.id as string)
 const project = computed(() => store.getters['projects/byId'](projectId.value))
@@ -23,6 +25,42 @@ const lastEditMode = computed<EditMode>(() => store.getters['editor/lastEditMode
 const layout = computed(() => store.getters['editor/projectHomeLayout'])
 
 const statusFilter = ref<PageStatus | 'all'>('all')
+
+const deleteModal = useModal()
+const pageToDeleteId = ref<string | null>(null)
+
+const pageToDeleteIndex = computed(() => {
+  if (!pageToDeleteId.value) return null
+  const page = allPages.value.find((p: { id: string }) => p.id === pageToDeleteId.value)
+  return page?.index ?? null
+})
+
+function confirmDeletePage(pageId: string) {
+  pageToDeleteId.value = pageId
+  deleteModal.open()
+}
+
+async function deletePage() {
+  if (!pageToDeleteId.value) return
+  const pid = projectId.value
+  await store.dispatch('pages/removePage', { projectId: pid, pageId: pageToDeleteId.value })
+
+  const proj = project.value
+  if (proj) {
+    await store.dispatch('projects/update', {
+      ...proj,
+      pageCount: allPages.value.length,
+      updatedAt: new Date().toISOString(),
+    })
+  }
+
+  if (selectedPageId.value === pageToDeleteId.value) {
+    store.commit('editor/SET_SELECTED_PAGE', null)
+  }
+
+  deleteModal.close()
+  pageToDeleteId.value = null
+}
 
 const statusChips = [
   { value: 'all' as const, label: '전체' },
@@ -55,63 +93,18 @@ function selectAndDetail(pageId: string) {
   router.push(`/project/${projectId.value}/detail`)
 }
 
-/**
- * 이미지 파일로 썸네일 Blob 생성 (Canvas 축소)
- */
-function generateThumbnail(file: File, maxW = 200, maxH = 300): Promise<Blob> {
-  return new Promise((resolve) => {
-    const img = new Image()
-    img.onload = () => {
-      const scale = Math.min(maxW / img.width, maxH / img.height, 1)
-      const w = Math.round(img.width * scale)
-      const h = Math.round(img.height * scale)
-      const canvas = document.createElement('canvas')
-      canvas.width = w
-      canvas.height = h
-      const ctx = canvas.getContext('2d')!
-      ctx.drawImage(img, 0, 0, w, h)
-      canvas.toBlob((blob) => resolve(blob!), 'image/png')
-      URL.revokeObjectURL(img.src)
-    }
-    img.src = URL.createObjectURL(file)
-  })
-}
-
 async function addPages(files: File[]) {
   const pid = projectId.value
-  const currentCount = allPages.value.length
-
-  for (let i = 0; i < files.length; i++) {
-    const file = files[i]
-    const pageIndex = currentCount + i + 1
-    const pageId = `${pid}-page-${pageIndex}`
-
-    // 썸네일 생성
-    const thumbBlob = await generateThumbnail(file)
-    const thumbUrl = URL.createObjectURL(thumbBlob)
-
-    // 페이지 객체 생성
-    const page: Page = {
-      id: pageId,
-      projectId: pid,
-      index: pageIndex,
-      thumbnail: thumbUrl,
-      status: 'waiting',
-      textBlocks: [],
-    }
-
-    // IndexedDB에 저장 + Vuex에 추가
-    await store.dispatch('pages/addPage', { page, imageBlob: file })
-    await fileAdapter.saveThumbnail(pageId, thumbBlob)
-    store.commit('pages/SET_THUMBNAIL_URL', { pageId, url: thumbUrl })
+  for (const file of files) {
+    const pageIndex = allPages.value.length + 1
+    const snapshot = await buildPageSnapshotFromFile(file, pid, pageIndex)
+    await store.dispatch('pages/addPage', { projectId: pid, snapshot })
   }
-
-  // 프로젝트 pageCount 업데이트
   const proj = project.value
   if (proj) {
     await store.dispatch('projects/update', {
       ...proj,
-      pageCount: currentCount + files.length,
+      pageCount: allPages.value.length,
       updatedAt: new Date().toISOString(),
     })
   }
@@ -157,6 +150,7 @@ async function addPages(files: File[]) {
             @open-edit="selectAndEdit"
             @open-detail="selectAndDetail"
             @add-pages="addPages"
+            @delete-page="confirmDeletePage"
           />
         </div>
       </div>
@@ -198,8 +192,23 @@ async function addPages(files: File[]) {
           @open-edit="selectAndEdit"
           @open-detail="selectAndDetail"
           @add-pages="addPages"
+          @delete-page="confirmDeletePage"
         />
       </div>
     </template>
   </main>
+
+  <BaseModal
+    title="페이지 삭제"
+    :open="deleteModal.isOpen.value"
+    @close="deleteModal.close()"
+  >
+    <p class="text-sm text-towa-text-muted">
+      <span class="font-medium text-towa-text">{{ pageToDeleteIndex }}페이지</span>를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.
+    </p>
+    <template #footer>
+      <BaseButton variant="secondary" size="sm" @click="deleteModal.close()">취소</BaseButton>
+      <BaseButton variant="danger" size="sm" @click="deletePage">삭제</BaseButton>
+    </template>
+  </BaseModal>
 </template>

@@ -71,14 +71,16 @@ services:
 
   ui-engine:
     build:
-      context: ./ui_engine/towa-app
-      dockerfile: Dockerfile
+      context: ./ui_engine
+      dockerfile: ./towa-app/Dockerfile
     environment:
       VITE_DEPLOYMENT_MODE: ${VITE_DEPLOYMENT_MODE:-cloud}
+      VITE_PUBLIC_HOST: ${VITE_PUBLIC_HOST:-}
       VITE_SERVICE_ENGINE_URL: ${VITE_SERVICE_ENGINE_URL:-http://localhost:8000}
       VITE_MODEL_ENGINE_URL: ${VITE_MODEL_ENGINE_URL:-http://localhost:8100}
       VITE_UI_AUTH_BACKEND: ${VITE_UI_AUTH_BACKEND:-emulated}
       VITE_UI_AI_BACKEND: ${VITE_UI_AI_BACKEND:-emulated}
+      VITE_UI_FILES_BACKEND: ${VITE_UI_FILES_BACKEND:-emulated}
     depends_on:
       service-engine:
         condition: service_healthy

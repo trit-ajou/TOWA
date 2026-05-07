@@ -1,12 +1,17 @@
 FROM node:20-alpine
 
+WORKDIR /app/towa-app
+
+COPY towa-app/package.json ./
+
+RUN npm install --legacy-peer-deps
+
 WORKDIR /app
 
-COPY package*.json ./
+COPY bitmappery ./bitmappery
+COPY towa-app ./towa-app
 
-RUN npm ci
-
-COPY . .
+WORKDIR /app/towa-app
 
 EXPOSE 5173
 

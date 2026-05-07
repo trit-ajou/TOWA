@@ -126,14 +126,117 @@ export interface AiJobsBackend {
   getJob(jobId: string, options?: AuthRequestOptions): Promise<AiJobSnapshot>
 }
 
+// --- Files backend (project/page storage, service_engine) ---
+
+export interface BoundingBoxDto {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export interface TextBlockDto {
+  id: string
+  pageId: string
+  bbox: BoundingBoxDto
+  original: string
+  translated: string
+  font: string
+  fontSize: number
+  color: string
+  status: string
+}
+
+export interface ProjectDto {
+  id: string
+  name: string
+  thumbnailUrl: string | null
+  sourceLang: string
+  targetLang: string
+  pageCount: number
+  status: string
+  folder: string
+  config: Record<string, unknown>
+  createdAt: string
+  updatedAt: string
+}
+
+export interface PageSummaryDto {
+  id: string
+  projectId: string
+  index: number
+  status: string
+  thumbnailUrl: string | null
+  updatedAt: string
+}
+
+export interface PageSnapshotMetaDto {
+  page: {
+    id: string
+    projectId: string
+    index: number
+    status: string
+    textBlocks: TextBlockDto[]
+  }
+}
+
+/** Full page snapshot payload (four multipart parts). */
+export interface PageSnapshotPayload {
+  metadata: PageSnapshotMetaDto
+  originalImage: Blob
+  layerBlob: Blob
+  thumbnail: Blob
+}
+
+export interface ProjectCreateInput {
+  id: string
+  name: string
+  sourceLang: string
+  targetLang: string
+  status?: string
+  folder?: string
+  config?: Record<string, unknown>
+  thumbnailUrl?: string | null
+}
+
+export type ProjectPatchInput = Partial<
+  Pick<
+    ProjectDto,
+    'name' | 'thumbnailUrl' | 'sourceLang' | 'targetLang' | 'status' | 'folder' | 'config'
+  >
+>
+
+export interface FilesBackend {
+  // Project CRUD
+  listProjects(options: AuthRequestOptions): Promise<ProjectDto[]>
+  getProject(projectId: string, options: AuthRequestOptions): Promise<ProjectDto>
+  createProject(input: ProjectCreateInput, options: AuthRequestOptions): Promise<ProjectDto>
+  updateProject(projectId: string, patch: ProjectPatchInput, options: AuthRequestOptions): Promise<ProjectDto>
+  deleteProject(projectId: string, options: AuthRequestOptions): Promise<void>
+
+  // Pages (summary list)
+  listPageSummaries(projectId: string, options: AuthRequestOptions): Promise<PageSummaryDto[]>
+
+  // Pages (full snapshot)
+  createPage(projectId: string, snapshot: PageSnapshotPayload, options: AuthRequestOptions): Promise<PageSummaryDto>
+  savePageSnapshot(pageId: string, snapshot: PageSnapshotPayload, options: AuthRequestOptions): Promise<PageSummaryDto>
+  getPageSnapshot(pageId: string, options: AuthRequestOptions): Promise<PageSnapshotPayload>
+  deletePage(pageId: string, options: AuthRequestOptions): Promise<void>
+
+  // Thumbnail (bearer-authed blob)
+  getPageThumbnail(pageId: string, options: AuthRequestOptions): Promise<Blob>
+}
+
 export interface AppBackend {
   auth: AuthBackend
   aiJobs: AiJobsBackend
+  files: FilesBackend
 }
 
 export interface AppBackendConfig {
   authMode: BackendAdapterMode
   aiMode: BackendAdapterMode
+  filesMode: BackendAdapterMode
   serviceEngineUrl: string
   modelEngineUrl: string
 }

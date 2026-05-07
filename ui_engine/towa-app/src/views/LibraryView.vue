@@ -1,18 +1,42 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useStore } from 'vuex'
 import { useRouter } from 'vue-router'
 import type { Project, ProjectStatus } from '@/types/project'
 import type { FolderNode } from '@/types/folder'
 import type { PreviewItem } from '@/components/home/FolderCard.vue'
 import { useModal } from '@/composables/useModal'
+import { createUlid } from '@/utils/ulid'
+import { buildPageSnapshotFromFile } from '@/utils/page-from-file'
 import HomeSidebar from '@/components/home/HomeSidebar.vue'
 import ProjectGrid from '@/components/home/ProjectGrid.vue'
 import CreateProjectModal from '@/components/home/CreateProjectModal.vue'
+import LoginModal from '@/components/common/LoginModal.vue'
+import BaseModal from '@/components/common/BaseModal.vue'
+import BaseButton from '@/components/common/BaseButton.vue'
+import { useDeploymentMode } from '@/composables/useDeploymentMode'
 
 const store = useStore()
 const router = useRouter()
 const createModal = useModal()
+const deleteModal = useModal()
+const loginModal = useModal()
+const projectToDelete = ref<Project | null>(null)
+
+const { isCloud } = useDeploymentMode()
+const isLoggedIn = computed<boolean>(() => store.getters['auth/isLoggedIn'])
+const requireLogin = computed(() => isCloud.value && !isLoggedIn.value)
+
+// 세션 중 로그인 성공 시 프로젝트 로드 (cloud 모드에서 main.ts 부팅 시 미로그인이라 로드 안 됐을 수 있음)
+watch(isLoggedIn, async (loggedIn, prev) => {
+  if (isCloud.value && loggedIn && !prev) {
+    try {
+      await store.dispatch('projects/loadAll')
+    } catch (e) {
+      console.warn('[LibraryView] loadAll after login failed:', e)
+    }
+  }
+})
 
 const currentPath = computed<string[]>(() => store.getters['library/currentPath'])
 const statusFilter = computed<ProjectStatus | 'all'>(() => store.getters['library/statusFilter'])
@@ -93,14 +117,15 @@ function selectProject(project: Project) {
   router.push(`/project/${project.id}`)
 }
 
-function createProject(form: { name: string; sourceLang: string; targetLang: string; autoDetect: boolean; autoInpaint: boolean; autoTranslate: boolean; inferenceMode: 'local' | 'cloud'; files: File[] }) {
+async function createProject(form: { name: string; sourceLang: string; targetLang: string; autoDetect: boolean; autoInpaint: boolean; autoTranslate: boolean; inferenceMode: 'local' | 'cloud'; files: File[] }) {
+  const projectId = createUlid()
   const newProject: Project = {
-    id: `proj-${Date.now()}`,
+    id: projectId,
     name: form.name,
     thumbnail: `https://placehold.co/400x560/1e1e32/0db0bc?text=${encodeURIComponent(form.name)}`,
     sourceLang: form.sourceLang,
     targetLang: form.targetLang,
-    pageCount: form.files.length,
+    pageCount: 0,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     status: 'todo',
@@ -112,13 +137,52 @@ function createProject(form: { name: string; sourceLang: string; targetLang: str
       inferenceMode: form.inferenceMode,
     },
   }
-  store.dispatch('projects/create', newProject)
+  await store.dispatch('projects/create', newProject)
+
+  for (let i = 0; i < form.files.length; i++) {
+    const snapshot = await buildPageSnapshotFromFile(form.files[i], projectId, i + 1)
+    await store.dispatch('pages/addPage', { projectId, snapshot })
+  }
+  if (form.files.length > 0) {
+    await store.dispatch('projects/update', {
+      ...newProject,
+      pageCount: form.files.length,
+      updatedAt: new Date().toISOString(),
+    })
+  }
+
   createModal.close()
+  store.commit('editor/SET_CURRENT_PROJECT', projectId)
+  store.commit('editor/SET_ACTIVE_TAB', 'home')
+  store.commit('editor/SET_SELECTED_PAGE', null)
+  router.push(`/project/${projectId}`)
+}
+
+function confirmDeleteProject(project: Project) {
+  projectToDelete.value = project
+  deleteModal.open()
+}
+
+async function deleteProject() {
+  if (!projectToDelete.value) return
+  await store.dispatch('projects/remove', projectToDelete.value.id)
+  deleteModal.close()
+  projectToDelete.value = null
 }
 </script>
 
 <template>
-  <div class="flex h-[calc(100vh-48px)]">
+  <div v-if="requireLogin" class="flex h-[calc(100vh-48px)] items-center justify-center">
+    <div class="text-center max-w-sm px-6">
+      <h2 class="text-lg font-medium text-towa-text mb-2">로그인이 필요합니다</h2>
+      <p class="text-sm text-towa-text-muted mb-6">
+        프로젝트 라이브러리를 사용하려면 로그인하세요.
+      </p>
+      <BaseButton variant="primary" @click="loginModal.open()">로그인</BaseButton>
+    </div>
+    <LoginModal :open="loginModal.isOpen.value" @close="loginModal.close()" @login="loginModal.close()" />
+  </div>
+  <div v-else class="flex h-[calc(100vh-48px)]">
     <HomeSidebar />
     <main class="flex-1 p-6 overflow-y-auto">
       <!-- Status filter chips -->
@@ -145,6 +209,7 @@ function createProject(form: { name: string; sourceLang: string; targetLang: str
         @select="selectProject"
         @create="createModal.open()"
         @open-folder="navigateToFolder"
+        @delete-project="confirmDeleteProject"
       />
     </main>
 
@@ -153,5 +218,20 @@ function createProject(form: { name: string; sourceLang: string; targetLang: str
       @close="createModal.close()"
       @create="createProject"
     />
+
+    <BaseModal
+      title="프로젝트 삭제"
+      :open="deleteModal.isOpen.value"
+      @close="deleteModal.close()"
+    >
+      <p class="text-sm text-towa-text-muted">
+        <span class="font-medium text-towa-text">{{ projectToDelete?.name }}</span>
+        프로젝트를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.
+      </p>
+      <template #footer>
+        <BaseButton variant="secondary" size="sm" @click="deleteModal.close()">취소</BaseButton>
+        <BaseButton variant="danger" size="sm" @click="deleteProject">삭제</BaseButton>
+      </template>
+    </BaseModal>
   </div>
 </template>
