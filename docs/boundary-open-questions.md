@@ -9,6 +9,7 @@ v1 boundary 문서에서 일부 전제는 이미 고정했고, 일부 항목은 
 - [service-engine-boundary.md](service-engine-boundary.md)
 - [project-page-storage-boundary.md](project-page-storage-boundary.md)
 - [ui-model-abstract-boundary.md](ui-model-abstract-boundary.md)
+- [ui-model-implementation.md](ui-model-implementation.md)
 
 ## Already Fixed
 
@@ -79,6 +80,11 @@ Resolved in current implementation.
 권장:
 
 - 합의 후 `docs/http-contract.md`에 canonical section을 추가하거나 별도 `docs/ui-model-contract.md`를 만든다
+
+참고:
+
+- 현재 저장소 구현을 UI 팀이 따라가기 위한 상세 가이드는 [ui-model-implementation.md](ui-model-implementation.md)에 있다.
+- 다만 그 문서는 current implementation guide이며, canonical owner 문서는 아니다.
 
 ### 12. Job Input Shape
 

@@ -15,7 +15,84 @@ services:
       - python3
       - /app/model_engine/scripts/run_craft_sample.py
       - --image
-      - /app/model_engine/samples/images/sample_page.webp
+      - /app/model_engine/samples/dlsite/sample.jpg
+      - --workspace
+      - /workspace_out
+
+  ocr-sample:
+    build:
+      context: .
+      dockerfile: Dockerfile.inference
+    image: towa-model-engine-inference:latest
+    environment:
+      HOME: /cache/models
+      XDG_CACHE_HOME: /cache/models
+      TORCH_HOME: /cache/models/torch
+      HF_HOME: /cache/models/huggingface
+      TRANSFORMERS_CACHE: /cache/models/huggingface/transformers
+    volumes:
+      - ./.runtime:/workspace_out
+      - ./.cache/models:/cache/models
+    command:
+      - python3
+      - /app/model_engine/scripts/run_ocr_sample.py
+      - --image
+      - /app/model_engine/samples/dlsite/sample.jpg
+      - --workspace
+      - /workspace_out
+
+  translation-sample:
+    build:
+      context: .
+      dockerfile: Dockerfile.inference
+    image: towa-model-engine-inference:latest
+    environment:
+      TOWA_TRANSLATION_PROVIDER_API_KEY: ${TOWA_TRANSLATION_PROVIDER_API_KEY:-}
+      TOWA_TRANSLATION_BACKEND: ${TOWA_TRANSLATION_BACKEND:-}
+      TOWA_TRANSLATION_MODEL_NAME: ${TOWA_TRANSLATION_MODEL_NAME:-}
+      TOWA_OPENAI_COMPATIBLE_BASE_URL: ${TOWA_OPENAI_COMPATIBLE_BASE_URL:-}
+      TOWA_OPENAI_COMPATIBLE_API_KEY: ${TOWA_OPENAI_COMPATIBLE_API_KEY:-}
+      HOME: /cache/models
+      XDG_CACHE_HOME: /cache/models
+      TORCH_HOME: /cache/models/torch
+      HF_HOME: /cache/models/huggingface
+      TRANSFORMERS_CACHE: /cache/models/huggingface/transformers
+    volumes:
+      - ./.runtime:/workspace_out
+      - ./.cache/models:/cache/models
+    command:
+      - python3
+      - /app/model_engine/scripts/run_translation_sample.py
+      - --image
+      - /app/model_engine/samples/dlsite/sample.jpg
+      - --workspace
+      - /workspace_out
+
+  pipeline:
+    build:
+      context: .
+      dockerfile: Dockerfile.inference
+    image: towa-model-engine-inference:latest
+    environment:
+      TOWA_TRANSLATION_PROVIDER_API_KEY: ${TOWA_TRANSLATION_PROVIDER_API_KEY:-}
+      TOWA_TRANSLATION_BACKEND: ${TOWA_TRANSLATION_BACKEND:-}
+      TOWA_TRANSLATION_MODEL_NAME: ${TOWA_TRANSLATION_MODEL_NAME:-}
+      TOWA_OPENAI_COMPATIBLE_BASE_URL: ${TOWA_OPENAI_COMPATIBLE_BASE_URL:-}
+      TOWA_OPENAI_COMPATIBLE_API_KEY: ${TOWA_OPENAI_COMPATIBLE_API_KEY:-}
+      TOWA_NANOBANANA_API_KEY: ${TOWA_NANOBANANA_API_KEY:-}
+      HOME: /cache/models
+      XDG_CACHE_HOME: /cache/models
+      TORCH_HOME: /cache/models/torch
+      HF_HOME: /cache/models/huggingface
+      TRANSFORMERS_CACHE: /cache/models/huggingface/transformers
+    volumes:
+      - ./.runtime:/workspace_out
+      - ./.cache/models:/cache/models
+    command:
+      - python3
+      - /app/model_engine/scripts/run_pipeline_sample.py
+      - --image
+      - /app/model_engine/samples/dlsite/sample.jpg
       - --workspace
       - /workspace_out
 
@@ -28,11 +105,32 @@ services:
       HOME: /cache/models
       XDG_CACHE_HOME: /cache/models
       TORCH_HOME: /cache/models/torch
+      HF_HOME: /cache/models/huggingface
+      TRANSFORMERS_CACHE: /cache/models/huggingface/transformers
     volumes:
       - ./.cache/models:/cache/models
     command:
       - python3
       - /app/model_engine/scripts/preload_craft.py
+      - --cache-dir
+      - /cache/models
+
+  ocr-preload:
+    build:
+      context: .
+      dockerfile: Dockerfile.inference
+    image: towa-model-engine-inference:latest
+    environment:
+      HOME: /cache/models
+      XDG_CACHE_HOME: /cache/models
+      TORCH_HOME: /cache/models/torch
+      HF_HOME: /cache/models/huggingface
+      TRANSFORMERS_CACHE: /cache/models/huggingface/transformers
+    volumes:
+      - ./.cache/models:/cache/models
+    command:
+      - python3
+      - /app/model_engine/scripts/preload_manga_ocr.py
       - --cache-dir
       - /cache/models
 
@@ -46,6 +144,8 @@ services:
       HOME: /cache/models
       XDG_CACHE_HOME: /cache/models
       TORCH_HOME: /cache/models/torch
+      HF_HOME: /cache/models/huggingface
+      TRANSFORMERS_CACHE: /cache/models/huggingface/transformers
     volumes:
       - ./.runtime:/workspace_out
       - ./.cache/models:/cache/models
@@ -53,6 +153,6 @@ services:
       - python3
       - /app/model_engine/scripts/run_inpaint_sample.py
       - --image
-      - /app/model_engine/samples/images/sample_page.webp
+      - /app/model_engine/samples/dlsite/sample.jpg
       - --workspace
       - /workspace_out

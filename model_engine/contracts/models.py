@@ -26,6 +26,20 @@ class ResourceProfile:
     latency_tier: str = "default"
 
 
+class ExecutionBackend(str, Enum):
+    INPROCESS = "inprocess"
+    HTTP_API = "http_api"
+    SUBPROCESS_IPC = "subprocess_ipc"
+    CONTAINER_WORKER = "container_worker"
+
+
+@dataclass
+class RuntimeMount:
+    host_path: str
+    container_path: str
+    read_only: bool = False
+
+
 @dataclass
 class StageManifest:
     model_id: str
@@ -43,6 +57,15 @@ class StageManifest:
     priority: int = 0
     display_name: str = ""
     tags: list[str] = field(default_factory=list)
+    execution_backend: ExecutionBackend = ExecutionBackend.INPROCESS
+    runtime_family: str = "default"
+    runtime_image: str = ""
+    runtime_command: list[str] = field(default_factory=list)
+    python_version: str = ""
+    cuda_version: str = ""
+    dependency_lock_ref: str = ""
+    cache_mounts: list[RuntimeMount] = field(default_factory=list)
+    network_policy: str = "default"
 
     def supports_mode(self, mode: ExecutionMode) -> bool:
         return mode in self.supported_modes

@@ -6,7 +6,7 @@ from typing import Any, Mapping
 from urllib import error, request
 
 
-@dataclass(slots=True)
+@dataclass
 class ServiceEngineHTTPError(Exception):
     status_code: int
     payload: dict[str, Any]

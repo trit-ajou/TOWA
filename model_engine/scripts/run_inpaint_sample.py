@@ -58,7 +58,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--image",
-        default="model_engine/samples/images/sample_page.webp",
+        default="model_engine/samples/dlsite/sample.jpg",
         help="Path to the input manga page image.",
     )
     parser.add_argument(

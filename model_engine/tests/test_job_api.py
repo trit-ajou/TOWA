@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import time
 import unittest
 
@@ -13,11 +14,48 @@ from model_engine.api.jobs import (
     ModelJobManager,
     ModelJobStatus,
     PlaceholderJobExecutor,
+    submission_from_api_payload,
 )
+from model_engine.api.schemas import ModelJobCreateRequest
 from model_engine.api.service_bridge import ServiceEngineHTTPError
 
 
 class ModelJobAPITests(unittest.TestCase):
+    def test_multipart_job_create_binds_primary_bitmap_and_returns_document_patch(self) -> None:
+        job_manager = ModelJobManager(
+            executor=PlaceholderJobExecutor(sleep_seconds=0.0),
+        )
+        app = create_app(job_manager=job_manager)
+        client = TestClient(app)
+        payload = _job_payload(operation_kind="translate", mode="local")
+        payload["artifacts"] = {
+            "artifact://input/primary_bitmap": {
+                "artifact_ref": "artifact://input/primary_bitmap",
+                "kind": "bitmap",
+                "media_type": "image/png",
+                "uri": "upload://primary_bitmap",
+            }
+        }
+
+        response = client.post(
+            "/v1/jobs",
+            files={
+                "metadata": (None, json.dumps(payload), "application/json"),
+                "primary_bitmap": ("page.png", b"fake-png", "image/png"),
+            },
+        )
+
+        self.assertEqual(202, response.status_code)
+        job_id = response.json()["job_id"]
+        record = job_manager._jobs_by_id[job_id]
+        self.assertTrue(
+            record.artifacts["artifact://input/primary_bitmap"].uri.startswith("file://")
+        )
+
+        detail = _wait_for_terminal_job(client, job_id)
+        self.assertIn("document_patch", detail)
+        self.assertEqual("set_stage_meta", detail["document_patch"]["patches"][0]["op"])
+
     def test_local_job_lifecycle_returns_placeholder_stage_reports(self) -> None:
         app = create_app(
             job_manager=ModelJobManager(
@@ -40,6 +78,7 @@ class ModelJobAPITests(unittest.TestCase):
             "placeholder",
             detail["document"]["stage_meta"]["text_detection"]["executor"],
         )
+        self.assertIn("document_patch", detail)
 
     def test_saas_job_create_and_capture_are_forwarded_to_service_engine(self) -> None:
         fake_service = _FakeServiceClient()
@@ -77,6 +116,27 @@ class ModelJobAPITests(unittest.TestCase):
             headers={"Authorization": "Bearer demo-session"},
         )
         self.assertEqual(200, saas_detail.status_code)
+
+    def test_saas_job_persists_service_session_key_in_runtime_context(self) -> None:
+        fake_service = _FakeServiceClient()
+        manager = ModelJobManager(
+            executor=PlaceholderJobExecutor(sleep_seconds=0.0),
+            service_client_factory=lambda: fake_service,
+        )
+
+        submission = submission_from_api_payload(
+            ModelJobCreateRequest.model_validate(
+                _job_payload(operation_kind="translate", mode="saas")
+            )
+        )
+        status_code, response = manager.create_job(
+            submission,
+            authorization="Bearer demo-session",
+        )
+
+        self.assertEqual(202, status_code)
+        record = manager._jobs_by_id[response["job_id"]]
+        self.assertEqual("demo-session", record.runtime_context.service_session_key)
 
     def test_detect_jobs_are_mapped_to_mask_usage_for_service_engine(self) -> None:
         fake_service = _FakeServiceClient()

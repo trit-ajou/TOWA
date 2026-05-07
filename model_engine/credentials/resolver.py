@@ -58,6 +58,9 @@ class DefaultCredentialResolver(CredentialResolver):
         return self._resolve_local_binding(provider, runtime_context)
 
     def _provider_for_stage(self, stage_name: str, stage_config: dict[str, object]) -> Optional[str]:
+        if bool(stage_config.get("skip_provider_resolution")):
+            return None
+
         explicit_provider = stage_config.get("provider")
         if isinstance(explicit_provider, str) and explicit_provider:
             return explicit_provider

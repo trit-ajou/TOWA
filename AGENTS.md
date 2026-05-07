@@ -16,6 +16,7 @@
   - [docs/service-engine-boundary.md](docs/service-engine-boundary.md): `service_engine`의 책임 경계, 비목표, 고정된 v1 설계 선택을 정리합니다.
   - [docs/project-page-storage-boundary.md](docs/project-page-storage-boundary.md): cloud `project/page` 저장의 authority, page summary와 page snapshot 구분, multipart snapshot 규칙을 정리합니다.
   - [docs/ui-model-abstract-boundary.md](docs/ui-model-abstract-boundary.md): `UI engine`과 `model engine` 사이에서 이번 단계에 고정하는 추상 경계와 의도적으로 미루는 세부 wire shape를 정리합니다.
+  - [docs/ui-model-implementation.md](docs/ui-model-implementation.md): 현재 저장소 기준 `UI engine <-> model engine` 실제 구현 가이드입니다. multipart create, `document_patch`, UI migration path를 설명합니다.
   - [docs/boundary-open-questions.md](docs/boundary-open-questions.md): v1 boundary를 구현하기 전에 정해야 하는 미결 질문과 합의 필요 항목을 추적합니다.
 
 ### 계획 적용 시 문서 작성 요령
