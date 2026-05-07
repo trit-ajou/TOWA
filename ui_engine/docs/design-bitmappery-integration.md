@@ -153,8 +153,22 @@ towa-app은 `store.getters['bmp/activeDocument'].layers`로 **읽기만** 함.
 
 towa-app이 레이어에 관여하는 경우:
 1. **TranslationPanel**: `layer.type === 'text'`로 텍스트 레이어만 필터하여 표시 (읽기)
-2. **AI 인페인팅 결과 주입**: `store.commit('bmp/addLayer', inpaintLayer)` (쓰기, 레이어 1개 추가)
+2. **AI 결과 주입**: `store.commit('bmp/addLayer', aiLayer)` (쓰기, 새 후보 레이어 추가)
 3. **File Adapter**: 페이지 로드 시 bitmappery document 전체를 생성/교체
+
+### AI 결과 레이어 규칙
+
+AI가 만든 text/image 결과는 특별한 layer type이 아니다.
+
+- text result는 Bitmappery의 일반 `text` layer로 추가한다.
+- image artifact result는 Bitmappery의 일반 `graphic` layer로 추가한다.
+- 매 AI 실행마다 새 레이어를 최상단에 추가한다.
+- 기존 사용자 레이어나 이전 AI 레이어를 자동 수정/교체하지 않는다.
+- `replace_source_ref` patch도 UI에서는 기존 layer source 교체로 해석하지 않고, 새 `graphic` 후보 레이어 추가로 처리한다.
+- text layer 이름은 `AI <Operation> <YYYYMMDD HHmm> #NN` 형식을 사용한다.
+- text style은 `Noto Sans KR`, `24px`, black으로 고정한다.
+
+이 규칙의 목적은 AI 결과를 destructive edit이 아니라 사용자가 확인하고 채택할 수 있는 후보 레이어로 남기는 것이다.
 
 ### 레이어 구성 (컨벤션)
 

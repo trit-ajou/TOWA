@@ -4,7 +4,7 @@ WORKDIR /app/towa-app
 
 COPY towa-app/package.json ./
 
-RUN npm install --legacy-peer-deps
+RUN npm install --legacy-peer-deps --no-audit --no-fund --maxsockets=1
 
 WORKDIR /app
 

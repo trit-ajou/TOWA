@@ -6,13 +6,19 @@ from datetime import datetime, timezone
 from enum import Enum
 import hashlib
 import json
-from pathlib import Path
 from threading import Lock, Thread
-import tempfile
 import time
-from typing import TYPE_CHECKING, Any, Callable, Optional
+from typing import TYPE_CHECKING, Any, Callable
 from uuid import uuid4
 
+from .artifact_io import (
+    JobArtifactDownload,
+    UploadedBinaryPart,
+    UnsupportedArtifactUriError,
+    artifact_descriptor_to_api_data,
+    artifact_descriptors_from_api_payload,
+    file_artifact_path,
+)
 from ..builtin_models import (
     CRAFT_TEXT_DETECTION_MODEL_ID,
     MANGA_OCR_MODEL_ID,
@@ -27,7 +33,7 @@ from ..builtin_models import (
     register_openai_compatible_translation_model,
     register_vertex_translation_model,
 )
-from ..contracts.artifacts import ArtifactDescriptor, ArtifactStatus
+from ..contracts.artifacts import ArtifactDescriptor
 from ..contracts.document_ir import DocumentIR
 from ..contracts.models import StageKind
 from ..contracts.patches import PatchOperation
@@ -104,14 +110,6 @@ class JobSubmission:
     document: DocumentIR
     artifacts: dict[str, ArtifactDescriptor]
     runtime_context: StageRuntimeContext
-
-
-@dataclass(frozen=True)
-class UploadedBinaryPart:
-    part_name: str
-    filename: str
-    media_type: str
-    content: bytes
 
 
 @dataclass
@@ -324,6 +322,49 @@ class ModelJobManager:
                 )
             self._assert_job_read_access(record, authorization=authorization)
             return self._detail_response(record)
+
+    def get_artifact(
+        self,
+        job_id: str,
+        *,
+        artifact_ref: str,
+        authorization: str | None = None,
+    ) -> JobArtifactDownload:
+        with self._lock:
+            record = self._jobs_by_id.get(job_id)
+            if record is None:
+                raise ModelJobError(
+                    status_code=404,
+                    code="model_job_not_found",
+                    message=f"Unknown job_id: {job_id}",
+                )
+            self._assert_job_read_access(record, authorization=authorization)
+            descriptor = record.artifacts.get(artifact_ref)
+            if descriptor is None:
+                raise ModelJobError(
+                    status_code=404,
+                    code="model_artifact_not_found",
+                    message=f"Unknown artifact_ref for job {job_id}: {artifact_ref}",
+                    details={"artifact_ref": artifact_ref},
+                )
+
+        try:
+            artifact_path = file_artifact_path(descriptor)
+        except UnsupportedArtifactUriError as exc:
+            raise ModelJobError(
+                status_code=422,
+                code="model_artifact_unsupported_uri",
+                message=exc.message,
+                details={"artifact_ref": exc.artifact_ref, "uri": exc.uri},
+            ) from exc
+        if not artifact_path.is_file():
+            raise ModelJobError(
+                status_code=404,
+                code="model_artifact_not_found",
+                message=f"Artifact binary does not exist for ref: {artifact_ref}",
+                details={"artifact_ref": artifact_ref},
+            )
+        return JobArtifactDownload(descriptor=descriptor, path=artifact_path)
 
     def _run_job(self, job_id: str) -> None:
         with self._lock:
@@ -574,7 +615,7 @@ class ModelJobManager:
 
 def submission_from_api_payload(payload: "ModelJobCreateRequest") -> JobSubmission:
     runtime_context = runtime_context_from_api_data(payload.runtime_context)
-    normalized_artifacts = _artifact_descriptors_from_api_payload(payload.artifacts)
+    normalized_artifacts = artifact_descriptors_from_api_payload(payload.artifacts)
     return JobSubmission(
         schema_version=payload.schema_version,
         idempotency_key=payload.idempotency_key,
@@ -603,7 +644,7 @@ def submission_from_multipart_payload(
 ) -> JobSubmission:
     runtime_context = runtime_context_from_api_data(payload.runtime_context)
     upload_checksum = f"sha256:{hashlib.sha256(primary_bitmap.content).hexdigest()}"
-    normalized_artifacts = _artifact_descriptors_from_api_payload(
+    normalized_artifacts = artifact_descriptors_from_api_payload(
         payload.artifacts,
         primary_bitmap=primary_bitmap,
         primary_bitmap_checksum=upload_checksum,
@@ -649,108 +690,6 @@ def runtime_context_from_api_data(payload: dict[str, Any]) -> StageRuntimeContex
         service_base_url=payload.get("service_base_url"),
         service_request_ref=payload.get("service_request_ref"),
     )
-
-
-def artifact_descriptor_from_api_data(payload: dict[str, Any]) -> ArtifactDescriptor:
-    return ArtifactDescriptor(
-        artifact_ref=str(payload["artifact_ref"]),
-        kind=str(payload["kind"]),
-        media_type=str(payload["media_type"]),
-        uri=str(payload["uri"]),
-        width=payload.get("width"),
-        height=payload.get("height"),
-        byte_size=payload.get("byte_size"),
-        checksum=payload.get("checksum"),
-        version=int(payload.get("version", 1)),
-        producer_stage=payload.get("producer_stage"),
-        status=ArtifactStatus(payload.get("status", ArtifactStatus.READY.value)),
-        expires_at=_parse_datetime(payload.get("expires_at")),
-        metadata=dict(payload.get("metadata", {})),
-    )
-
-
-def _artifact_descriptors_from_api_payload(
-    artifacts_payload: dict[str, dict[str, Any]],
-    *,
-    primary_bitmap: UploadedBinaryPart | None = None,
-    primary_bitmap_checksum: str | None = None,
-) -> dict[str, ArtifactDescriptor]:
-    normalized: dict[str, ArtifactDescriptor] = {}
-    resolved_primary_uri: str | None = None
-    referenced_primary_upload = False
-
-    for artifact_ref, descriptor_payload in artifacts_payload.items():
-        upload_uri = str(descriptor_payload.get("uri", ""))
-        if upload_uri.startswith("upload://") and upload_uri != "upload://primary_bitmap":
-            raise ValueError(f"Unsupported upload artifact uri: {upload_uri}")
-        if upload_uri == "upload://primary_bitmap":
-            referenced_primary_upload = True
-            if primary_bitmap is None or primary_bitmap_checksum is None:
-                raise ValueError("primary_bitmap upload is required when metadata references upload://primary_bitmap")
-            if resolved_primary_uri is None:
-                resolved_primary_uri = _persist_uploaded_binary(primary_bitmap)
-            descriptor_payload = {
-                **descriptor_payload,
-                "uri": resolved_primary_uri,
-                "media_type": primary_bitmap.media_type or descriptor_payload.get("media_type", "application/octet-stream"),
-                "byte_size": len(primary_bitmap.content),
-                "checksum": primary_bitmap_checksum,
-                "metadata": {
-                    **dict(descriptor_payload.get("metadata", {})),
-                    "upload_part": primary_bitmap.part_name,
-                    "upload_filename": primary_bitmap.filename,
-                },
-            }
-        normalized[artifact_ref] = artifact_descriptor_from_api_data(descriptor_payload)
-
-    if primary_bitmap is not None and not referenced_primary_upload:
-        raise ValueError("primary_bitmap upload was provided but metadata does not reference upload://primary_bitmap")
-
-    return normalized
-
-
-def _persist_uploaded_binary(upload: UploadedBinaryPart) -> str:
-    suffix = _upload_suffix(upload)
-    upload_dir = Path(tempfile.mkdtemp(prefix="towa_model_job_upload_"))
-    file_path = upload_dir / f"{upload.part_name}{suffix}"
-    file_path.write_bytes(upload.content)
-    return file_path.resolve().as_uri()
-
-
-def _upload_suffix(upload: UploadedBinaryPart) -> str:
-    candidate = Path(upload.filename or "").suffix.lower()
-    if candidate:
-        return candidate
-    return {
-        "image/png": ".png",
-        "image/jpeg": ".jpg",
-        "image/webp": ".webp",
-    }.get(upload.media_type, ".bin")
-
-
-def artifact_descriptor_to_api_data(descriptor: ArtifactDescriptor) -> dict[str, Any]:
-    payload: dict[str, Any] = {
-        "artifact_ref": descriptor.artifact_ref,
-        "kind": descriptor.kind,
-        "media_type": descriptor.media_type,
-        "uri": descriptor.uri,
-        "version": descriptor.version,
-        "status": descriptor.status.value,
-        "metadata": dict(descriptor.metadata),
-    }
-    if descriptor.width is not None:
-        payload["width"] = descriptor.width
-    if descriptor.height is not None:
-        payload["height"] = descriptor.height
-    if descriptor.byte_size is not None:
-        payload["byte_size"] = descriptor.byte_size
-    if descriptor.checksum is not None:
-        payload["checksum"] = descriptor.checksum
-    if descriptor.producer_stage is not None:
-        payload["producer_stage"] = descriptor.producer_stage
-    if descriptor.expires_at is not None:
-        payload["expires_at"] = descriptor.expires_at.isoformat()
-    return payload
 
 
 def _error_payload(
@@ -818,12 +757,6 @@ def _service_authorization(runtime_context: StageRuntimeContext) -> str:
     if not session_key:
         raise ValueError("runtime_context.service_session_key is required for saas mode")
     return f"Bearer {session_key}"
-
-
-def _parse_datetime(value: Any) -> Optional[datetime]:
-    if value is None:
-        return None
-    return datetime.fromisoformat(str(value))
 
 
 class _FunctionStage(StageProtocol):

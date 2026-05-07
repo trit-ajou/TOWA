@@ -55,6 +55,19 @@ class ModelJobAPITests(unittest.TestCase):
         detail = _wait_for_terminal_job(client, job_id)
         self.assertIn("document_patch", detail)
         self.assertEqual("set_stage_meta", detail["document_patch"]["patches"][0]["op"])
+        self.assertEqual(
+            record.artifacts["artifact://input/primary_bitmap"].uri,
+            detail["artifacts"]["artifact://input/primary_bitmap"]["uri"],
+        )
+
+        artifact_response = client.get(
+            f"/v1/jobs/{job_id}/artifacts",
+            params={"artifact_ref": "artifact://input/primary_bitmap"},
+        )
+
+        self.assertEqual(200, artifact_response.status_code)
+        self.assertEqual("image/png", artifact_response.headers["content-type"])
+        self.assertEqual(b"fake-png", artifact_response.content)
 
     def test_local_job_lifecycle_returns_placeholder_stage_reports(self) -> None:
         app = create_app(
@@ -273,6 +286,94 @@ class ModelJobAPITests(unittest.TestCase):
         self.assertEqual(404, wrong_auth.status_code)
         self.assertEqual("model_job_not_found", wrong_auth.json()["error"]["code"])
         self.assertEqual(200, own_auth.status_code)
+
+    def test_artifact_download_requires_matching_authorization_for_saas_job(self) -> None:
+        fake_service = _FakeServiceClient()
+        app = create_app(
+            job_manager=ModelJobManager(
+                executor=PlaceholderJobExecutor(sleep_seconds=0.0),
+                service_client_factory=lambda: fake_service,
+            )
+        )
+        client = TestClient(app)
+        payload = _job_payload(operation_kind="detect", mode="saas")
+        payload["artifacts"] = {
+            "artifact://input/primary_bitmap": {
+                "artifact_ref": "artifact://input/primary_bitmap",
+                "kind": "bitmap",
+                "media_type": "image/png",
+                "uri": "upload://primary_bitmap",
+            }
+        }
+
+        created = client.post(
+            "/v1/jobs",
+            files={
+                "metadata": (None, json.dumps(payload), "application/json"),
+                "primary_bitmap": ("page.png", b"auth-png", "image/png"),
+            },
+            headers={"Authorization": "Bearer demo-session"},
+        )
+        self.assertEqual(202, created.status_code)
+        job_id = created.json()["job_id"]
+
+        missing_auth = client.get(
+            f"/v1/jobs/{job_id}/artifacts",
+            params={"artifact_ref": "artifact://input/primary_bitmap"},
+        )
+        wrong_auth = client.get(
+            f"/v1/jobs/{job_id}/artifacts",
+            params={"artifact_ref": "artifact://input/primary_bitmap"},
+            headers={"Authorization": "Bearer different-session"},
+        )
+        own_auth = client.get(
+            f"/v1/jobs/{job_id}/artifacts",
+            params={"artifact_ref": "artifact://input/primary_bitmap"},
+            headers={"Authorization": "Bearer demo-session"},
+        )
+
+        self.assertEqual(401, missing_auth.status_code)
+        self.assertEqual("session_key_required", missing_auth.json()["error"]["code"])
+        self.assertEqual(404, wrong_auth.status_code)
+        self.assertEqual("model_job_not_found", wrong_auth.json()["error"]["code"])
+        self.assertEqual(200, own_auth.status_code)
+        self.assertEqual(b"auth-png", own_auth.content)
+
+    def test_artifact_download_rejects_missing_artifact_ref(self) -> None:
+        app = create_app(
+            job_manager=ModelJobManager(
+                executor=PlaceholderJobExecutor(sleep_seconds=0.0),
+            )
+        )
+        client = TestClient(app)
+
+        created = client.post("/v1/jobs", json=_job_payload(operation_kind="detect", mode="local"))
+        self.assertEqual(202, created.status_code)
+        response = client.get(
+            f"/v1/jobs/{created.json()['job_id']}/artifacts",
+            params={"artifact_ref": "artifact://missing"},
+        )
+
+        self.assertEqual(404, response.status_code)
+        self.assertEqual("model_artifact_not_found", response.json()["error"]["code"])
+
+    def test_artifact_download_rejects_non_file_uri(self) -> None:
+        app = create_app(
+            job_manager=ModelJobManager(
+                executor=PlaceholderJobExecutor(sleep_seconds=0.0),
+            )
+        )
+        client = TestClient(app)
+
+        created = client.post("/v1/jobs", json=_job_payload(operation_kind="detect", mode="local"))
+        self.assertEqual(202, created.status_code)
+        response = client.get(
+            f"/v1/jobs/{created.json()['job_id']}/artifacts",
+            params={"artifact_ref": "artifact://page-original"},
+        )
+
+        self.assertEqual(422, response.status_code)
+        self.assertEqual("model_artifact_unsupported_uri", response.json()["error"]["code"])
 
     def test_saas_jobs_scope_idempotency_by_authorization(self) -> None:
         fake_service = _FakeServiceClient()

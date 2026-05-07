@@ -70,6 +70,9 @@ export default defineConfig({
       '@bitmappery': bitmapperySrc,
     },
   },
+  optimizeDeps: {
+    include: ['lz-string'],
+  },
   css: {
     preprocessorOptions: {
       scss: {

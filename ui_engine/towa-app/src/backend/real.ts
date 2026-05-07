@@ -18,6 +18,8 @@ import type {
   ProjectPatchInput,
   TransportArtifactDescriptor,
   TransportDocument,
+  TransportDocumentPatch,
+  TransportPatchOperation,
   TransportStageReport,
 } from './contracts'
 import { BackendError, ensureSessionKey } from './errors'
@@ -67,18 +69,11 @@ export function createRealAuthBackend(options: RealBackendOptions): AuthBackend 
 export function createRealAiJobsBackend(options: RealBackendOptions): AiJobsBackend {
   return {
     async createJob(input: AiJobCreateInput, requestOptions: AuthRequestOptions = {}): Promise<AiJobCreateResult> {
+      const formData = buildAiJobMultipart(input)
       const payload = await requestJson(`${options.modelEngineUrl}/v1/jobs`, {
         method: 'POST',
         headers: authorizationHeaders(requestOptions),
-        body: JSON.stringify({
-          schema_version: input.schemaVersion ?? 'v1',
-          idempotency_key: input.idempotencyKey,
-          operation_kind: input.operationKind,
-          request_ref: input.requestRef,
-          document: input.document,
-          artifacts: input.artifacts,
-          runtime_context: input.runtimeContext,
-        }),
+        body: formData,
       })
       return toAiJobCreateResult(payload)
     },
@@ -90,12 +85,26 @@ export function createRealAiJobsBackend(options: RealBackendOptions): AiJobsBack
       })
       return toAiJobSnapshot(payload)
     },
+
+    async getArtifact(
+      jobId: string,
+      artifactRef: string,
+      requestOptions: AuthRequestOptions = {},
+    ): Promise<Blob> {
+      return requestBlob(
+        `${options.modelEngineUrl}/v1/jobs/${jobId}/artifacts?artifact_ref=${encodeURIComponent(artifactRef)}`,
+        {
+          method: 'GET',
+          headers: authorizationHeaders(requestOptions),
+        },
+      )
+    },
   }
 }
 
 async function requestJson(url: string, init: RequestInit): Promise<JsonObject> {
   const headers = new Headers(init.headers)
-  if (init.body && !headers.has('Content-Type')) {
+  if (shouldUseJsonContentType(init.body) && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json')
   }
   headers.set('Accept', 'application/json')
@@ -120,6 +129,53 @@ async function requestJson(url: string, init: RequestInit): Promise<JsonObject> 
     throw new BackendError(extractError(payload, response.statusText))
   }
   return payload
+}
+
+function shouldUseJsonContentType(body: BodyInit | null | undefined): boolean {
+  if (!body) {
+    return false
+  }
+  if (typeof FormData !== 'undefined' && body instanceof FormData) {
+    return false
+  }
+  if (typeof Blob !== 'undefined' && body instanceof Blob) {
+    return false
+  }
+  if (typeof URLSearchParams !== 'undefined' && body instanceof URLSearchParams) {
+    return false
+  }
+  return true
+}
+
+function buildAiJobMultipart(input: AiJobCreateInput): FormData {
+  const formData = new FormData()
+  const mediaType = input.primaryBitmap.type || 'image/png'
+  const primaryBitmapArtifact: TransportArtifactDescriptor = {
+    artifact_ref: 'artifact://input/primary_bitmap',
+    kind: 'bitmap',
+    media_type: mediaType,
+    uri: 'upload://primary_bitmap',
+  }
+  const metadataPayload = {
+    schema_version: input.schemaVersion ?? 'v1',
+    idempotency_key: input.idempotencyKey,
+    operation_kind: input.operationKind,
+    request_ref: input.requestRef,
+    document: input.document,
+    artifacts: {
+      ...(input.artifacts ?? {}),
+      [primaryBitmapArtifact.artifact_ref]: primaryBitmapArtifact,
+    },
+    runtime_context: input.runtimeContext,
+  }
+
+  formData.append(
+    'metadata',
+    new Blob([JSON.stringify(metadataPayload)], { type: 'application/json' }),
+    'metadata.json',
+  )
+  formData.append('primary_bitmap', input.primaryBitmap, 'primary-bitmap.png')
+  return formData
 }
 
 function parseJsonObject(rawText: string): JsonObject {
@@ -219,6 +275,7 @@ function toAiJobSnapshot(payload: JsonObject): AiJobSnapshot {
     operationKind: String(payload.operation_kind) as AiJobSnapshot['operationKind'],
     requestRef: String(payload.request_ref),
     document: asObject(payload.document, 'document') as TransportDocument,
+    documentPatch: toDocumentPatch(payload.document_patch),
     artifacts: asObject(payload.artifacts, 'artifacts') as Record<string, TransportArtifactDescriptor>,
     stageReports: Array.isArray(payload.stage_reports)
       ? payload.stage_reports.map((item) => asObject(item, 'stage_reports') as TransportStageReport)
@@ -227,6 +284,19 @@ function toAiJobSnapshot(payload: JsonObject): AiJobSnapshot {
       ? extractError({ error: payload.error as JsonObject }, 'backend_error')
       : null,
   }
+}
+
+function toDocumentPatch(value: unknown): TransportDocumentPatch {
+  if (value == null) {
+    return { patches: [] }
+  }
+  const payload = asObject(value, 'document_patch')
+  return {
+    ...payload,
+    patches: Array.isArray(payload.patches)
+      ? payload.patches.map((item) => asObject(item, 'document_patch.patches') as TransportPatchOperation)
+      : [],
+  } as TransportDocumentPatch
 }
 
 function asObject(value: unknown, fieldName: string): Record<string, unknown> {

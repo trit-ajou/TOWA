@@ -363,6 +363,28 @@ watch(
 - 저장 중 추가 편집 → 저장 완료 후 재저장
 - 페이지 전환 시 → 즉시 저장 (debounce 무시)
 
+### AI 결과 적용 후 즉시 저장
+
+AI job 결과는 자동 저장 debounce를 기다리지 않는다.
+
+현재 흐름:
+
+1. 사용자가 AI action을 실행하면 현재 page status를 `ai-processing`으로 바꾼다.
+2. UI는 현재 보이는 active Bitmappery document 전체를 PNG Blob으로 캡처해 `model_engine`에 `primary_bitmap`으로 보낸다.
+3. polling 결과가 `succeeded`이면 `document_patch`만 authoritative result로 처리한다.
+4. `replace_text_blocks` / `append_text_blocks`는 page `textBlocks` metadata를 갱신하고, Bitmappery `text` layer를 새 후보 레이어로 최상단에 추가한다.
+5. bitmap artifact를 참조하는 `add_layer` / `replace_source_ref`는 artifact Blob을 다운로드해 새 `graphic` layer 후보를 최상단에 추가한다.
+6. 적용 후 page status를 `in-progress`로 바꾸고 `usePageLoader.savePage(pageId)`를 즉시 호출한다.
+
+저장되는 snapshot에는 기존과 동일하게 아래가 포함된다.
+
+- `metadata.page.textBlocks`: AI 결과가 반영된 텍스트 블록
+- `metadata.page.status`: `in-progress`
+- `layerBlob`: 새 AI text/graphic 후보 레이어가 포함된 Bitmappery document
+- `thumbnail`: 적용 직후 캡처한 썸네일
+
+`partial` 또는 `failed` job은 자동 적용하지 않는다. 이 경우 UI는 page status를 AI 실행 전 상태로 되돌리고, snapshot 저장을 수행하지 않는다.
+
 ---
 
 ## 6. 클라우드 편집 아키텍처

@@ -57,7 +57,7 @@ describe('real backend adapters', () => {
     )
   })
 
-  it('forwards auth headers and snake_case payloads to model engine', async () => {
+  it('posts model jobs as multipart metadata plus primary bitmap', async () => {
     vi.mocked(fetch).mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -85,6 +85,7 @@ describe('real backend adapters', () => {
         requestRef: 'project/proj-1/page/001',
         document: { id: 'doc-1' },
         artifacts: {},
+        primaryBitmap: new Blob(['png'], { type: 'image/png' }),
         runtimeContext: { mode: 'saas', workspace_uri: 'workspace://project/proj-1/page/001' },
       },
       { sessionKey: 'demo-session' },
@@ -101,12 +102,92 @@ describe('real backend adapters', () => {
     expect(requestInit).toBeTruthy()
     const headers = new Headers(requestInit?.headers)
     expect(headers.get('Authorization')).toBe('Bearer demo-session')
-    expect(JSON.parse(String(requestInit?.body))).toMatchObject({
+    expect(headers.get('Content-Type')).toBeNull()
+    const body = requestInit?.body as FormData
+    expect(body).toBeInstanceOf(FormData)
+    expect(body.get('primary_bitmap')).toBeInstanceOf(Blob)
+    const metadata = JSON.parse(await (body.get('metadata') as Blob).text())
+    expect(metadata).toMatchObject({
       schema_version: 'v1',
       idempotency_key: 'project:proj-1:page:001:op:detect:v:1',
       operation_kind: 'detect',
       request_ref: 'project/proj-1/page/001',
     })
+    expect(metadata.artifacts['artifact://input/primary_bitmap']).toMatchObject({
+      artifact_ref: 'artifact://input/primary_bitmap',
+      kind: 'bitmap',
+      media_type: 'image/png',
+      uri: 'upload://primary_bitmap',
+    })
+  })
+
+  it('maps document_patch from model job snapshots', async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          job_id: 'job-1',
+          pipeline_id: 'pipe-1',
+          status: 'succeeded',
+          operation_kind: 'translate',
+          request_ref: 'project/proj-1/page/001',
+          document: { id: 'doc-1' },
+          document_patch: {
+            patches: [
+              {
+                op: 'replace_text_blocks',
+                payload: { text_blocks: [{ block_id: 'tb-1' }] },
+              },
+            ],
+          },
+          artifacts: {},
+          stage_reports: [],
+          error: null,
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    )
+
+    const backend = createRealAppBackend({
+      serviceEngineUrl: 'http://localhost:8000',
+      modelEngineUrl: 'http://localhost:8100',
+    })
+
+    const snapshot = await backend.aiJobs.getJob('job-1', { sessionKey: 'demo-session' })
+
+    expect(snapshot.documentPatch.patches).toHaveLength(1)
+    expect(snapshot.documentPatch.patches[0].op).toBe('replace_text_blocks')
+  })
+
+  it('downloads model job artifacts as blobs with auth headers', async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(new Blob(['artifact'], { type: 'image/png' }), {
+        status: 200,
+        headers: { 'Content-Type': 'image/png' },
+      }),
+    )
+
+    const backend = createRealAppBackend({
+      serviceEngineUrl: 'http://localhost:8000',
+      modelEngineUrl: 'http://localhost:8100',
+    })
+
+    const blob = await backend.aiJobs.getArtifact(
+      'job-1',
+      'artifact://output/inpaint.png',
+      { sessionKey: 'demo-session' },
+    )
+
+    expect(blob.type).toBe('image/png')
+    expect(await blob.text()).toBe('artifact')
+    expect(fetch).toHaveBeenCalledWith(
+      'http://localhost:8100/v1/jobs/job-1/artifacts?artifact_ref=artifact%3A%2F%2Foutput%2Finpaint.png',
+      expect.objectContaining({
+        method: 'GET',
+      }),
+    )
+    const requestInit = vi.mocked(fetch).mock.calls[0]?.[1]
+    const headers = new Headers(requestInit?.headers)
+    expect(headers.get('Authorization')).toBe('Bearer demo-session')
   })
 
   it('raises BackendError for engine error envelopes', async () => {
@@ -184,6 +265,7 @@ describe('emulated backend adapters', () => {
         requestRef: 'project/proj-1/page/001',
         document: { id: 'doc-1', stage_meta: {} },
         artifacts: {},
+        primaryBitmap: new Blob(['png'], { type: 'image/png' }),
         runtimeContext: { mode: 'saas', workspace_uri: 'workspace://project/proj-1/page/001' },
       },
       { sessionKey: login.sessionKey },
@@ -199,6 +281,7 @@ describe('emulated backend adapters', () => {
         executor: 'emulated',
       },
     })
+    expect(terminal.documentPatch.patches[0].op).toBe('replace_text_blocks')
   })
 
   it('scopes emulated saas jobs to the creating session and rejects mismatch payloads', async () => {
@@ -213,6 +296,7 @@ describe('emulated backend adapters', () => {
         requestRef: 'project/proj-1/page/001',
         document: { id: 'doc-1', stage_meta: {} },
         artifacts: {},
+        primaryBitmap: new Blob(['png'], { type: 'image/png' }),
         runtimeContext: { mode: 'saas', workspace_uri: 'workspace://project/proj-1/page/001' },
       },
       { sessionKey: firstLogin.sessionKey },
@@ -234,6 +318,7 @@ describe('emulated backend adapters', () => {
           requestRef: 'project/proj-1/page/001',
           document: { id: 'doc-1', stage_meta: {} },
           artifacts: {},
+          primaryBitmap: new Blob(['png'], { type: 'image/png' }),
           runtimeContext: { mode: 'saas', workspace_uri: 'workspace://project/proj-1/page/001' },
         },
         { sessionKey: firstLogin.sessionKey },
@@ -286,6 +371,7 @@ describe('backend factory', () => {
         requestRef: 'project/proj-1/page/001',
         document: { id: 'doc-1' },
         artifacts: {},
+        primaryBitmap: new Blob(['png'], { type: 'image/png' }),
         runtimeContext: { mode: 'local', workspace_uri: 'workspace://project/proj-1/page/001' },
       },
       { sessionKey: login.sessionKey },

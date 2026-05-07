@@ -6,7 +6,7 @@ from typing import Annotated, Any
 
 from fastapi import FastAPI, Header, Request, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from starlette.datastructures import UploadFile as StarletteUploadFile
 
 from .jobs import (
@@ -94,6 +94,31 @@ def create_app(
             return JSONResponse(
                 status_code=status.HTTP_200_OK,
                 content=job_manager.get_job(job_id, authorization=authorization),
+            )
+        except ModelJobError as exc:
+            return _error_response(
+                status_code=exc.status_code,
+                code=exc.code,
+                message=exc.message,
+                retryable=exc.retryable,
+                details=exc.details,
+            )
+
+    @application.get("/v1/jobs/{job_id}/artifacts", tags=["jobs"], response_model=None)
+    def get_job_artifact(
+        job_id: str,
+        artifact_ref: str,
+        authorization: Annotated[str | None, Header()] = None,
+    ) -> Any:
+        try:
+            download = job_manager.get_artifact(
+                job_id,
+                artifact_ref=artifact_ref,
+                authorization=authorization,
+            )
+            return FileResponse(
+                download.path,
+                media_type=download.descriptor.media_type,
             )
         except ModelJobError as exc:
             return _error_response(
