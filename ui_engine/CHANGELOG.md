@@ -6,6 +6,14 @@
 
 ## 2026-05-07
 
+### 14:23 — 라이브러리 미로그인 가드 + 새 프로젝트 추론모드 노출 제거
+- 증상 1: cloud 모드에서 로그인 안 한 상태인데 라이브러리 폴더 트리/UI가 노출됨. 폴더 클릭 시 인증 에러
+- 증상 2: 새 프로젝트 모달에 "추론 모드 (클라우드/로컬)" 라디오 노출. 모드 선택은 설정 메뉴(SettingsModal)에서만 다루는 게 맞음
+- `views/LibraryView.vue`: cloud 모드 + 미로그인 분기 추가. 화면 전체를 "로그인 필요" 안내 + 로그인 버튼 + LoginModal 트리거로 대체
+- `views/LibraryView.vue`: `isLoggedIn` watch 추가. 세션 중 로그인 성공 시 `projects/loadAll` 자동 호출 (main.ts 부팅 시 미로그인이라 로드 안 됐던 경우 보완)
+- `components/home/CreateProjectModal.vue`: 추론모드 라디오 UI 제거. `formData.inferenceMode`는 항상 'cloud' default로 유지 (type 호환)
+- 폴더 트리는 `library` store의 하드코드(주간연재/웹툰/단행본)라 미로그인 화면에서도 보이고 있었음 — 가드로 회피. 장기적으로 서버 source로 가야 함 (별도 작업)
+
 ### 02:30 — ui-engine 컨테이너 빌드 에러 통합 fix
 - 증상: 서버에서 ui-engine 컨테이너가 빌드 통과 후 시작 직후 종료 또는 빌드 자체 실패. 결과 cloudflare 502
 - 시도 흐름 (3단계):

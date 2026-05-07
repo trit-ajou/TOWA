@@ -165,19 +165,6 @@ function submit() {
         </div>
       </div>
 
-      <div>
-        <label class="block text-xs text-towa-text-muted mb-1">추론 모드</label>
-        <div class="flex gap-3">
-          <label class="flex items-center gap-1.5 text-sm text-towa-text cursor-pointer">
-            <input v-model="formData.inferenceMode" type="radio" value="cloud" class="accent-towa-accent" />
-            클라우드
-          </label>
-          <label class="flex items-center gap-1.5 text-sm text-towa-text cursor-pointer">
-            <input v-model="formData.inferenceMode" type="radio" value="local" class="accent-towa-accent" />
-            로컬
-          </label>
-        </div>
-      </div>
     </div>
 
     <template #footer>
