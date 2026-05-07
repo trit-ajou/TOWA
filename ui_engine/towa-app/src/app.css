@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+/* Fonts (Bricolage Grotesque, Pretendard Variable) loaded via index.html <link> */
+
 @theme {
   --color-towa-bg: var(--towa-bg);
   --color-towa-surface: var(--towa-surface);
@@ -61,4 +63,108 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--towa-text-muted);
+}
+
+/* === 랜딩/로그인 디자인 보조 유틸 === */
+
+.font-display {
+  font-family: 'Bricolage Grotesque', 'Pretendard Variable', system-ui, sans-serif;
+  font-feature-settings: 'ss01' on;
+  letter-spacing: -0.02em;
+}
+
+.font-korean {
+  font-family: 'Pretendard Variable', 'Pretendard', system-ui, sans-serif;
+}
+
+/* Halftone dot grid */
+.bg-halftone {
+  background-image: radial-gradient(circle, rgba(149, 105, 180, 0.18) 1px, transparent 1px);
+  background-size: 18px 18px;
+}
+
+.bg-halftone-dense {
+  background-image: radial-gradient(circle, rgba(232, 74, 138, 0.22) 1px, transparent 1px);
+  background-size: 8px 8px;
+}
+
+/* Subtle film grain via SVG noise */
+.bg-grain::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.06;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 240 240' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* Diagonal hatch pattern for accents */
+.bg-hatch {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    transparent 0,
+    transparent 6px,
+    rgba(149, 105, 180, 0.18) 6px,
+    rgba(149, 105, 180, 0.18) 7px
+  );
+}
+
+/* Manga panel border */
+.panel-border {
+  border: 2px solid var(--towa-text);
+  box-shadow: 6px 6px 0 0 var(--towa-accent);
+}
+
+.panel-border-pink {
+  border: 2px solid var(--towa-text);
+  box-shadow: 6px 6px 0 0 #e84a8a;
+}
+
+/* Marker underline */
+.marker {
+  background: linear-gradient(transparent 60%, rgba(232, 74, 138, 0.45) 60%);
+  padding: 0 0.1em;
+}
+
+/* Entrance animations (staggered) */
+@keyframes towa-rise {
+  0% { opacity: 0; transform: translateY(24px) }
+  100% { opacity: 1; transform: translateY(0) }
+}
+@keyframes towa-fade {
+  0% { opacity: 0 }
+  100% { opacity: 1 }
+}
+@keyframes towa-slide-x {
+  0% { opacity: 0; transform: translateX(-24px) }
+  100% { opacity: 1; transform: translateX(0) }
+}
+@keyframes towa-pop {
+  0% { opacity: 0; transform: scale(0.92) }
+  60% { opacity: 1; transform: scale(1.02) }
+  100% { transform: scale(1) }
+}
+
+.anim-rise { animation: towa-rise 700ms cubic-bezier(0.16, 1, 0.3, 1) both }
+.anim-fade { animation: towa-fade 900ms ease both }
+.anim-slide { animation: towa-slide-x 700ms cubic-bezier(0.16, 1, 0.3, 1) both }
+.anim-pop { animation: towa-pop 600ms cubic-bezier(0.34, 1.56, 0.64, 1) both }
+
+/* Stagger delays */
+.delay-1 { animation-delay: 80ms }
+.delay-2 { animation-delay: 160ms }
+.delay-3 { animation-delay: 240ms }
+.delay-4 { animation-delay: 320ms }
+.delay-5 { animation-delay: 400ms }
+.delay-6 { animation-delay: 480ms }
+
+/* Respect reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  .anim-rise,
+  .anim-fade,
+  .anim-slide,
+  .anim-pop {
+    animation: none !important;
+  }
 }
