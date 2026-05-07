@@ -109,6 +109,11 @@ def runtime_context_to_data(context: Optional[StageRuntimeContext]) -> Optional[
         "cancellation_token": context.cancellation_token,
         "target_regions": list(context.target_regions),
         "selected_layer_ids": list(context.selected_layer_ids),
+        "session_provider_secrets": dict(context.session_provider_secrets),
+        "metadata": dict(context.metadata),
+        "service_session_key": context.service_session_key,
+        "service_base_url": context.service_base_url,
+        "service_request_ref": context.service_request_ref,
     }
 
 
@@ -122,6 +127,11 @@ def runtime_context_from_data(payload: Optional[dict[str, Any]]) -> Optional[Sta
         cancellation_token=payload.get("cancellation_token"),
         target_regions=list(payload.get("target_regions", [])),
         selected_layer_ids=list(payload.get("selected_layer_ids", [])),
+        session_provider_secrets=dict(payload.get("session_provider_secrets", {})),
+        metadata=dict(payload.get("metadata", {})),
+        service_session_key=payload.get("service_session_key"),
+        service_base_url=payload.get("service_base_url"),
+        service_request_ref=payload.get("service_request_ref"),
     )
 
 

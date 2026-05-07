@@ -3,6 +3,12 @@
 `model_engine`에서 custom model을 붙이는 방법을 정의한 문서다.  
 이 문서는 Python 로컬 모델과 HTTP API 모델을 같은 계약으로 등록하는 기준서다.
 
+중요한 설계 원칙:
+
+- custom model은 capability로 합류하고, runtime은 분리한다.
+- custom model을 같은 Python 프로세스에 계속 import하는 방식은 장기 기본값으로 삼지 않는다.
+- 의존성 충돌을 피하려면 모델 구현보다 runtime 격리가 먼저다.
+
 ## 1. 목표
 
 - 개발자가 `model_engine` 코드를 크게 뜯지 않고 모델을 붙일 수 있어야 한다.
@@ -11,15 +17,40 @@
 
 ## 2. 지원 방식
 
-현재 지원하는 custom adapter 타입은 두 가지다.
+현재 지원하는 custom adapter 타입은 세 가지다.
 
 - `python_callable`
   - 같은 Python 환경 안에서 함수를 직접 호출한다.
   - 로컬 모델, PyTorch 모델, 실험용 모델에 적합하다.
+  - 단, 개발/실험용 우선 경로로 보고 production 기본값으로 삼지 않는다.
 
 - `http_api`
   - JSON 기반 stage request를 HTTP POST로 전송한다.
   - 외부 inference 서버, SaaS provider, 사내 API 래퍼에 적합하다.
+
+- `container_worker`
+  - 격리된 컨테이너 runtime에서 stage handler를 실행한다.
+  - torch/transformers/CUDA/Python 충돌을 피해야 하는 custom model에 적합하다.
+
+앞으로 기본 권장 경로:
+
+- `http_api`
+  - 가장 안전한 기본 선택지다.
+  - provider/runtime을 완전히 분리할 수 있다.
+
+- `subprocess_ipc`
+  - 같은 호스트에서 별도 Python 환경 또는 별도 launcher로 실행하는 격리형 worker
+  - 아직 표준 adapter로 구현되지는 않았지만, 장기 기본 경로 후보다.
+
+- `container_worker`
+  - 모델별 또는 runtime family별 전용 컨테이너에서 실행하는 방식
+  - GPU/CUDA/torch/transformers 충돌을 피하는 가장 강한 격리 방식이다.
+  - 현재 baseline adapter가 구현되어 있다.
+
+정리:
+
+- built-in의 가벼운 모델만 `python_callable`을 유지할 수 있다.
+- custom model은 기본적으로 `http_api` 또는 `container_worker` 같은 격리 실행 경로를 우선한다.
 
 ## 3. 등록 절차
 
@@ -27,6 +58,11 @@
 2. Python 모델이면 `import_path`, API 모델이면 `endpoint_url` 또는 `endpoint_url_env`를 적는다.
 3. `ModelRegistry`에 `CustomModelLoader`로 디렉터리 전체를 로드한다.
 4. `AdapterBackedStage`가 capability 기준으로 호환 모델을 선택한다.
+
+장기 절차 기준으로는 아래 정보도 같이 가져가야 한다.
+
+5. manifest에 이 모델이 어느 runtime family에서 도는지 기록한다.
+6. orchestrator는 모델 자체를 import하는 대신, 해당 runtime worker를 호출한다.
 
 ## 4. Manifest Schema
 
@@ -63,6 +99,39 @@
 }
 ```
 
+현재 필수 필드는 위 예시와 같다. 다만 의존성 충돌을 피하기 위해 아래 필드를 다음 확장 대상으로 고정한다.
+
+- `execution_backend`
+  - `inprocess`
+  - `http_api`
+  - `subprocess_ipc`
+  - `container_worker`
+- `runtime_family`
+  - 예: `craft-py310-cpu`, `gemini-http-light`, `custom-translation-cu124`
+- `runtime_image`
+  - `container_worker`일 때 사용할 이미지명
+- `runtime_command`
+  - worker 엔트리포인트
+- `python_version`
+- `cuda_version`
+- `dependency_lock_ref`
+- `cache_mounts`
+- `network_policy`
+
+현재 baseline 구현 범위:
+
+- `execution_backend`
+- `runtime_family`
+- `runtime_image`
+- `runtime_command`
+- `python_version`
+- `cuda_version`
+- `dependency_lock_ref`
+- `cache_mounts`
+- `network_policy`
+
+`container_worker` adapter는 위 필드 중 `runtime_image`, `runtime_command`, `cache_mounts`, `network_policy`를 실제 실행에 사용한다.
+
 ## 5. Python Callable 모델
 
 `python_callable`은 `module.submodule:symbol` 형식의 `import_path`를 사용한다.
@@ -82,6 +151,13 @@ from model_engine.contracts.stages import StageRequest, StageResponse
 def my_detector(request: StageRequest) -> StageResponse:
     ...
 ```
+
+주의:
+
+- `python_callable`은 가장 단순하지만 의존성 충돌에 가장 취약하다.
+- torch, transformers, CUDA, Python minor version이 다른 모델을 한 환경에 같이 넣으면 쉽게 깨진다.
+- 따라서 custom model에서 `python_callable`은 실험용, 로컬 프로토타입, 아주 가벼운 pure-Python 구현에 우선 사용한다.
+- 운영 기본 경로는 아니다.
 
 ## 6. HTTP API 모델
 
@@ -108,7 +184,65 @@ def my_detector(request: StageRequest) -> StageResponse:
 - `auth_header_name`이 있으면 orchestrator가 해석한 `resolved_credentials[credential_alias]`의 secret을 헤더로 주입한다.
 - raw secret은 stage JSON 본문에 포함되지 않는다.
 
-## 7. 로딩 예시
+권장:
+
+- 새 custom model을 빠르게 안정적으로 붙이려면 가능하면 `http_api`부터 검토한다.
+- 모델별 Python 패키지 충돌, CUDA 충돌, 시스템 라이브러리 충돌을 `model_engine` 본체에서 떼어낼 수 있다.
+- 특히 외부 team이 관리하는 추론 서버나 Hugging Face/vLLM/TGI 래퍼를 붙일 때 가장 적합하다.
+
+## 7. Runtime Isolation 원칙
+
+custom model 지원이 늘어날수록 가장 큰 리스크는 capability 계약이 아니라 runtime 충돌이다.
+
+대표 충돌 예:
+
+- 서로 다른 `torch` 버전
+- 서로 다른 `transformers` 버전
+- CUDA / cuDNN ABI 차이
+- Python minor version 차이
+- OpenCV / NumPy / system package 차이
+
+따라서 `model_engine`은 아래 원칙을 따른다.
+
+- pipeline은 capability 단위로 정의한다.
+- 모델 선택은 manifest/selector가 한다.
+- 실제 추론은 가능하면 격리된 worker runtime에서 수행한다.
+- stage 경계는 `StageRequest/StageResponse + artifact`로만 넘긴다.
+- in-memory tensor나 provider raw object 공유를 전제로 설계하지 않는다.
+
+권장 runtime family 예:
+
+- `craft-py310-cpu`
+- `manga-ocr-py310-cpu`
+- `gemini-http-light`
+- `custom-translation-cu124`
+- `diffusion-cu121`
+
+원칙:
+
+- 모델마다 이미지 1개씩 만드는 대신, ABI/의존성이 같은 것끼리 `runtime family`를 묶는다.
+- 반대로 모든 모델을 하나의 inference 이미지에 넣는 방식은 피한다.
+- custom model은 `shared-runtime-safe`가 명확히 입증되지 않으면 기본적으로 격리 실행으로 본다.
+
+stage별 기본 판단 기준:
+
+- `text_detection`, `ocr`, `translation`, `inpaint`처럼 실제 모델 추론이 들어가는 stage는 worker 또는 remote backend를 우선한다.
+- `mask_or_erase_planning`처럼 pure-Python rule stage는 당분간 in-process로 둔다.
+- `typesetting`, `postprocess`는 실제 의존성 무게에 따라 `inprocess`에서 시작하고 필요 시 worker로 올린다.
+
+현재 baseline `container_worker` 동작:
+
+- orchestrator가 manifest를 통해 runtime image를 선택한다.
+- worker는 `docker run --rm -i`로 1회성 실행된다.
+- `StageRequest`는 stdin JSON IPC로 전달한다.
+- credential secret은 기존 subprocess IPC와 동일하게 env로 주입한다.
+- workspace는 writable mount, 추가 path/cache는 read-only 또는 지정 mount로 전달한다.
+- `StageResponse`는 stdout JSON IPC로 반환한다.
+
+특정 local translation model 예시는 현재 저장소에 병합하지 않는다.
+필요한 경우 별도 manifest와 worker image를 프로젝트 밖에서 준비한 뒤 `container_worker` manifest로 연결한다.
+
+## 8. 로딩 예시
 
 ```python
 from model_engine.models import ModelRegistry
@@ -125,7 +259,7 @@ stage = AdapterBackedStage(
 )
 ```
 
-## 8. 개발자 체크리스트
+## 9. 개발자 체크리스트
 
 - manifest의 `stage_kind`가 실제 capability와 맞는가
 - `required_artifact_kinds`가 현재 pipeline 입력과 맞는가
@@ -133,14 +267,18 @@ stage = AdapterBackedStage(
 - 반환값이 항상 `StageResponse`인가
 - patch/artifact/report가 README의 공통 계약을 따르는가
 - `inpaint` custom model이면 `inpaint_tasks`를 입력으로 받고 `inpainting layer`만 갱신하는가
+- 같은 runtime image에 넣어도 되는 모델인지 검토했는가
+- `python_callable`로도 충분한지, 아니면 격리 runtime이 필요한지 먼저 판단했는가
+- torch/transformers/CUDA/Python 버전 충돌 가능성을 manifest 수준에서 기록했는가
 
-## 9. 현재 범위와 한계
+## 10. 현재 범위와 한계
 
 현재는 다음까지 지원한다.
 
 - manifest JSON 기반 custom model 로딩
 - Python callable custom model
 - HTTP API custom model
+- container worker custom model
 - capability/credential/schema 호환성 기반 선택
 
 아직 없는 것:
@@ -149,8 +287,16 @@ stage = AdapterBackedStage(
 - registry hot reload
 - provider별 재시도/서킷브레이커 정책
 - sandbox 격리된 third-party plugin 실행 환경
+- `subprocess_ipc` 표준 adapter
+- `container_worker` 표준 adapter
+- runtime family / dependency lock 기반 scheduler
 
-## 10. 실행 방법
+하지만 설계 기준은 이미 정해둔다.
+
+- custom model의 장기 기본값은 격리 runtime이다.
+- `python_callable`은 편의 기능이지 운영 기본 모델 통합 방식은 아니다.
+
+## 11. 실행 방법
 
 기본 검증은 테스트 스위트부터 돌리는 것이 가장 안전하다.
 
@@ -173,7 +319,7 @@ docker compose -f docker-compose.inference.yml run --rm craft-preload
 
 ```bash
 python3 model_engine/scripts/run_craft_sample.py \
-  --image model_engine/samples/images/sample_page.webp \
+  --image model_engine/samples/dlsite/sample.jpg \
   --workspace model_engine/.runtime
 ```
 
@@ -203,7 +349,7 @@ docker compose -f docker-compose.inference.yml run --rm craft-sample
 export TOWA_NANOBANANA_API_KEY="YOUR_API_KEY"
 
 python3 model_engine/scripts/run_inpaint_sample.py \
-  --image model_engine/samples/images/sample_page.webp \
+  --image model_engine/samples/dlsite/sample.jpg \
   --workspace model_engine/.runtime
 ```
 
@@ -258,7 +404,121 @@ Compose 파일은 아래를 자동으로 처리한다.
 - OpenCV 런타임 때문에 `libGL.so.1`이 필요하므로, 로컬이 아니라 inference 이미지 안에서 실행하는 것을 기준으로 본다.
 - CRAFT/OpenCV 조합은 현재 NumPy 2.x와 ABI 충돌이 날 수 있어서 inference 의존성은 `numpy<2`로 고정했다.
 - CRAFT 이미지에서는 `opencv-python==4.7.0.72` 한 계열만 설치해 `cv2.dnn.DictValue` 충돌을 피한다.
+
+### 10-3. Built-in OCR 실행
+
+`CRAFT -> manga-ocr` 최소 흐름은 아래 스크립트로 실행한다.
+
+```bash
+python3 model_engine/scripts/run_ocr_sample.py \
+  --image model_engine/samples/dlsite/sample.jpg \
+  --workspace model_engine/.runtime
+```
+
+규칙:
+
+- `ocr` stage는 `text_regions`를 입력으로 받아 `DocumentIR.text_blocks`를 교체한다.
+- canonical OCR artifact는 `ocr_text_blocks` JSON이다.
+- `manga-ocr`는 Hugging Face / Transformers cache를 사용한다.
+
+결과물을 보는 위치:
+
+- detection 결과:
+  - `model_engine/.runtime/transactions/pipe_ocr_sample/text_detection/.../text_regions.json`
+- OCR 결과:
+  - `model_engine/.runtime/transactions/pipe_ocr_sample/ocr/.../ocr_text_blocks.json`
+
+Compose로 실행하면 더 단순하다.
+
+```bash
+cd model_engine
+docker compose -f docker-compose.inference.yml run --rm ocr-sample
+```
+
+권장 순서:
+
+1. `docker compose -f docker-compose.inference.yml run --rm craft-preload`
+2. `docker compose -f docker-compose.inference.yml run --rm ocr-preload`
+3. `docker compose -f docker-compose.inference.yml run --rm ocr-sample`
+
+Compose 파일은 OCR 실행 시 아래 cache를 재사용한다.
+
+- `torch` cache
+- Hugging Face / Transformers cache
+- `ocr-preload`는 `kha-white/manga-ocr-base` 모델 파일을 host-mounted `model_engine/.cache/models/` 아래로 미리 받아둔다.
 - CRAFT가 `torchvision.models.vgg.model_urls`를 직접 참조하므로, 추론 이미지는 `torch==1.12.1`, `torchvision==0.13.1` 조합으로 고정한다.
+
+### 10-4. Built-in Translation 실행
+
+`CRAFT -> manga-ocr -> OpenAI-compatible translation` 최소 흐름은 아래 스크립트로 실행한다.
+
+로컬 실행 설정은 임시로 `model_engine/.runtime/runtime_config.json`에서 읽는다.
+이 파일은 Git에 올라가지 않는다.
+
+예시:
+
+```json
+{
+  "TOWA_TRANSLATION_BACKEND": "openai_compatible",
+  "TOWA_TRANSLATION_MODEL_NAME": "local-model",
+  "TOWA_OPENAI_COMPATIBLE_BASE_URL": "http://host.docker.internal:1234/v1",
+  "TOWA_OPENAI_COMPATIBLE_API_KEY": "",
+  "TOWA_TRANSLATION_PROVIDER_API_KEY": "",
+  "TOWA_NANOBANANA_API_KEY": ""
+}
+```
+
+```bash
+python3 model_engine/scripts/run_translation_sample.py \
+  --image model_engine/samples/dlsite/sample.jpg \
+  --workspace model_engine/.runtime
+```
+
+규칙:
+
+- `translation` stage는 `DocumentIR.text_blocks`를 읽고 `translated_text`만 채운다.
+- canonical translation artifact는 `translated_text_blocks` JSON이다.
+- 기본 샘플은 OpenAI-compatible `/v1/chat/completions`를 사용한다.
+- Docker Compose에서는 호스트 LM Studio/Ollama/custom proxy 접근을 위해 기본 base URL을 `http://host.docker.internal:1234/v1`로 둔다.
+- Vertex를 쓰려면 `TOWA_TRANSLATION_BACKEND=vertex`와 `TOWA_TRANSLATION_PROVIDER_API_KEY`를 함께 설정한다.
+
+Compose로 실행하면 더 단순하다.
+
+```bash
+cd model_engine
+docker compose -f docker-compose.inference.yml run --rm translation-sample
+```
+
+권장 순서:
+
+1. `docker compose -f docker-compose.inference.yml run --rm craft-preload`
+2. `docker compose -f docker-compose.inference.yml run --rm ocr-preload`
+3. `docker compose -f docker-compose.inference.yml run --rm translation-sample`
+
+### 10-5. Built-in Pipeline 실행
+
+전체 샘플 파이프라인은 `pipeline` 서비스로 실행한다.
+
+흐름:
+
+- `text_detection`
+- `ocr`
+- `translation`
+- `mask_or_erase_planning`
+- `inpaint`
+
+실행:
+
+```bash
+cd model_engine
+docker compose -f docker-compose.inference.yml run --rm pipeline
+```
+
+결과 위치:
+
+- `model_engine/.runtime/transactions/pipe_pipeline_sample/`
+- 번역 결과: `.../translation/..._translated_text_blocks.json`
+- 인페인트 결과: `.../inpaint/..._inpainting.png`
 
 ### 10-3. Custom Python 모델 실행 흐름
 

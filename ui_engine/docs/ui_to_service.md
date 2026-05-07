@@ -291,11 +291,11 @@ snapshot 통합 덕분에 단계가 5번에서 2번으로 단순화.
 
 | 문서 | 범위 | 이 문서와의 관계 |
 |------|------|-----------------|
-| `INTER_ENGINE_HTTP.md` | 엔진 간 통신 전체 | 이 문서는 "UI → Service" 파일 저장 부분을 구체화 |
-| `service_engine/API_CONTRACT.md` | 인증 + 과금 | 이 문서의 API는 같은 인증 체계 위에 추가 |
+| `docs/http-contract.md` | 엔진 간 통신 전체 | 이 문서는 "UI → Service" 파일 저장 부분을 구체화 |
+| `docs/service-engine-boundary.md` | 인증 + 과금 + 저장 경계 | 이 문서의 API는 같은 인증 체계 위에 추가 |
 | `design-file-system.md` | UI 내부 파일 시스템 설계 | 이 문서는 그 설계에서 서버에 요청하는 부분 |
 
-`INTER_ENGINE_HTTP.md`에 "object storage 상세 설계 — 제외"로 되어있는 부분이 이 문서의 범위.
+`docs/http-contract.md`에 "object storage 상세 설계 — 제외"로 되어있는 부분이 이 문서의 범위.
 
 ---
 

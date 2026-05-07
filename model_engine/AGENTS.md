@@ -21,7 +21,7 @@
 
 ## MD 
 
-- READ.md : 구현 계획
-- PLAN.md : 추후 구체화 예정 사항 
-- PROGRESS.md : 구현 완료 사항 (구현 시마다 반드시 최신화)
-- SPEC.md : 전체 설계서 
+- docs/README.md : 내부 구현 기준서
+- docs/PLAN.md : 추후 구체화 예정 사항
+- docs/PROGRESS.md : 구현 완료 사항 (구현 시마다 반드시 최신화)
+- docs/SPEC.md : 전체 설계서

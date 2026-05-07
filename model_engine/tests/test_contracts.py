@@ -6,7 +6,7 @@ import tempfile
 import unittest
 
 from model_engine.contracts.artifacts import ArtifactDescriptor, ArtifactStatus, InMemoryArtifactRegistry
-from model_engine.contracts.document_ir import DocumentIR, LayerIR
+from model_engine.contracts.document_ir import DocumentIR, LayerIR, TextBlock
 from model_engine.contracts.patches import PatchOp, PatchOperation, apply_patches
 
 
@@ -75,6 +75,44 @@ class PatchContractTests(unittest.TestCase):
         self.assertEqual(2, len(document.layers))
         self.assertEqual("block-1", document.text_blocks[0].block_id)
         self.assertEqual({"engine": "craft"}, document.stage_meta["text_detection"])
+
+    def test_replace_text_blocks_overwrites_existing_blocks(self) -> None:
+        document = DocumentIR(
+            id="doc_2",
+            name="page-2",
+            width=100,
+            height=200,
+            text_blocks=[TextBlock(block_id="block-old", source_lang_text="old")],
+        )
+
+        apply_patches(
+            document,
+            [
+                PatchOperation(
+                    op=PatchOp.REPLACE_TEXT_BLOCKS,
+                    payload={
+                        "text_blocks": [
+                            {
+                                "block_id": "block-new-1",
+                                "source_lang_text": "첫 줄",
+                                "source_region_ref": "region_0001",
+                            },
+                            {
+                                "block_id": "block-new-2",
+                                "source_lang_text": "둘째 줄",
+                                "translated_text": "",
+                                "writing_mode": "vertical",
+                                "source_region_ref": "region_0002",
+                            },
+                        ]
+                    },
+                )
+            ],
+        )
+
+        self.assertEqual(["block-new-1", "block-new-2"], [block.block_id for block in document.text_blocks])
+        self.assertEqual("첫 줄", document.text_blocks[0].source_lang_text)
+        self.assertEqual("vertical", document.text_blocks[1].writing_mode)
 
 
 class ArtifactRegistryTests(unittest.TestCase):

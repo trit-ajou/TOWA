@@ -2,10 +2,17 @@
 
 ## 기준 문서
 
+`model_engine` 문서는 `docs/` 아래에 정리한다.
+
 - `README.md`: 현재 `model_engine` 내부 구현 기준서
 - `PLAN.md`: 확정/미확정 범위 판단 기준
 - `IMPLEMENTATION_SUMMARY.md`: 현재 실제 구현 완료 범위 요약
-- `SPEC.md`, `API_CONTRACT.md`: 외부 엔진 경계와 SaaS/local 계약 참고
+- `OCR_CAPABILITY.md`: OCR capability 공통 계약 초안
+- `TROUBLESHOOTING.md`: OCR/번역 실행 중 관측한 문제와 threshold 튜닝 기록
+- `SESSION_AND_CREDENTIAL_IMPLEMENTATION.md`: 세션, usage, provider credential 구현 준비 문서
+- `SERVING_PLAN.md`: `API + Inference` 통합 서빙 컨테이너 전략과 단일 serving image 전환 계획
+- `NEXT_SESSION_HANDOFF.md`: 다음 세션 시작 시 바로 읽을 상태 요약과 우선순위 메모
+- `SPEC.md`, `../docs/http-contract.md`: 외부 엔진 경계와 SaaS/local 계약 참고
 
 ## 이번에 구현한 범위
 
@@ -14,12 +21,40 @@
 이미 구현된 capability:
 
 - built-in `text_detection=CRAFT`
+- built-in `ocr=manga-ocr`
 - 규칙 기반 `mask_or_erase_planning`
 - built-in `inpaint=nanobanana(Vertex AI 경유)`
+- built-in `translation=OpenAI-compatible`
+- built-in `translation=Vertex Gemini`
 
-아직 미구현인 영역은 OCR/번역/식자/postprocess와 실제 billable provider smoke run이다.
+아직 미구현인 영역은 식자/postprocess와 실제 billable provider smoke run이다.
 
 README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage IPC, artifact lifecycle, credential binding/key management 규칙을 README에 먼저 고정하고 그 범위까지만 구현했다.
+
+최근 추가된 wiring:
+
+- `service_engine` client/errors/models 패키지 추가
+- `ServiceBackedPipelineRunner` 추가
+- `StageRuntimeContext`에 SaaS usage wiring 필드 추가
+- SaaS HTTP job 경로에서 `Authorization` bearer를 `runtime_context.service_session_key`로 정규화해 job context에 저장
+- background usage capture/release가 request-local raw header가 아니라 저장된 `service_session_key` 기준으로 동작하도록 정리
+- service usage hold/capture/release 테스트 추가
+- OpenAI-compatible translation adapter 추가
+- `model_engine/.runtime/runtime_config.json` 기반 local runtime config 로더 추가
+- Docker Compose translation 기본 base URL을 host `127.0.0.1:1234/v1` 대응용 `host.docker.internal:1234/v1`로 설정
+- `Tencent HY-MT` 구체 모델 병합 예시는 제거하고 generic custom runtime 방향으로 정리
+- OCR stage에 `MangaOcr()` recognizer 재사용, region merge, `vertical_rtl` reading order, density/area 기반 `needs_review` 마킹 추가
+- OCR/번역 튜닝 기록용 `TROUBLESHOOTING.md` 추가
+- 세션/credential 책임과 실제 API 함수 기준 호환성을 정리한 `SESSION_AND_CREDENTIAL_IMPLEMENTATION.md` 추가
+- `UI_MODEL_CONTRACT_DRAFT.md` 추가
+- `SERVING_PLAN.md` 추가
+- `NEXT_SESSION_HANDOFF.md` 추가
+- `/v1/jobs`가 `multipart(metadata + primary_bitmap)` 입력을 수신할 수 있게 확장
+- metadata의 `upload://primary_bitmap` descriptor를 request 시점에 `file://...` artifact로 물질화
+- multipart request fingerprint에 uploaded bitmap sha256을 포함해 idempotency 충돌 판정을 안정화
+- `GET /v1/jobs/{job_id}` 응답에 `document_patch` 필드 추가
+- UI migration 전환을 위해 legacy JSON create와 full `document` 응답도 임시로 함께 유지
+- 장기 이상형인 `API / Worker` 분리 전에, 현재 단계에서는 `API + Inference` 통합 서빙 컨테이너를 먼저 만들기로 전략을 정리
 
 ### 1. Canonical IR
 
@@ -58,6 +93,7 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - `set_layer_filters`
 - `set_document_selection`
 - `append_text_blocks`
+- `replace_text_blocks`
 - `set_stage_meta`
 - `attach_artifact`
 - `detach_artifact`
@@ -191,9 +227,40 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 
 - raw secret은 stage IPC JSON에 싣지 않는다.
 - subprocess worker에는 env로만 주입한다.
-- session credential source는 타입과 런타임 필드만 열어두고, 실제 세션 주입 흐름은 아직 미구현이다.
+- local persisted credential 기본 경로는 `~/.config/towa/model_engine/credentials.json`이다.
+- `.runtime/runtime_config.json`은 샘플 스크립트용 runtime config이고, 기본 resolver persisted source 그 자체는 아니다.
+- local 샘플 실행은 runtime config에서 읽은 값을 `session_provider_secrets`로 옮겨 stage 실행에 사용한다.
 
-### 8. Container Bootstrap
+### 8. SaaS Usage Wiring
+
+구현 파일:
+
+- `service_engine/client.py`
+- `service_engine/errors.py`
+- `service_engine/models.py`
+- `orchestrator.py`
+- `contracts/stages.py`
+- `ipc/serde.py`
+
+구현 내용:
+
+- `service_engine` error envelope를 내부 예외로 매핑하는 client 계층
+- `StageRuntimeContext.service_session_key`, `service_base_url`, `service_request_ref`
+- 순수 `PipelineOrchestrator` 위에 얹는 `ServiceBackedPipelineRunner`
+- SaaS 실행 시 `POST /usage/jobs` -> pipeline 실행 -> `capture` 또는 `release`
+- release 사유를 마지막 실패 stage 기준으로 정리하는 기본 매핑
+- SaaS HTTP job 생성 시 raw bearer에서 session token 본문을 추출해 `runtime_context.service_session_key`에 저장
+- background usage hold/capture/release는 저장된 `service_session_key`로 authenticated path를 재구성해 service 호출
+
+비고:
+
+- 현재 `text_detection` 계열 실행은 service usage enum 호환을 위해 `mask`로 매핑한다.
+- 기존 `/v1/jobs` API 브리지는 유지하고, core orchestrator wiring을 별도로 닫았다.
+- 현재 cloud 경로에는 두 세션 입력 형태가 공존한다.
+  - HTTP API 경로: raw `Authorization` 헤더 입력 -> 내부에서 `service_session_key`로 정규화
+  - direct runner 경로: `service_session_key`를 runtime context에 직접 주입
+
+### 9. Container Bootstrap
 
 구현 파일:
 
@@ -204,6 +271,7 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - `requirements-base.txt`
 - `requirements-craft.txt`
 - `scripts/preload_craft.py`
+- `scripts/preload_manga_ocr.py`
 
 구현 내용:
 
@@ -211,6 +279,7 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - 기본 개발/테스트 이미지와 추론용 이미지 분리
 - 추론 샘플 실행용 Docker Compose 추가
 - CRAFT weight 사전 다운로드용 preload runner 추가
+- `manga-ocr` Hugging Face weight 사전 다운로드용 preload runner 추가
 - base/craft 의존성 파일 분리
 - `/app` 작업 디렉토리
 - `/workspace`, `/artifacts`, `/cache` 기본 경로 생성
@@ -230,7 +299,116 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - 아직 GPU 세팅은 넣지 않았다.
 - 현재 목적은 추론 런타임을 별도 이미지로 분리해 재현성과 확장성을 확보하는 것이다.
 
-### 9. Model Merge / Adapter Registry
+### 9-1. Job Executor Stage Composition
+
+구현 파일:
+
+- `api/jobs.py`
+- `tests/test_job_executor.py`
+
+구현 내용:
+
+- 기본 `ModelJobManager` executor를 placeholder에서 orchestrator 기반 executor로 전환
+- `detect`는 built-in `CRAFT text_detection` stage 조합 사용
+- `translate`는 `text_detection -> ocr -> translation` 조합 사용
+- `inpaint`는 `text_detection -> mask_or_erase_planning -> inpaint` 조합 사용
+- planner 함수를 job executor 안에서 재사용할 수 있도록 경량 function-stage 래퍼 추가
+
+비고:
+
+- 실제 `/v1/jobs` 경로에서도 `ocr`와 `translation` stage가 더 이상 샘플 전용이 아니라 기본 실행 경로 일부가 된다.
+
+### 9-2. Built-in Vertex Translation
+
+구현 파일:
+
+- `contracts/translated_text_blocks.py`
+- `builtin_models/vertex_translation.py`
+- `tests/test_vertex_translation.py`
+- `scripts/run_translation_sample.py`
+- `scripts/run_pipeline_sample.py`
+- `docker-compose.inference.yml`
+
+구현 내용:
+
+- built-in `translation` capability를 Vertex Gemini adapter로 구현
+- 입력은 `DocumentIR.text_blocks`, 출력은 `translated_text_blocks` artifact와 `replace_text_blocks` patch
+- local/SaaS 모두 `user_personal_*` 또는 `platform_managed` credential binding을 사용
+- provider 호출은 `nanobanana`와 같은 `google-genai` / Vertex API key 경로를 재사용
+- 전체 샘플 흐름을 `pipeline` compose 서비스로 묶어 `translation + inpaint`를 한 번에 실행 가능하게 함
+
+비고:
+
+- 기본 모델은 `gemini-3.1-flash-lite-preview`
+- 결과 응답은 JSON으로 강제하고, block id 또는 순서 기준으로 번역 결과를 원문 block에 다시 병합한다.
+
+### 9-3. Built-in OpenAI-compatible Translation
+
+구현 파일:
+
+- `builtin_models/openai_compatible_translation.py`
+- `config/runtime_config.py`
+- `tests/test_openai_compatible_translation.py`
+- `tests/test_runtime_config.py`
+- `scripts/run_translation_sample.py`
+- `scripts/run_pipeline_sample.py`
+
+구현 내용:
+
+- built-in `translation` capability에 OpenAI-compatible adapter 추가
+- LM Studio, Ollama OpenAI-compatible endpoint, custom proxy를 공통 경로로 사용
+- API key가 없어도 동작 가능한 local server 경로와, Bearer key가 필요한 proxy 경로를 모두 허용
+- `env > runtime_config.json > default` 우선순위로 local runtime config를 해석
+- 기본 translation backend를 OpenAI-compatible로 전환하고, Vertex는 명시적 backend 선택으로 유지
+
+비고:
+
+- 현재 기본 base URL은 host 실행 시 `http://127.0.0.1:1234/v1`, Docker 실행 시 `http://host.docker.internal:1234/v1`
+- 현재 구현은 page block 전체를 한 번의 LLM 호출로 보내는 batch translation 방식이다.
+- JSON 출력은 provider/prompt 기반으로 유도하지만, provider별 strict structured output 보강은 아직 남아 있다.
+
+남은 보완:
+
+- JSON repair path 추가
+- `block_id` 누락 시 positional fallback 제거 또는 제한
+- OCR `needs_review`/warning 정보를 prompt에 반영
+- 많은 block에 대한 chunking 정책
+- retry/backoff 및 provider compatibility 보강
+- glossary / term map 추가
+
+### 9-4. OCR Post-processing / Reading Order
+
+구현 파일:
+
+- `builtin_models/manga_ocr.py`
+- `tests/test_manga_ocr.py`
+- `scripts/run_ocr_sample.py`
+- `scripts/run_translation_sample.py`
+- `scripts/run_pipeline_sample.py`
+
+구현 내용:
+
+- `MangaOcr()` 인스턴스를 OCR stage 내에서 1회만 생성하고 재사용
+- detection region들을 OCR 전에 merge해 crop 수를 줄이고 말풍선/문장 단위 인식 가능성을 높임
+- 세로쓰기 일본어 만화 기준 `reading_order_mode=vertical_rtl` 정렬 추가
+- `min_ocr_region_area_*`, `max_text_density_per_1000_px2`, `small_region_long_text_*` 규칙으로 환각 의심 block을 `needs_review`로 마킹
+- 모든 OCR block에 density/area/text length debug 값을 `style_hint`에 기록
+
+비고:
+
+- 현재 기본 threshold는 `max_text_density_per_1000_px2=1.5`
+- 환각 의심 block은 기본적으로 삭제하지 않고 `style_hint.ocr_status=needs_review`로 보존한다.
+- threshold 근거와 샘플별 튜닝 규칙은 `TROUBLESHOOTING.md`에 정리한다.
+
+남은 보완:
+
+- `needs_review` block crop debug artifact 저장
+- 실제 샘플 여러 장 기준 density/area 분포 수집
+- `manga-ocr` confidence 대체 지표 또는 logits 기반 confidence 조사
+- UI에서 `needs_review` block 시각 강조
+- merge 규칙을 말풍선/세로열 단위로 더 정교화
+
+### 10. Model Merge / Adapter Registry
 
 구현 파일:
 
@@ -307,7 +485,7 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - `builtin_models/craft_text_detection.py`
 - `builtin_models/__init__.py`
 - `scripts/run_craft_sample.py`
-- `samples/images/README.md`
+- `SAMPLE_IMAGES.md`
 
 구현 내용:
 
@@ -398,6 +576,8 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - 규칙 기반 planner와 nanobanana inpaint composite 실행
 - transaction-scoped artifact 저장 경로
 - nanobanana failure snapshot 보존
+- multipart upload를 artifact descriptor로 정규화
+- `document_patch` 응답 생성
 
 현재 상태:
 
@@ -423,8 +603,6 @@ PYTHONPYCACHEPREFIX=/tmp/pythoncache python3 -m unittest discover -s model_engin
 
 아래는 의도적으로 보류했다.
 
-- OCR stage 구현
-- translation stage 구현
 - typesetting/layout stage 구현
 - postprocess stage 구현
 - durable artifact backend
@@ -437,18 +615,53 @@ PYTHONPYCACHEPREFIX=/tmp/pythoncache python3 -m unittest discover -s model_engin
 
 이 항목들은 `PLAN.md` 기준으로 아직 스펙이 덜 닫혀 있거나, 외부 provider 계약이 필요하다.
 
+## 최근 설계 결정
+
+- custom model 충돌 회피 전략으로 `runtime isolation` 원칙을 명시했다.
+- 앞으로 custom model의 장기 기본 실행 방식은 같은 Python 프로세스 import가 아니라 격리 worker runtime이다.
+- capability와 runtime을 분리해서 본다.
+  - capability 예: `translation`, `ocr`, `inpaint`
+  - runtime family 예: `craft-py310-cpu`, `gemini-http-light`, `custom-translation-cu124`
+- `python_callable`은 계속 지원하지만 개발/실험용 우선 경로로 본다.
+- 장기 기본 backend 후보는 `http_api`, `subprocess_ipc`, `container_worker`다.
+- 같은 runtime image에 모든 모델 의존성을 누적하는 방식은 피하고, ABI/의존성이 같은 것끼리 runtime family로 묶는 쪽을 기준으로 한다.
+- stage migration 기준도 고정했다.
+  - `text_detection`, `ocr`, `translation`, `inpaint`는 장기적으로 worker 또는 remote backend 우선
+  - `mask_or_erase_planning`은 당분간 in-process 유지
+  - `typesetting`, `postprocess`는 실제 의존성 무게에 따라 단계적으로 분리
+
+## 이번 구현
+
+- `StageManifest`에 runtime isolation 관련 필드를 추가했다.
+  - `execution_backend`
+  - `runtime_family`
+  - `runtime_image`
+  - `runtime_command`
+  - `python_version`
+  - `cuda_version`
+  - `dependency_lock_ref`
+  - `cache_mounts`
+  - `network_policy`
+- custom model spec/loader가 `container_worker` adapter type을 지원한다.
+- baseline `ContainerWorkerModelAdapter`를 추가했다.
+  - `docker run --rm -i`로 worker를 1회성 실행
+  - `StageRequest`/`StageResponse`는 stdin/stdout JSON IPC 사용
+  - workspace와 path mapping, cache mount를 컨테이너로 전달
+  - credential secret은 기존 subprocess IPC와 같은 env 주입 경로를 재사용
+- stage selection 결과 메타데이터에 `execution_backend`, `runtime_family`를 기본으로 남기도록 했다.
+- 특정 local translation model 병합 예시는 제거하고, `container_worker` adapter는 generic custom runtime 기반으로만 유지한다.
+
 ## 다음 구현 후보
 
 현재 코드에서 다음 단계로 자연스러운 순서는 아래다.
 
-1. OCR stage와 OCR 출력 schema 구현
-2. `text_regions` / `text_blocks` 연결 규칙을 더 닫기
-3. translation stage 구현
-4. orchestrator에 optional stage / partial failure 정책 추가
-5. capability contract test를 adapter별 공통 테스트로 분리
-6. 실제 Vertex AI smoke run과 error mapping 검증
-7. 장기적으로 subprocess IPC와 별개로 socket/queue transport가 필요한지 판단
-8. session credential을 실제 login/session 경로와 연결
+1. `text_regions` / `text_blocks` 연결 규칙을 더 닫기
+2. typesetting/layout stage 구현
+3. orchestrator에 optional stage / partial failure 정책 추가
+4. capability contract test를 adapter별 공통 테스트로 분리
+5. 실제 Vertex AI smoke run과 error mapping 검증
+6. 장기적으로 subprocess IPC와 별개로 socket/queue transport가 필요한지 판단
+7. session credential을 실제 login/session 경로와 연결
 
 ## 메모
 
@@ -457,3 +670,4 @@ PYTHONPYCACHEPREFIX=/tmp/pythoncache python3 -m unittest discover -s model_engin
 - 수정 범위는 `model_engine/` 내부로 제한했다.
 - 현재 Dockerfile은 CPU 개발용 최소 이미지다.
 - 실제 provider key는 코드/저장소에 하드코딩하지 않고 credential binding 경로로만 주입한다.
+- custom model 통합은 "모델 import"보다 "runtime worker 호출"을 기본 방향으로 기억한다.
