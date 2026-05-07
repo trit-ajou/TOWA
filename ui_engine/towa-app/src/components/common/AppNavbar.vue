@@ -21,9 +21,12 @@ const isLoggedIn = computed(() => store.getters['auth/isLoggedIn'])
 const creditBalance = computed<number>(() => store.state.auth.creditBalance)
 const reservedUnits = computed<number>(() => store.state.auth.reservedUnits)
 
-function handleLogout() {
-  store.dispatch('auth/logout')
+async function handleLogout() {
+  await store.dispatch('auth/logout')
   userMenu.close()
+  if (route.name !== 'login') {
+    router.replace('/login')
+  }
 }
 const settingsModal = useModal()
 
