@@ -24,6 +24,8 @@
 
 1. `UI engine` backend 계층에는 `/v1/jobs` 기준 de facto contract가 이미 있다.
 2. `model_engine`은 새 multipart 입력과 `document_patch` 응답을 이미 구현했다.
+3. `UI engine`은 현재 visible Bitmappery document를 `primary_bitmap`으로 캡처하고,
+   `document_patch + artifacts` 결과를 현재 page state와 Bitmappery layer stack에 적용한다.
 
 따라서 지금 단계에서는 아래를 분리해서 이해해야 한다.
 
@@ -78,6 +80,16 @@
 - 장기적으로 UI가 merge에 사용해야 하는 것은 `document_patch`다.
 - `document`는 migration/debug compatibility 용도다.
 - `document` 전체를 authoritative result로 간주하면 안 된다.
+
+### 3.3 Artifact Download Path
+
+`GET /v1/jobs/{job_id}/artifacts?artifact_ref=<urlencoded>`
+
+- job detail과 같은 owner/auth 규칙을 적용한다.
+- 해당 job의 `artifacts` map에 존재하는 descriptor만 다운로드할 수 있다.
+- v1에서는 `file://` artifact만 binary response로 내려준다.
+- response `Content-Type`은 artifact descriptor의 `media_type`을 사용한다.
+- job/artifact 없음, owner 불일치, 지원하지 않는 URI는 기존 error envelope로 반환한다.
 
 ## 4. Auth / Mode 규칙
 
@@ -417,6 +429,14 @@ UI는 artifact 결과를 받을 때 다음을 하면 된다.
 
 - patch가 가리키는 `artifact_ref`를 찾는다
 - 해당 descriptor map에서 실제 artifact descriptor를 resolve한다
+- bitmap artifact가 필요하면 `/v1/jobs/{job_id}/artifacts`로 Blob을 다운로드한다
+
+예:
+
+```http
+GET /v1/jobs/job_123/artifacts?artifact_ref=artifact%3A%2F%2Fresult%2Finpaint_layer
+Authorization: Bearer <session_key>
+```
 
 ## 7.5 `stage_reports`
 
@@ -465,10 +485,24 @@ UI 타입에서 아래를 분명히 해야 한다.
 UI는 polling 결과를 받아 아래 순서로 처리하면 된다.
 
 1. `status` 확인
-2. terminal이면 `document_patch`를 현재 page state에 merge
-3. patch가 참조하는 artifact가 있으면 `artifacts` map에서 resolve
-4. merge된 최종 page state를 UI store에 반영
-5. cloud라면 최종 snapshot 저장은 `service_engine`에 수행
+2. `succeeded`만 자동 적용 대상으로 삼는다
+3. `partial` 또는 `failed`는 적용하지 않고 page status를 이전 상태로 되돌린다
+4. `document_patch`를 현재 page state에 merge한다
+5. patch가 참조하는 bitmap artifact가 있으면 `artifacts` map에서 resolve한 뒤 artifact endpoint로 Blob을 다운로드한다
+6. merge된 최종 page state를 UI store에 반영한다
+7. 적용 직후 `savePage(pageId)`로 snapshot을 즉시 저장한다
+
+현재 UI 적용 정책:
+
+- `primary_bitmap` 입력은 현재 보이는 active Bitmappery document 전체를 PNG로 캡처한다.
+- `replace_text_blocks`는 현재 page의 `textBlocks`를 교체한다.
+- `append_text_blocks`는 현재 page의 `textBlocks` 뒤에 추가한다.
+- text block마다 새 Bitmappery `text` layer를 최상단에 추가한다.
+- text layer 이름은 `AI <Operation> <YYYYMMDD HHmm> #NN` 형식이다.
+- text layer 내용은 `translated_text`를 우선하고 없으면 `source_lang_text`를 사용한다.
+- text style은 `Noto Sans KR`, `24px`, black으로 고정한다.
+- `add_layer` 또는 `replace_source_ref`가 bitmap artifact를 참조하면 기존 레이어를 찾거나 교체하지 않고 새 `graphic` layer 후보를 최상단에 추가한다.
+- `set_stage_meta`는 UI 내부 result/status 표시용으로만 보관하며 현재 service snapshot metadata에는 별도 저장하지 않는다.
 
 ## 8.4 Placeholder 제거
 
@@ -492,12 +526,11 @@ UI 팀이 실제로 손대게 될 가능성이 높은 파일:
 
 권장 순서:
 
-1. `contracts.ts`에 `documentPatch` 추가
-2. `real.ts`를 multipart create로 변경
-3. `emulated.ts`도 같은 shape로 맞춤
-4. backend tests 갱신
-5. editor placeholder 제거
-6. `document_patch` merge reducer 연결
+1. `contracts.ts`에 `primaryBitmap`, `documentPatch`, `getArtifact()` 계약 유지
+2. `real.ts`는 `multipart(metadata + primary_bitmap)` create와 artifact Blob download를 유지
+3. `emulated.ts`도 같은 shape와 fake bitmap artifact를 유지
+4. backend tests와 result applier tests로 wire shape와 page 적용 정책을 검증
+5. `AiToolbar`는 active document 캡처, polling, `succeeded` 적용, 즉시 snapshot 저장을 담당
 
 ## 10. 지금 당장 하지 않는 것
 

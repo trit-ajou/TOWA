@@ -4,12 +4,20 @@ import { useStore } from 'vuex'
 import { ScanText, Eraser, Languages, ZoomIn, ZoomOut, Columns2, Square } from 'lucide-vue-next'
 import BaseButton from '@/components/common/BaseButton.vue'
 import { useAppBackend } from '@/composables/useAppBackend'
+import { usePageLoader } from '@/composables/usePageLoader'
 import { DEPLOYMENT_MODE } from '@/config/deployment'
 import { BackendError } from '@/backend/errors'
 import type { AiJobCreateInput, AiJobSnapshot, AiOperationKind } from '@/backend/contracts'
+import type { Page, PageStatus } from '@/types/page'
+import { applyAiJobSnapshotToCurrentPage } from '@/ai/result-applier'
+// @ts-expect-error bitmappery JS module
+import { createSyncSnapshot } from '@bitmappery/utils/document-util'
+// @ts-expect-error bitmappery JS module
+import { canvasToBlob } from '@bitmappery/utils/canvas-util'
 
 const store = useStore()
 const backend = useAppBackend()
+const { savePage } = usePageLoader()
 const loading = ref<string | null>(null)
 const lastResult = ref<{ op: string; status: string; jobId: string } | null>(null)
 
@@ -18,11 +26,17 @@ const viewMode = computed(() => store.getters['editor/canvasViewMode'])
 const projectId = computed(() => store.getters['editor/currentProjectId'] as string | null)
 const selectedPageId = computed(() => store.getters['editor/selectedPageId'] as string | null)
 
-function buildInput(operationKind: AiOperationKind): AiJobCreateInput {
+async function buildInput(operationKind: AiOperationKind, pageRecord: Page): Promise<AiJobCreateInput> {
   const proj = projectId.value ?? 'no-project'
   const page = selectedPageId.value ?? 'no-page'
   const attempt = Date.now()
   const mode = DEPLOYMENT_MODE.value === 'cloud' ? 'saas' : 'local'
+  const activeDocument = store.getters['bmp/activeDocument']
+  if (!activeDocument) {
+    throw new Error('No active Bitmappery document is loaded')
+  }
+  const primaryBitmap = await canvasToBlob(createSyncSnapshot(activeDocument), 'image/png')
+  const requestedBy = currentUserEmail() ?? 'ui-engine'
   return {
     schemaVersion: 'v1',
     idempotencyKey: `project:${proj}:page:${page}:op:${operationKind}:v:${attempt}`,
@@ -31,12 +45,35 @@ function buildInput(operationKind: AiOperationKind): AiJobCreateInput {
     document: {
       id: `doc_${page}`,
       name: `page-${page}`,
+      width: activeDocument.width,
+      height: activeDocument.height,
+      layers: [
+        {
+          id: 'layer_primary_bitmap',
+          name: 'Visible page bitmap',
+          type: 'graphic',
+          left: 0,
+          top: 0,
+          width: activeDocument.width,
+          height: activeDocument.height,
+          source_ref: 'artifact://input/primary_bitmap',
+        },
+      ],
+      text_blocks: pageRecord.textBlocks.map((block) => ({
+        block_id: block.id,
+        source_lang_text: block.original,
+        translated_text: block.translated,
+        bbox: block.bbox,
+      })),
+      stage_meta: {},
     },
-    artifacts: {},
+    primaryBitmap,
     runtimeContext: {
       mode,
       workspace_uri: `workspace://project/${proj}/page/${page}`,
-      requested_by: 'ui-engine-test',
+      requested_by: requestedBy,
+      target_regions: [],
+      selected_layer_ids: [],
     },
   }
 }
@@ -57,18 +94,48 @@ async function runAction(action: AiOperationKind) {
   if (loading.value !== null) return
   loading.value = action
   lastResult.value = null
+  let previousPage: Page | null = null
+  let restorePreviousPage = false
   try {
-    const input = buildInput(action)
+    const proj = requireProjectId()
+    const pageId = requirePageId()
+    const pageRecord = requireCurrentPage(proj, pageId)
+    previousPage = { ...pageRecord, textBlocks: [...pageRecord.textBlocks] }
+    store.commit('pages/UPDATE_PAGE', { ...pageRecord, status: 'ai-processing' satisfies PageStatus })
+    restorePreviousPage = true
+
+    const input = await buildInput(action, pageRecord)
     const sessionKey = (store.state as { auth?: { sessionKey: string | null } }).auth?.sessionKey ?? null
     const opts = sessionKey ? { sessionKey } : undefined
     const created = await backend.aiJobs.createJob(input, opts)
     const final = await pollUntilTerminal(created.jobId, sessionKey)
-    lastResult.value = { op: action, status: final.status, jobId: final.jobId }
-    console.log(`[AiToolbar] ${action} →`, final)
-    if (sessionKey) {
-      void store.dispatch('auth/refreshCredit')
+    if (final.status === 'succeeded') {
+      const applied = await applyAiJobSnapshotToCurrentPage({
+        store,
+        backend: backend.aiJobs,
+        snapshot: final,
+        projectId: proj,
+        pageId,
+        savePage,
+        sessionKey,
+      })
+      restorePreviousPage = false
+      lastResult.value = {
+        op: action,
+        status: `${final.status}: +${applied.textLayerCount} text, +${applied.graphicLayerCount} image`,
+        jobId: final.jobId,
+      }
+    } else {
+      restorePage(previousPage)
+      restorePreviousPage = false
+      const reason = final.error?.message ? `: ${final.error.message}` : ''
+      lastResult.value = { op: action, status: `${final.status}${reason}`, jobId: final.jobId }
     }
+    console.log(`[AiToolbar] ${action} →`, final)
   } catch (e) {
+    if (restorePreviousPage) {
+      restorePage(previousPage)
+    }
     const msg = e instanceof BackendError
       ? `${e.payload.code}: ${e.payload.message}`
       : e instanceof Error
@@ -76,13 +143,46 @@ async function runAction(action: AiOperationKind) {
         : String(e)
     lastResult.value = { op: action, status: `error: ${msg}`, jobId: '' }
     console.error(`[AiToolbar] ${action} failed:`, e)
+  } finally {
     const sessionKey = (store.state as { auth?: { sessionKey: string | null } }).auth?.sessionKey ?? null
     if (sessionKey) {
       void store.dispatch('auth/refreshCredit')
     }
-  } finally {
     loading.value = null
   }
+}
+
+function requireProjectId(): string {
+  if (!projectId.value) {
+    throw new Error('No project is selected')
+  }
+  return projectId.value
+}
+
+function requirePageId(): string {
+  if (!selectedPageId.value) {
+    throw new Error('No page is selected')
+  }
+  return selectedPageId.value
+}
+
+function requireCurrentPage(proj: string, pageId: string): Page {
+  const pageRecord = store.getters['pages/byId'](proj, pageId) as Page | undefined
+  if (!pageRecord) {
+    throw new Error(`Page ${pageId} is not loaded`)
+  }
+  return pageRecord
+}
+
+function restorePage(pageRecord: Page | null): void {
+  if (pageRecord) {
+    store.commit('pages/UPDATE_PAGE', pageRecord)
+  }
+}
+
+function currentUserEmail(): string | null {
+  const state = store.state as { auth?: { user?: { email?: string } | null } }
+  return state.auth?.user?.email ?? null
 }
 
 function zoomIn() {
