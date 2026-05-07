@@ -98,5 +98,25 @@ services:
     ports:
       - "${UI_ENGINE_PORT:-5173}:5173"
 
+  rest-smoke:
+    profiles:
+      - smoke
+    network_mode: host
+    build:
+      context: ./smoke/rest
+      dockerfile: Dockerfile
+    environment:
+      UI_ORIGIN: ${UI_ORIGIN:-http://localhost:5173}
+      UI_ENGINE_URL: ${SMOKE_UI_ENGINE_URL:-http://localhost:5173}
+      SERVICE_ENGINE_URL: ${SMOKE_SERVICE_ENGINE_URL:-http://localhost:8000}
+      MODEL_ENGINE_URL: ${SMOKE_MODEL_ENGINE_URL:-http://localhost:8100}
+    depends_on:
+      service-engine:
+        condition: service_healthy
+      model-engine:
+        condition: service_healthy
+      ui-engine:
+        condition: service_started
+
 volumes:
   postgres-data:
