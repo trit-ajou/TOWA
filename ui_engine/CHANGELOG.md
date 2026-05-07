@@ -6,6 +6,17 @@
 
 ## 2026-05-07
 
+### 15:52 — Landing/Login 풀페이지 + 라우터 가드 (manga panel 디자인)
+- 14:23에 박았던 LibraryView 인라인 미로그인 가드를 라우트/가드 구조로 정식화
+- 디자인 방향: "Manga panel × Editorial Brutalism" — 두꺼운 panel border + offset 그림자, halftone dot grid + 필름 그레인, marker highlight, 비대칭 grid + staggered 진입 애니메이션. 기존 dark/purple/pink 팔레트 유지
+- 폰트: Bricolage Grotesque (display, 영문) + Pretendard Variable (한글). `index.html`에 `<link>` 로딩(@import 순서 경고 회피, preconnect 포함)
+- `views/LandingView.vue` 신규 (`/`): Hero + 4단계 워크플로우(검출/지움/번역/식자 manga 패널) + AI/픽셀 split feature + Demo placeholder + CTA + Footer. 로그인 상태별 CTA 분기
+- `views/LoginView.vue` 신규 (`/login`): 좌측 브랜딩+미니 워크플로우 / 우측 form 스플릿. devLogin 후 `?redirect=` 또는 `/library`. 회원가입 placeholder
+- `router/index.ts`: 라우트 4개(`/`, `/login`, `/library`, `/project/:id`). `meta.requiresAuth` + `beforeEach` 가드로 cloud + 미로그인 시 `/login?redirect=...`으로 redirect
+- `app.css`: halftone/halftone-dense/grain/hatch/marker/panel-border 유틸 + 진입 애니메이션 4종(rise/fade/slide/pop) + delay-1~6 stagger + `prefers-reduced-motion` 존중
+- `views/LibraryView.vue`: 14:23의 인라인 미로그인 가드 제거 (라우터 가드로 대체)
+- `components/common/AppNavbar.vue`: 미로그인 메뉴 "로그인" 버튼 → `router.push('/login')`. LoginModal 자체는 SettingsModal `@open-login` 트리거 + 추후 세션 만료 overlay 용도로 보존
+
 ### 14:23 — 라이브러리 미로그인 가드 + 새 프로젝트 추론모드 노출 제거
 - 증상 1: cloud 모드에서 로그인 안 한 상태인데 라이브러리 폴더 트리/UI가 노출됨. 폴더 클릭 시 인증 에러
 - 증상 2: 새 프로젝트 모달에 "추론 모드 (클라우드/로컬)" 라디오 노출. 모드 선택은 설정 메뉴(SettingsModal)에서만 다루는 게 맞음
