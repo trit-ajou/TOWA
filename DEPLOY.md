@@ -29,10 +29,24 @@ git clone git@github.com:trit-ajou/TOWA.git ~/TOWA
 - `.env`가 없으면 `.env.deploy`(repo에 commit된 cloud-mode 프리셋)에서 복사
 - `docker compose up -d --build`로 첫 빌드 + 기동
 
-이후 자동 배포 cron 등록 — `crontab -e` 실행 후 한 줄 추가:
+이후 자동 배포 cron 등록:
+
+```bash
+crontab -e
+```
+
+에디터가 열리면 맨 아래에 다음 한 줄을 그대로 붙여넣고 저장 (sh 환경마다 `~`를 못 풀어주는 경우가 있어 절대경로 사용):
 
 ```
-*/5 * * * * ~/TOWA/deploy.sh >> ~/TOWA/deploy.log 2>&1
+*/5 * * * * /home/$(whoami)/TOWA/deploy.sh >> /home/$(whoami)/TOWA/deploy.log 2>&1
+```
+
+(위 줄에서 `$(whoami)`는 그대로 두지 말고 본인 username으로 직접 치환. 예: `/home/jy/TOWA/deploy.sh`. cron은 셸 명령 실행이 아니라서 `$(whoami)`를 풀어주지 않음)
+
+등록 확인:
+```bash
+crontab -l                    # 위 한 줄이 보이면 OK
+tail -f ~/TOWA/deploy.log     # 5분 단위로 실행 로그 누적되는지 확인 (Ctrl+C로 종료)
 ```
 
 `.env` 값을 다르게 쓰고 싶으면 `.env`를 직접 수정. `.env.deploy`는 이후 다시 안 건드림.
