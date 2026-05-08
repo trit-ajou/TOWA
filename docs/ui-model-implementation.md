@@ -397,6 +397,13 @@ UI는 `succeeded`, `failed`, `partial`을 terminal로 취급하면 된다.
 - `replace_source_ref`
 - `set_stage_meta`
 
+`detect` 작업의 현재 구현:
+
+- model engine은 CRAFT `text_regions` artifact를 계속 생성한다.
+- 외부 `detect` job 결과에는 UI merge를 위해 `replace_text_blocks` patch도 포함한다.
+- 이때 block의 `source_lang_text`/`translated_text`는 OCR 전이므로 빈 문자열이다.
+- `translate`/`inpaint` 내부 선행 검출 단계는 text block patch를 만들지 않는다.
+
 중요:
 
 - `document`를 patch처럼 재해석하면 안 된다.
