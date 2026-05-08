@@ -85,13 +85,25 @@ export interface TransportStageReport {
   [key: string]: unknown
 }
 
+export interface TransportPatchOperation {
+  op: string
+  payload: Record<string, unknown>
+  [key: string]: unknown
+}
+
+export interface TransportDocumentPatch {
+  patches: TransportPatchOperation[]
+  [key: string]: unknown
+}
+
 export interface AiJobCreateInput {
   schemaVersion?: string
   idempotencyKey: string
   operationKind: AiOperationKind
   requestRef: string
   document: TransportDocument
-  artifacts: Record<string, TransportArtifactDescriptor>
+  artifacts?: Record<string, TransportArtifactDescriptor>
+  primaryBitmap: Blob
   runtimeContext: TransportRuntimeContext
 }
 
@@ -111,6 +123,7 @@ export interface AiJobSnapshot {
   operationKind: AiOperationKind
   requestRef: string
   document: TransportDocument
+  documentPatch: TransportDocumentPatch
   artifacts: Record<string, TransportArtifactDescriptor>
   stageReports: TransportStageReport[]
   error: EngineError | null
@@ -124,6 +137,7 @@ export interface AuthBackend {
 export interface AiJobsBackend {
   createJob(input: AiJobCreateInput, options?: AuthRequestOptions): Promise<AiJobCreateResult>
   getJob(jobId: string, options?: AuthRequestOptions): Promise<AiJobSnapshot>
+  getArtifact(jobId: string, artifactRef: string, options?: AuthRequestOptions): Promise<Blob>
 }
 
 // --- Files backend (project/page storage, service_engine) ---

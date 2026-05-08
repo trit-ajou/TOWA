@@ -208,3 +208,8 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# npm — lock 파일 untrack (Dockerfile이 컨테이너 빌드 시 lock 미사용 정책,
+# platform별 native binary 차이로 cross-platform 충돌만 발생해서 추적 해제)
+package-lock.json
+node_modules/
