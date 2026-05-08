@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from enum import Enum
 import hashlib
 import json
+import os
+from pathlib import Path
 from threading import Lock, Thread
 import time
 from typing import TYPE_CHECKING, Any, Callable
+from urllib.parse import urlparse
 from uuid import uuid4
 
 from .artifact_io import (
@@ -379,7 +382,7 @@ class ModelJobManager:
             request_ref=record.request_ref,
             document=record.document.clone(),
             artifacts=dict(record.artifacts),
-            runtime_context=record.runtime_context,
+            runtime_context=_runtime_context_for_job_execution(record),
         )
 
         try:
@@ -757,6 +760,28 @@ def _service_authorization(runtime_context: StageRuntimeContext) -> str:
     if not session_key:
         raise ValueError("runtime_context.service_session_key is required for saas mode")
     return f"Bearer {session_key}"
+
+
+def _runtime_context_for_job_execution(record: ModelJobRecord) -> StageRuntimeContext:
+    parsed = urlparse(record.runtime_context.workspace_uri)
+    if parsed.scheme == "file":
+        return record.runtime_context
+
+    workspace_path = _server_job_workspace_path(record.job_id)
+    metadata = dict(record.runtime_context.metadata)
+    metadata.setdefault("client_workspace_uri", record.runtime_context.workspace_uri)
+    return replace(
+        record.runtime_context,
+        workspace_uri=workspace_path.as_uri(),
+        metadata=metadata,
+    )
+
+
+def _server_job_workspace_path(job_id: str) -> Path:
+    root = Path(os.environ.get("TOWA_MODEL_ENGINE_WORKSPACE_ROOT", "/tmp/towa_model_engine/workspaces"))
+    path = root / job_id
+    path.mkdir(parents=True, exist_ok=True)
+    return path.resolve()
 
 
 class _FunctionStage(StageProtocol):

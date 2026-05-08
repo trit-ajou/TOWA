@@ -1,15 +1,41 @@
-FROM python:3.11-slim
+FROM python:3.10-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PYTHONPATH=/app
+    PYTHONPATH=/app \
+    TOWA_MODEL_CACHE_DIR=/cache/models \
+    HOME=/cache/models \
+    XDG_CACHE_HOME=/cache/models \
+    TORCH_HOME=/cache/models/torch \
+    HF_HOME=/cache/models/huggingface \
+    TRANSFORMERS_CACHE=/cache/models/huggingface/transformers
 
 WORKDIR /app/model_engine
 
+RUN mkdir -p \
+    /workspace \
+    /artifacts \
+    /cache \
+    /cache/models \
+    /cache/models/torch \
+    /cache/models/huggingface \
+    /cache/models/huggingface/transformers
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        libgl1 \
+        libglib2.0-0 \
+        libsm6 \
+        libxext6 \
+        libxrender1 \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY requirements-base.txt requirements-base.txt
 COPY requirements-api.txt requirements-api.txt
+COPY requirements-craft.txt requirements-craft.txt
 
 RUN python3 -m pip install --no-cache-dir -r requirements-api.txt
+RUN python3 -m pip install --no-cache-dir -r requirements-craft.txt
 
 COPY . /app/model_engine
 
