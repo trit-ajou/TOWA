@@ -12,6 +12,8 @@ from PIL import Image
 
 from model_engine.api.jobs import (
     JobExecutionRequest,
+    JobExecutionResult,
+    JobExecutor,
     ModelJobManager,
     ModelJobStatus,
     OrchestratedJobExecutor,
@@ -149,6 +151,25 @@ class OrchestratedJobExecutorTests(unittest.TestCase):
         self.assertIn("document_patch", detail)
         self.assertEqual("set_stage_meta", detail["document_patch"]["patches"][0]["op"])
 
+    def test_manager_uses_server_file_workspace_for_logical_api_workspace(self) -> None:
+        executor = _CapturingExecutor()
+        manager = ModelJobManager(executor=executor)
+        submission = submission_from_api_payload(
+            _payload_object(_job_payload(operation_kind="detect", mode="local"))
+        )
+
+        _, response = manager.create_job(submission)
+        detail = _wait_for_terminal_job(manager, response["job_id"])
+
+        self.assertEqual("succeeded", detail["status"])
+        self.assertEqual(1, len(executor.requests))
+        execution_context = executor.requests[0].runtime_context
+        self.assertTrue(execution_context.workspace_uri.startswith("file://"))
+        self.assertEqual(
+            "workspace://project/proj-1/page/001",
+            execution_context.metadata["client_workspace_uri"],
+        )
+
 
 def _job_request(workspace_dir: Path, *, operation_kind: str) -> JobExecutionRequest:
     image_path = _write_sample_image(workspace_dir / "page.png")
@@ -237,6 +258,21 @@ class _RecordingServiceClient:
                 "hold_expires_at": "2026-03-25T01:00:00Z",
             }
         return {"status": "ok"}
+
+
+class _CapturingExecutor(JobExecutor):
+    def __init__(self) -> None:
+        self.requests: list[JobExecutionRequest] = []
+
+    def execute(self, request: JobExecutionRequest) -> JobExecutionResult:
+        self.requests.append(request)
+        return JobExecutionResult(
+            status=ModelJobStatus.SUCCEEDED,
+            document=request.document,
+            artifacts=dict(request.artifacts),
+            document_patch=[],
+            stage_reports=[],
+        )
 
 
 def _job_payload(*, operation_kind: str, mode: str) -> dict[str, object]:

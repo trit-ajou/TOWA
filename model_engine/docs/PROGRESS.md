@@ -56,6 +56,8 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - `GET /v1/jobs/{job_id}` 응답에 `document_patch` 필드 추가
 - UI migration 전환을 위해 legacy JSON create와 full `document` 응답도 임시로 함께 유지
 - 장기 이상형인 `API / Worker` 분리 전에, 현재 단계에서는 `API + Inference` 통합 서빙 컨테이너를 먼저 만들기로 전략을 정리
+- root compose가 띄우는 `Dockerfile.api` 서빙 이미지도 Python 3.10 기반 CRAFT/Manga OCR 추론 의존성을 포함하도록 전환
+- API job 실행 시 `workspace://...` 같은 외부 논리 workspace를 서버 내부 `file://` 실행 workspace로 보정해 stage artifact 저장이 실제 서빙 경로에서도 동작
 
 ### 1. Canonical IR
 
