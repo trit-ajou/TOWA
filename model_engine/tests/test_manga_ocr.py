@@ -95,6 +95,26 @@ class MangaOcrTests(unittest.TestCase):
                 response.stage_report.metrics["selection_reason"],
             )
 
+    def test_registry_accepts_builtin_manga_ocr_stage_in_saas_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            image_path = _write_sample_image(Path(tmpdir) / "page.png")
+            text_regions_path = _write_text_regions(Path(tmpdir) / "text_regions.json")
+            registry = ModelRegistry()
+            register_manga_ocr_model(registry)
+
+            selection = registry.select_for_request(
+                stage_kind=StageKind.OCR,
+                request=_stage_request(
+                    Path(tmpdir),
+                    image_path,
+                    text_regions_path,
+                    mode=ExecutionMode.SAAS,
+                ),
+                preferred_model_id=MANGA_OCR_MODEL_ID,
+            )
+
+            self.assertEqual(MANGA_OCR_MODEL_ID, selection.manifest.model_id)
+
     def test_manga_ocr_recognizer_is_reused_from_stage_config(self) -> None:
         class _FakeMangaOcr:
             instances = 0
@@ -201,7 +221,13 @@ class MangaOcrTests(unittest.TestCase):
             )
 
 
-def _stage_request(workspace_dir: Path, image_path: Path, text_regions_path: Path) -> StageRequest:
+def _stage_request(
+    workspace_dir: Path,
+    image_path: Path,
+    text_regions_path: Path,
+    *,
+    mode: ExecutionMode = ExecutionMode.LOCAL,
+) -> StageRequest:
     return StageRequest(
         schema_version="v1",
         pipeline_id="pipe_manga_ocr_test",
@@ -243,7 +269,7 @@ def _stage_request(workspace_dir: Path, image_path: Path, text_regions_path: Pat
             "hallucination_action": "mark",
         },
         runtime_context=StageRuntimeContext(
-            mode=ExecutionMode.LOCAL,
+            mode=mode,
             workspace_uri=workspace_dir.resolve().as_uri(),
         ),
     )

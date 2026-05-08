@@ -41,7 +41,7 @@ def build_craft_text_detection_manifest() -> StageManifest:
         stage_kind=StageKind.TEXT_DETECTION,
         required_artifact_kinds=["bitmap"],
         produced_artifact_kinds=["text_regions"],
-        supported_modes=[ExecutionMode.LOCAL],
+        supported_modes=[ExecutionMode.LOCAL, ExecutionMode.SAAS],
         resource_profile=ResourceProfile(
             cpu_threads=2,
             memory_mb=2048,
