@@ -44,7 +44,7 @@ def build_manga_ocr_manifest() -> StageManifest:
         stage_kind=StageKind.OCR,
         required_artifact_kinds=["bitmap", "text_regions"],
         produced_artifact_kinds=["ocr_text_blocks"],
-        supported_modes=[ExecutionMode.LOCAL],
+        supported_modes=[ExecutionMode.LOCAL, ExecutionMode.SAAS],
         resource_profile=ResourceProfile(
             cpu_threads=2,
             memory_mb=2048,

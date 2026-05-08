@@ -20,6 +20,7 @@
 - `TROUBLESHOOTING.md`: OCR/번역 실행 중 관측한 문제와 튜닝 기록
 - `SESSION_AND_CREDENTIAL_IMPLEMENTATION.md`: cloud/standalone 기준 세션, usage, provider credential 책임과 구현 포인트
 - `UI_MODEL_CONTRACT_DRAFT.md`: `UI engine <-> model engine` concrete contract 최소 합의안 draft
+- `INFERENCE_OUTPUT_SPEC.md`: 현재 구현 기준 model 추론 job의 출력 envelope, patch, artifact, stage report 명세
 - `SERVING_PLAN.md`: `API + Inference` 통합 서빙 컨테이너 전략과 단계별 구현 계획
 - `NEXT_SESSION_HANDOFF.md`: 다음 세션에서 바로 구현을 재개하기 위한 handoff 메모
 

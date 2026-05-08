@@ -10,6 +10,7 @@
 - `OCR_CAPABILITY.md`: OCR capability 공통 계약 초안
 - `TROUBLESHOOTING.md`: OCR/번역 실행 중 관측한 문제와 threshold 튜닝 기록
 - `SESSION_AND_CREDENTIAL_IMPLEMENTATION.md`: 세션, usage, provider credential 구현 준비 문서
+- `INFERENCE_OUTPUT_SPEC.md`: 현재 구현 기준 model 추론 job 출력 envelope와 operation별 patch/artifact/stage report 명세
 - `SERVING_PLAN.md`: `API + Inference` 통합 서빙 컨테이너 전략과 단일 serving image 전환 계획
 - `NEXT_SESSION_HANDOFF.md`: 다음 세션 시작 시 바로 읽을 상태 요약과 우선순위 메모
 - `SPEC.md`, `../docs/http-contract.md`: 외부 엔진 경계와 SaaS/local 계약 참고

@@ -91,8 +91,31 @@ class CraftTextDetectionTests(unittest.TestCase):
             artifact_path = Path(artifact.uri.removeprefix("file://"))
             self.assertIn("/transactions/pipe_craft_test/text_detection/", artifact_path.as_posix())
 
+    def test_registry_accepts_builtin_craft_stage_in_saas_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            image_path = _write_sample_image(Path(tmpdir) / "page.png")
+            registry = ModelRegistry()
+            register_craft_text_detection_model(registry)
 
-def _stage_request(workspace_dir: Path, image_path: Path) -> StageRequest:
+            selection = registry.select_for_request(
+                stage_kind=StageKind.TEXT_DETECTION,
+                request=_stage_request(
+                    Path(tmpdir),
+                    image_path,
+                    mode=ExecutionMode.SAAS,
+                ),
+                preferred_model_id=CRAFT_TEXT_DETECTION_MODEL_ID,
+            )
+
+            self.assertEqual(CRAFT_TEXT_DETECTION_MODEL_ID, selection.manifest.model_id)
+
+
+def _stage_request(
+    workspace_dir: Path,
+    image_path: Path,
+    *,
+    mode: ExecutionMode = ExecutionMode.LOCAL,
+) -> StageRequest:
     return StageRequest(
         schema_version="v1",
         pipeline_id="pipe_craft_test",
@@ -112,7 +135,7 @@ def _stage_request(workspace_dir: Path, image_path: Path) -> StageRequest:
         },
         stage_config={"input_artifact_ref": "artifact://sample/input_bitmap"},
         runtime_context=StageRuntimeContext(
-            mode=ExecutionMode.LOCAL,
+            mode=mode,
             workspace_uri=workspace_dir.resolve().as_uri(),
         ),
     )
