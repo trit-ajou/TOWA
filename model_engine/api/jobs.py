@@ -929,7 +929,10 @@ def _build_operation_stages(
                 stage_kind=StageKind.TEXT_DETECTION,
                 registry=registry,
                 preferred_model_id=CRAFT_TEXT_DETECTION_MODEL_ID,
-                config=common_detection_config,
+                config={
+                    **common_detection_config,
+                    "emit_text_blocks": True,
+                },
             )
         ]
 

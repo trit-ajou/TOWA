@@ -29,6 +29,7 @@ RUN apt-get update \
         libsm6 \
         libxext6 \
         libxrender1 \
+        patchelf \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements-base.txt /app/model_engine/requirements-base.txt
@@ -38,6 +39,12 @@ COPY requirements-craft.txt /app/model_engine/requirements-craft.txt
 # Keep the inference image on Python 3.10 until the detector package is replaced or upgraded.
 # This image is the local inference runtime for built-in text detection, OCR, and later workers.
 RUN python3 -m pip install --no-cache-dir -r /app/model_engine/requirements-craft.txt
+RUN torch_cpu_so=/usr/local/lib/python3.10/site-packages/torch/lib/libtorch_cpu.so \
+    && patchelf --print-execstack "$torch_cpu_so" \
+    && patchelf --clear-execstack "$torch_cpu_so" \
+    && patchelf --print-execstack "$torch_cpu_so" | grep -qx "execstack: -" \
+    && python3 -c "import torch; print(torch.__version__)" \
+    && python3 -c "from craft_text_detector import Craft; print('craft import ok')"
 
 COPY . /app/model_engine
 
