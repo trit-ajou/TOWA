@@ -61,6 +61,69 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - job 생성/시작/완료, background executor 예외, billing finalization 실패, stage 시작/종료/실패를 structured app log로 남기도록 보강
 - 로그 payload는 `job_id`, `pipeline_id`, `operation_kind`, `request_ref`, `stage_name`, `stage_run_id`, `status`, `error_code` 중심으로 남기고 credential/session/token 계열 값은 redaction
 
+## 2026-05-12 세션 handoff
+
+현재 작업 브랜치와 PR 상태:
+
+- branch: `model_engine`
+- latest pushed commit: `e4d5ee0`
+- PR: `https://github.com/trit-ajou/TOWA/pull/8`
+- PR 상태: draft
+- local status: `model_engine...origin/model_engine`
+
+이번 세션의 주된 요청은 UI/server engine 개발자가 model engine 테스트 중 오류 로그를 보기 어렵다는 문제의 원인 조사와 개선이었다.
+
+조사 결과:
+
+- `ModelJobManager._run_job`에서 background executor 예외가 job error payload로 변환되지만 app log에 traceback/context가 남지 않았다.
+- `PipelineOrchestrator.run`에서 stage 시작, 종료, 실패, 예외 전환점이 로그로 남지 않았다.
+- `/v1/jobs` create path와 `/bridge/service/...` path의 validation/service 오류가 HTTP JSON 응답으로만 반환되고 container log에서 원인 추적용 event가 부족했다.
+- 민감정보 정책상 credential/session/token류는 로그에 남기면 안 되므로, structured log helper에서 redaction을 먼저 고정해야 했다.
+
+반영한 변경:
+
+- `model_engine/logging_utils.py` 추가
+  - structured log payload를 JSON string으로 출력
+  - `authorization`, `api_key`, `credential`, `password`, `secret`, `session_key`, `token`, bearer 문자열을 redaction
+  - exception log는 redacted traceback을 payload에 포함
+- `model_engine/api/jobs.py`
+  - `model_job_accepted`
+  - `model_job_started`
+  - `model_job_finished`
+  - `model_job_idempotent_replay`
+  - `model_job_exception`
+  - `model_job_billing_finalization_failed`
+  - `model_job_usage_hold_authorized`
+- `model_engine/orchestrator.py`
+  - `model_stage_started`
+  - `model_stage_finished`
+  - `model_stage_exception`
+- `model_engine/api/app.py`
+  - job create validation/service error 로그 추가
+  - bridge service error/unavailable 로그 추가
+- `model_engine/tests/test_job_executor.py`
+  - background executor exception이 job context와 traceback을 남기는지 검증
+- `model_engine/tests/test_orchestrator.py`
+  - stage failure가 stage/status/error_code와 함께 로그에 남고 secret이 노출되지 않는지 검증
+
+원격 `origin/model_engine`에 이미 있던 변경도 push 전 병합했다.
+
+- CRAFT detect job이 text blocks patch를 낼 수 있는 변경
+- model image의 torch execstack 처리 변경
+- 관련 contract/docs 업데이트
+
+검증:
+
+- `python3 -m unittest model_engine.tests.test_job_executor model_engine.tests.test_orchestrator model_engine.tests.test_craft_text_detection -v`
+- `PYTHONPYCACHEPREFIX=/private/tmp/towa_model_engine_pycache python3 -m compileall -q model_engine`
+
+참고:
+
+- 로컬 기본 `python3 -m compileall -q model_engine`은 macOS Python이 `/Users/kmins/Library/Caches/com.apple.python/...` 아래 pyc를 쓰려다가 sandbox 권한에 막힐 수 있다.
+- 이 경우 위처럼 `PYTHONPYCACHEPREFIX=/private/tmp/towa_model_engine_pycache`를 지정한다.
+- `model_engine/tests/test_job_api.py`는 현재 로컬 Python 환경에 `fastapi`가 없으면 실행되지 않는다. Docker/API 의존성 환경에서 돌려야 한다.
+- 컨테이너 로그 확인 시 `model_job_` 또는 `model_stage_` event prefix로 필터링하면 된다.
+
 ### 1. Canonical IR
 
 구현 파일:
