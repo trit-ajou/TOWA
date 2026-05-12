@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from enum import Enum
 import hashlib
 import json
+import logging
 import os
 from pathlib import Path
 from threading import Lock, Thread
@@ -42,6 +43,7 @@ from ..contracts.models import StageKind
 from ..contracts.patches import PatchOperation
 from ..contracts.stages import ExecutionMode, StageReport, StageRuntimeContext, StageStatus
 from ..ipc.serde import document_from_data, document_to_data, patch_to_data, stage_report_to_data
+from ..logging_utils import log_event, log_exception
 from ..models import ModelRegistry
 from ..orchestrator import PipelineOrchestrator
 from ..stages import AdapterBackedStage, Stage, run_mask_or_erase_planning
@@ -54,6 +56,8 @@ from .service_bridge import (
 
 if TYPE_CHECKING:
     from .schemas import ModelJobCreateRequest
+
+logger = logging.getLogger(__name__)
 
 
 class ModelJobStatus(str, Enum):
@@ -278,6 +282,17 @@ class ModelJobManager:
                 existing = self._jobs_by_id[existing_id]
                 self._assert_matching_idempotent_replay(existing, submission)
                 status_code = 200 if existing.status in TERMINAL_JOB_STATUSES else 202
+                log_event(
+                    logger,
+                    logging.INFO,
+                    "model_job_idempotent_replay",
+                    job_id=existing.job_id,
+                    pipeline_id=existing.pipeline_id,
+                    status=existing.status.value,
+                    operation_kind=existing.operation_kind,
+                    request_ref=existing.request_ref,
+                    status_code=status_code,
+                )
                 return status_code, self._create_response(existing)
 
         usage_job_id = self._authorize_usage_hold(submission)
@@ -302,11 +317,33 @@ class ModelJobManager:
                 existing = self._jobs_by_id[existing_id]
                 self._assert_matching_idempotent_replay(existing, submission)
                 status_code = 200 if existing.status in TERMINAL_JOB_STATUSES else 202
+                log_event(
+                    logger,
+                    logging.INFO,
+                    "model_job_idempotent_replay",
+                    job_id=existing.job_id,
+                    pipeline_id=existing.pipeline_id,
+                    status=existing.status.value,
+                    operation_kind=existing.operation_kind,
+                    request_ref=existing.request_ref,
+                    status_code=status_code,
+                )
                 return status_code, self._create_response(existing)
             self._jobs_by_id[record.job_id] = record
             self._job_ids_by_idempotency[idempotency_scope] = record.job_id
             create_response = self._create_response(record)
 
+        log_event(
+            logger,
+            logging.INFO,
+            "model_job_accepted",
+            job_id=record.job_id,
+            pipeline_id=record.pipeline_id,
+            operation_kind=record.operation_kind,
+            request_ref=record.request_ref,
+            mode=record.runtime_context.mode.value,
+            usage_job_id=record.usage_job_id,
+        )
         Thread(
             target=self._run_job,
             args=(record.job_id,),
@@ -374,6 +411,17 @@ class ModelJobManager:
             record = self._jobs_by_id[job_id]
             record.status = ModelJobStatus.RUNNING
 
+        log_event(
+            logger,
+            logging.INFO,
+            "model_job_started",
+            job_id=record.job_id,
+            pipeline_id=record.pipeline_id,
+            operation_kind=record.operation_kind,
+            request_ref=record.request_ref,
+            mode=record.runtime_context.mode.value,
+            usage_job_id=record.usage_job_id,
+        )
         request = JobExecutionRequest(
             job_id=record.job_id,
             pipeline_id=record.pipeline_id,
@@ -388,6 +436,15 @@ class ModelJobManager:
         try:
             result = self._executor.execute(request)
         except Exception as exc:  # pragma: no cover - defensive path exercised in tests via custom executor
+            log_exception(
+                logger,
+                "model_job_exception",
+                job_id=record.job_id,
+                pipeline_id=record.pipeline_id,
+                operation_kind=record.operation_kind,
+                request_ref=record.request_ref,
+                exception_type=type(exc).__name__,
+            )
             result = JobExecutionResult(
                 status=ModelJobStatus.FAILED,
                 document=record.document.clone(),
@@ -405,6 +462,16 @@ class ModelJobManager:
             result=result,
         )
         if billing_error is not None:
+            log_event(
+                logger,
+                logging.ERROR,
+                "model_job_billing_finalization_failed",
+                job_id=record.job_id,
+                pipeline_id=record.pipeline_id,
+                operation_kind=record.operation_kind,
+                request_ref=record.request_ref,
+                error=billing_error,
+            )
             result.error = _merge_error_payload(result.error, billing_error)
             if result.status is ModelJobStatus.SUCCEEDED:
                 result.status = ModelJobStatus.PARTIAL
@@ -417,6 +484,21 @@ class ModelJobManager:
             stored.document_patch = result.document_patch
             stored.stage_reports = result.stage_reports
             stored.error = result.error
+
+        log_event(
+            logger,
+            logging.INFO if result.status is ModelJobStatus.SUCCEEDED else logging.ERROR,
+            "model_job_finished",
+            job_id=record.job_id,
+            pipeline_id=record.pipeline_id,
+            operation_kind=record.operation_kind,
+            request_ref=record.request_ref,
+            status=result.status.value,
+            stage_count=len(result.stage_reports),
+            patch_count=len(result.document_patch),
+            artifact_count=len(result.artifacts),
+            error=result.error,
+        )
 
     def _finalize_billing(
         self,
@@ -573,6 +655,14 @@ class ModelJobManager:
                 "estimated_units": USAGE_ESTIMATE_UNITS[submission.operation_kind],
             },
             authorization=authorization,
+        )
+        log_event(
+            logger,
+            logging.INFO,
+            "model_job_usage_hold_authorized",
+            operation_kind=submission.operation_kind,
+            request_ref=submission.request_ref,
+            usage_job_id=str(payload["job_id"]),
         )
         return str(payload["job_id"])
 
