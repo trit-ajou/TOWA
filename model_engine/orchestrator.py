@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 import hashlib
 import json
+import logging
 from typing import Any, Callable, Optional
 from uuid import uuid4
 
@@ -12,8 +13,11 @@ from .contracts.document_ir import DocumentIR
 from .contracts.patches import PatchOperation, apply_patches
 from .contracts.stages import StageReport, StageRequest, StageResponse, StageRuntimeContext, StageStatus
 from .credentials import CredentialResolver, DefaultCredentialResolver
+from .logging_utils import log_event, log_exception
 from .service_engine import ServiceEngineClient, UsageJobCreatePayload, UsageJobPayload
 from .stages.base import Stage
+
+logger = logging.getLogger(__name__)
 
 SERVICE_USAGE_ESTIMATED_UNITS = {
     "mask": 5,
@@ -73,35 +77,77 @@ class PipelineOrchestrator:
         for index, stage in enumerate(stages, start=1):
             stage_run_id = f"{pipeline_id}:{stage.stage_name}:{index}"
             stage_config = stage.stage_config()
-            credential_bindings, resolved_credentials = self.credential_resolver.resolve_for_stage(
-                stage_name=stage.stage_name,
-                runtime_context=runtime_context,
-                stage_config=stage_config,
-            )
-            request = StageRequest(
-                schema_version="v1",
-                pipeline_id=pipeline_id,
+            log_event(
+                logger,
+                logging.INFO,
+                "model_stage_started",
                 job_id=job_id,
+                pipeline_id=pipeline_id,
                 stage_name=stage.stage_name,
                 stage_run_id=stage_run_id,
-                document=active_document.clone(),
-                artifacts=self.artifact_registry.snapshot(),
-                patches_applied=list(applied_patches),
-                stage_config=stage_config,
-                credential_bindings=credential_bindings,
-                resolved_credentials=resolved_credentials,
-                runtime_context=runtime_context,
+                stage_index=index,
+                stage_config_keys=sorted(stage_config),
             )
-            response = stage.run(request)
 
-            for descriptor in response.artifacts.values():
-                if descriptor.artifact_ref in self.artifact_registry.snapshot():
-                    raise ValueError(f"stage returned duplicate artifact_ref: {descriptor.artifact_ref}")
-                self.artifact_registry.register_artifact(descriptor)
+            try:
+                credential_bindings, resolved_credentials = self.credential_resolver.resolve_for_stage(
+                    stage_name=stage.stage_name,
+                    runtime_context=runtime_context,
+                    stage_config=stage_config,
+                )
+                request = StageRequest(
+                    schema_version="v1",
+                    pipeline_id=pipeline_id,
+                    job_id=job_id,
+                    stage_name=stage.stage_name,
+                    stage_run_id=stage_run_id,
+                    document=active_document.clone(),
+                    artifacts=self.artifact_registry.snapshot(),
+                    patches_applied=list(applied_patches),
+                    stage_config=stage_config,
+                    credential_bindings=credential_bindings,
+                    resolved_credentials=resolved_credentials,
+                    runtime_context=runtime_context,
+                )
+                response = stage.run(request)
 
-            apply_patches(active_document, response.patches)
-            applied_patches.extend(response.patches)
-            stage_reports.append(response.stage_report)
+                for descriptor in response.artifacts.values():
+                    if descriptor.artifact_ref in self.artifact_registry.snapshot():
+                        raise ValueError(
+                            f"stage returned duplicate artifact_ref: {descriptor.artifact_ref}"
+                        )
+                    self.artifact_registry.register_artifact(descriptor)
+
+                apply_patches(active_document, response.patches)
+                applied_patches.extend(response.patches)
+                stage_reports.append(response.stage_report)
+            except Exception:
+                log_exception(
+                    logger,
+                    "model_stage_exception",
+                    job_id=job_id,
+                    pipeline_id=pipeline_id,
+                    stage_name=stage.stage_name,
+                    stage_run_id=stage_run_id,
+                    stage_index=index,
+                )
+                raise
+
+            log_event(
+                logger,
+                logging.INFO if response.status is StageStatus.SUCCEEDED else logging.ERROR,
+                "model_stage_finished",
+                job_id=job_id,
+                pipeline_id=pipeline_id,
+                stage_name=stage.stage_name,
+                stage_run_id=stage_run_id,
+                status=response.status.value,
+                patch_count=len(response.patches),
+                artifact_count=len(response.artifacts),
+                warning_count=len(response.stage_report.warnings),
+                error_code=response.stage_report.error_code,
+                error_message=response.stage_report.error_message,
+            )
 
             if response.status is StageStatus.FAILED:
                 final_status = StageStatus.FAILED

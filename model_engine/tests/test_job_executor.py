@@ -170,6 +170,23 @@ class OrchestratedJobExecutorTests(unittest.TestCase):
             execution_context.metadata["client_workspace_uri"],
         )
 
+    def test_background_executor_exception_is_logged_with_job_context(self) -> None:
+        manager = ModelJobManager(executor=_ExplodingExecutor())
+        submission = submission_from_api_payload(
+            _payload_object(_job_payload(operation_kind="detect", mode="local"))
+        )
+
+        with self.assertLogs("model_engine.api.jobs", level="ERROR") as captured:
+            _, response = manager.create_job(submission)
+            detail = _wait_for_terminal_job(manager, response["job_id"])
+
+        logs = "\n".join(captured.output)
+        self.assertEqual("failed", detail["status"])
+        self.assertIn("model_job_exception", logs)
+        self.assertIn(response["job_id"], logs)
+        self.assertIn("pipe_", logs)
+        self.assertIn("RuntimeError: executor boom", logs)
+
 
 def _job_request(workspace_dir: Path, *, operation_kind: str) -> JobExecutionRequest:
     image_path = _write_sample_image(workspace_dir / "page.png")
@@ -273,6 +290,12 @@ class _CapturingExecutor(JobExecutor):
             document_patch=[],
             stage_reports=[],
         )
+
+
+class _ExplodingExecutor(JobExecutor):
+    def execute(self, request: JobExecutionRequest) -> JobExecutionResult:
+        _ = request
+        raise RuntimeError("executor boom")
 
 
 def _job_payload(*, operation_kind: str, mode: str) -> dict[str, object]:
