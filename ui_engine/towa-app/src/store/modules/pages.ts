@@ -94,15 +94,12 @@ const pages: Module<PagesState, unknown> = {
           commit('SET_THUMBNAIL_URL', { pageId: s.id, url })
         }
 
-        // PageSummary에는 textBlocks가 없으므로, 필요하면 snapshot에서 가져와야 하지만
-        // project view에서는 textBlocks 불필요. 빈 배열로 초기화.
         pageList.push({
           id: s.id,
           projectId: s.projectId,
           index: s.index,
           status: s.status,
           thumbnail,
-          textBlocks: [],
         })
       }
 
@@ -125,7 +122,6 @@ const pages: Module<PagesState, unknown> = {
         index: summary.index,
         status: summary.status,
         thumbnail: thumbUrl,
-        textBlocks: snapshot.page.textBlocks,
       }
       commit('ADD_PAGE', page)
     },

@@ -1,5 +1,3 @@
-import type { TextBlock } from './text-block'
-
 export type PageStatus = 'waiting' | 'ai-processing' | 'in-progress' | 'done'
 
 export interface Page {
@@ -9,5 +7,4 @@ export interface Page {
   originalImage?: string
   thumbnail?: string
   status: PageStatus
-  textBlocks: TextBlock[]
 }

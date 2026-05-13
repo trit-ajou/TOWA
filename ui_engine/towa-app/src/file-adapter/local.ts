@@ -114,7 +114,6 @@ export class LocalFileAdapter implements FileAdapter {
         projectId: page.projectId,
         index: page.index,
         status: page.status,
-        textBlocks: page.textBlocks,
       },
       originalImage: imgRecord.blob,
       layerBlob: layerRecord.blob,
@@ -137,7 +136,6 @@ export class LocalFileAdapter implements FileAdapter {
       projectId,
       index: newIndex,
       status: snapshot.page.status,
-      textBlocks: sanitize(snapshot.page.textBlocks),
     }
 
     // Atomic transaction: pages + 3 binary stores
@@ -186,8 +184,6 @@ export class LocalFileAdapter implements FileAdapter {
       projectId: snapshot.page.projectId,
       index: existing.index, // index는 기존 값 유지
       status: snapshot.page.status,
-      // Vue reactive proxy는 IDB structuredClone이 복제 못 함
-      textBlocks: JSON.parse(JSON.stringify(snapshot.page.textBlocks)),
     }
 
     // Atomic transaction: 4개 store에 put

@@ -2,7 +2,7 @@ import type { Store } from 'vuex'
 
 import type { AiJobSnapshot, AiJobsBackend, TransportPatchOperation } from '@/backend/contracts'
 import type { Page } from '@/types/page'
-import type { TextBlock } from '@/types/text-block'
+import type { LayerTextMeta } from '@/types/text-block'
 // @ts-expect-error bitmappery JS module
 import LayerFactory from '@bitmappery/factories/layer-factory'
 import type { Layer } from '@bitmappery/definitions/document'
@@ -57,21 +57,22 @@ export async function applyAiJobSnapshotToCurrentPage(
   const operationLabel = toOperationLabel(options.snapshot.operationKind)
   const timestamp = formatLayerTimestamp(options.appliedAt ?? new Date())
   const patches = options.snapshot.documentPatch.patches
-  let nextTextBlocks = [...(page.textBlocks ?? [])]
   const textLayers: Layer[] = []
+  let replaceTextLayers = false
+  const docForSize = options.store.getters['bmp/activeDocument'] as { width?: number; height?: number } | undefined
+  const docW = docForSize?.width ?? 800
+  const docH = docForSize?.height ?? 1200
 
   for (const patch of patches) {
     if (patch.op !== 'replace_text_blocks' && patch.op !== 'append_text_blocks') {
       continue
     }
-
-    const blocks = textBlocksFromPatch(patch, options.pageId)
-    nextTextBlocks = patch.op === 'replace_text_blocks'
-      ? blocks
-      : [...nextTextBlocks, ...blocks]
-
-    for (const block of blocks) {
-      textLayers.push(createAiTextLayer(block, operationLabel, timestamp, textLayers.length + 1))
+    if (patch.op === 'replace_text_blocks') {
+      replaceTextLayers = true
+    }
+    const rawBlocks = textBlocksFromPatch(patch)
+    for (const rawBlock of rawBlocks) {
+      textLayers.push(createAiTextLayerFromPayload(rawBlock, operationLabel, timestamp, textLayers.length + 1, docW, docH))
     }
   }
 
@@ -87,6 +88,16 @@ export async function applyAiJobSnapshotToCurrentPage(
     graphicLayers.push(createAiGraphicLayer(canvas, patch.layerPayload, operationLabel, timestamp, graphicLayers.length + 1))
   }
 
+  if (replaceTextLayers) {
+    const activeDocument = options.store.getters['bmp/activeDocument'] as { layers?: Layer[] } | undefined
+    const currentLayers = activeDocument?.layers ?? []
+    for (let i = currentLayers.length - 1; i >= 0; i--) {
+      if (currentLayers[i].type === LayerTypes.LAYER_TEXT) {
+        options.store.commit('bmp/removeLayer', i)
+      }
+    }
+  }
+
   for (const layer of textLayers) {
     options.store.commit('bmp/addLayer', layer)
   }
@@ -97,7 +108,6 @@ export async function applyAiJobSnapshotToCurrentPage(
   options.store.commit('pages/UPDATE_PAGE', {
     ...page,
     status: 'in-progress',
-    textBlocks: nextTextBlocks,
   } satisfies Page)
 
   await options.savePage(options.pageId)
@@ -108,55 +118,41 @@ export async function applyAiJobSnapshotToCurrentPage(
   }
 }
 
-function textBlocksFromPatch(patch: TransportPatchOperation, pageId: string): TextBlock[] {
-  const rawBlocks = Array.isArray(patch.payload.text_blocks) ? patch.payload.text_blocks : []
-  return rawBlocks.map((block, index) => textBlockFromPayload(block, pageId, index))
+function textBlocksFromPatch(patch: TransportPatchOperation): unknown[] {
+  return Array.isArray(patch.payload.text_blocks) ? patch.payload.text_blocks : []
 }
 
-function textBlockFromPayload(block: unknown, pageId: string, index: number): TextBlock {
-  const payload = isRecord(block) ? block : {}
-  const translated = stringValue(payload.translated_text ?? payload.translated)
-  const original = stringValue(payload.source_lang_text ?? payload.original)
-  return {
-    id: stringValue(payload.block_id ?? payload.id) || `ai-block-${index + 1}`,
-    pageId,
-    bbox: bboxFromPayload(payload.bbox),
-    original,
-    translated,
-    font: AI_TEXT_FONT,
-    fontSize: AI_TEXT_SIZE,
-    color: AI_TEXT_COLOR,
-    status: translated ? 'translated' : 'detected',
-  }
-}
-
-function bboxFromPayload(value: unknown): TextBlock['bbox'] {
-  const payload = isRecord(value) ? value : {}
-  return {
-    x: positiveOrZero(payload.x ?? payload.left, 0),
-    y: positiveOrZero(payload.y ?? payload.top, 0),
-    width: positiveNumber(payload.width ?? payload.w, 1),
-    height: positiveNumber(payload.height ?? payload.h, 1),
-  }
-}
-
-function createAiTextLayer(
-  block: TextBlock,
+function createAiTextLayerFromPayload(
+  payload: unknown,
   operationLabel: string,
   timestamp: string,
   index: number,
+  docW: number,
+  docH: number,
 ): Layer {
+  const block = isRecord(payload) ? payload : {}
+  const original = stringValue(block.source_lang_text ?? block.original)
+  const translated = stringValue(block.translated_text ?? block.translated)
+  const bbox = bboxFromPayload(block.bbox)
+  const blockId = stringValue(block.block_id ?? block.id) || `ai-block-${index}`
+  const meta: LayerTextMeta = {
+    blockId,
+    original,
+    status: translated ? 'translated' : 'detected',
+  }
+  // layer.width/height는 텍스트 렌더링 canvas 크기. bbox는 left/top으로만 반영하고
+  // canvas 영역은 document 전체로 잡아 글자가 잘리지 않게 함.
   return LayerFactory.create({
     name: aiLayerName(operationLabel, timestamp, index),
     type: LayerTypes.LAYER_TEXT,
-    left: block.bbox.x,
-    top: block.bbox.y,
-    width: block.bbox.width,
-    height: block.bbox.height,
+    left: bbox.x,
+    top: bbox.y,
+    width: docW,
+    height: docH,
     transparent: true,
     visible: true,
     text: {
-      value: block.translated || block.original,
+      value: translated || original,
       font: AI_TEXT_FONT,
       size: AI_TEXT_SIZE,
       unit: 'px',
@@ -164,7 +160,18 @@ function createAiTextLayer(
       spacing: 0,
       color: AI_TEXT_COLOR,
     },
+    meta,
   })
+}
+
+function bboxFromPayload(value: unknown): { x: number; y: number; width: number; height: number } {
+  const payload = isRecord(value) ? value : {}
+  return {
+    x: positiveOrZero(payload.x ?? payload.left, 0),
+    y: positiveOrZero(payload.y ?? payload.top, 0),
+    width: positiveNumber(payload.width ?? payload.w, 1),
+    height: positiveNumber(payload.height ?? payload.h, 1),
+  }
 }
 
 function collectBitmapArtifactPatches(snapshot: AiJobSnapshot): BitmapArtifactPatch[] {

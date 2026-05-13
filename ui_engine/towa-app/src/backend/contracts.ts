@@ -142,25 +142,6 @@ export interface AiJobsBackend {
 
 // --- Files backend (project/page storage, service_engine) ---
 
-export interface BoundingBoxDto {
-  x: number
-  y: number
-  width: number
-  height: number
-}
-
-export interface TextBlockDto {
-  id: string
-  pageId: string
-  bbox: BoundingBoxDto
-  original: string
-  translated: string
-  font: string
-  fontSize: number
-  color: string
-  status: string
-}
-
 export interface ProjectDto {
   id: string
   name: string
@@ -190,7 +171,6 @@ export interface PageSnapshotMetaDto {
     projectId: string
     index: number
     status: string
-    textBlocks: TextBlockDto[]
   }
 }
 

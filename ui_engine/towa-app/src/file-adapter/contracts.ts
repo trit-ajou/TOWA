@@ -1,6 +1,5 @@
 import type { ProjectRecord } from './db'
 import type { PageStatus } from '@/types/page'
-import type { TextBlock } from '@/types/text-block'
 
 export type ExportFormat = 'png' | 'jpeg' | 'webp' | 'psd'
 
@@ -23,7 +22,6 @@ export interface PageSnapshotMeta {
   projectId: string
   index: number
   status: PageStatus
-  textBlocks: TextBlock[]
 }
 
 /**

@@ -4,6 +4,26 @@
 
 ---
 
+## 2026-05-14
+
+### 01:34 — TranslationPanel ↔ bitmappery 텍스트 layer 통합 (F5)
+- 데이터 중복 해소: bitmappery 텍스트 layer를 단일 source로. TOWA 측 TextBlock 메타 객체 제거.
+- bitmappery 코어 최소 침습:
+  - `Layer.meta?: Record<string, unknown>` 자유 metadata 필드 추가
+  - `LayerFactory.create`의 외부 `id` 주입 허용 + `serialize/deserialize`의 `id`·`meta` 포함 (id 영속화)
+  - `tool-options-text.vue`의 mutation commit을 namespace 자동 감지(`${ns}updateLayer`)로 변경 — standalone bitmappery와 towa-app embed 양쪽 지원. 미수정 시 embed 환경에서 unknown mutation 에러로 캔버스→panel sync 실패.
+- TOWA 측: `types/text-block.ts`를 `LayerTextMeta` 인터페이스로 대체(`blockId/original/status`). `Page.textBlocks` 필드 제거. `utils/text-layer.ts` 신규 (helper: `isTextLayer`, `getTextMeta`, `mergeTextMeta`).
+- UI: TranslationPanel/TextBlockItem이 layer를 직접 reactive 렌더링. Vue reactivity로 panel↔canvas 동기화 자동. 무한 루프 가드/source 플래그 불필요. `+` 버튼/휴지통 버튼으로 추가·삭제. EditorTab.selectLayer는 `bmp/setActiveLayerIndex` + 텍스트 layer일 때 `bmp/setActiveTool TEXT`까지 commit → tool-options-text 자동 활성화.
+- AI 적용: result-applier가 textBlock 객체를 만들지 않고 layer 직접 생성, `meta: { blockId, original, status }` 채움. replace_text_blocks 시 기존 텍스트 layer 인덱스 역순 제거. text layer width/height는 document 전체로 지정 (텍스트 잘림 회피 시도).
+- 백엔드 호환: service_engine `text_blocks: list[dict[str, Any]]` 자유 dict이므로 contract 코드 변경 없음. `towa-app/backend/real.ts`에서 textBlocks 직렬화 제거, `[]` 전송으로 호환.
+- 더미 데이터: text layer를 document에 함께 시드, width/height = doc 크기, layer name `텍스트 #NN` (prefix 잔재 제거).
+- 기존 저장 페이지 마이그레이션 없음 (프로토타이핑 단계).
+- 검증: `npx vue-tsc --noEmit` 통과, `npm test` 25 tests pass, `npm run build` 성공, Playwright로 panel↔canvas 텍스트 양방향 sync + 추가/삭제 + 활성화 동작 확인.
+- 한계: bitmappery 텍스트 layer 자체가 `replaceLayerSource`로 텍스트 bbox 크기로 layer 영역을 줄이고 left/top을 중앙 보정하는 모델이라, AI 검출 bbox 좌표가 렌더 후 무시되고 layer가 캔버스 중앙으로 이동함. 또한 텍스트가 측정 bbox보다 클 때 잘림 가능 (fallback 폰트 측정 등). F5 양방향 sync 본질 외 작업으로 별도 분리 필요.
+- 작업 디렉토리: `/Users/nangtural02/dev/personal/TOWA-f5` (worktree, branch `ui_engine-feature/f5-textblock-sync`).
+
+---
+
 ## 2026-05-07
 
 ### 15:52 — Landing/Login 풀페이지 + 라우터 가드 (manga panel 디자인)

@@ -1,18 +1,20 @@
 <script setup lang="ts">
 import { Plus, ChevronLeft, ChevronRight } from 'lucide-vue-next'
-import type { TextBlock } from '@/types/text-block'
+import type { Layer, Text } from '@bitmappery/definitions/document'
 import TextBlockItem from './TextBlockItem.vue'
 
 defineProps<{
-  blocks: TextBlock[]
-  selectedBlockId: string | null
+  layers: Layer[]
+  selectedLayerId: string | null
   currentPageIndex: number
   totalPages: number
 }>()
 
 defineEmits<{
-  selectBlock: [id: string]
-  updateTranslation: [blockId: string, value: string]
+  selectLayer: [id: string]
+  updateText: [layerId: string, textPatch: Partial<Text>]
+  addBlock: []
+  removeBlock: [layerId: string]
   prevPage: []
   nextPage: []
 }>()
@@ -22,25 +24,27 @@ defineEmits<{
   <aside class="w-[320px] bg-towa-surface border-l border-towa-border flex flex-col shrink-0">
     <div class="px-3 py-2 border-b border-towa-border flex items-center justify-between">
       <h3 class="text-xs font-semibold text-towa-text-muted uppercase tracking-wider">
-        번역 ({{ blocks.length }})
+        번역 ({{ layers.length }})
       </h3>
       <button
         class="p-1 rounded hover:bg-towa-surface-light text-towa-text-muted hover:text-towa-accent transition-colors"
         title="텍스트 블록 추가"
+        @click="$emit('addBlock')"
       >
         <Plus :size="14" />
       </button>
     </div>
     <div class="flex-1 overflow-y-auto">
       <TextBlockItem
-        v-for="block in blocks"
-        :key="block.id"
-        :block="block"
-        :selected="block.id === selectedBlockId"
-        @select="$emit('selectBlock', block.id)"
-        @update-translation="(val) => $emit('updateTranslation', block.id, val)"
+        v-for="layer in layers"
+        :key="layer.id"
+        :layer="layer"
+        :selected="layer.id === selectedLayerId"
+        @select="$emit('selectLayer', layer.id)"
+        @update-text="(patch) => $emit('updateText', layer.id, patch)"
+        @remove="$emit('removeBlock', layer.id)"
       />
-      <div v-if="blocks.length === 0" class="p-4 text-center text-sm text-towa-text-muted">
+      <div v-if="layers.length === 0" class="p-4 text-center text-sm text-towa-text-muted">
         텍스트 블록이 없습니다
       </div>
     </div>

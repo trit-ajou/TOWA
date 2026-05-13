@@ -43,13 +43,22 @@ const LayerFactory = {
      * Creates a new layer for use within a Document
      */
     create({
+        id, meta,
         name = DEFAULT_LAYER_NAME,
         type = LayerTypes.LAYER_GRAPHIC, transparent = true, source = null, mask = null,
         left = 0, top = 0, maskX = 0, maskY = 0, width = 1, height = 1, visible = true,
         transform = {}, filters = {}, text = {}
     }: LayerProps = {}): Layer {
+        const resolvedId = id ?? `layer_${( ++UID_COUNTER )}`;
+        if ( id ) {
+            const m = typeof id === "string" ? id.match( /^layer_(\d+)$/ ) : null;
+            if ( m ) {
+                const n = parseInt( m[ 1 ], 10 );
+                if ( Number.isFinite( n ) && n > UID_COUNTER ) UID_COUNTER = n;
+            }
+        }
         return {
-            id: `layer_${( ++UID_COUNTER )}`,
+            id: resolvedId,
             name: ( name === DEFAULT_LAYER_NAME && type === LayerTypes.LAYER_TEXT ) ? DEFAULT_TEXT_LAYER_NAME : name,
             type,
             source,
@@ -65,6 +74,7 @@ const LayerFactory = {
             text: TextFactory.create( text ),
             transform: TransformFactory.create( transform ),
             filters: FiltersFactory.create( filters ),
+            meta,
         }
     },
 
@@ -74,6 +84,7 @@ const LayerFactory = {
      */
     serialize( layer: Layer ): any {
         return {
+            i: layer.id,
             n: layer.name,
             t: layer.type,
             tr: layer.transparent,
@@ -89,6 +100,7 @@ const LayerFactory = {
             f: TransformFactory.serialize( layer.transform ),
             fl: FiltersFactory.serialize( layer.filters ),
             v: layer.visible,
+            mt: layer.meta,
         };
     },
 
@@ -101,6 +113,7 @@ const LayerFactory = {
         const mask   = await base64toCanvas( layer.m, layer.w, layer.h );
         const text   = await TextFactory.deserialize( layer.tx );
         return LayerFactory.create({
+            id: layer.i,
             name: layer.n,
             type: layer.t,
             transparent: layer.tr,
@@ -116,6 +129,7 @@ const LayerFactory = {
             text,
             transform: TransformFactory.deserialize( layer.f ),
             filters: FiltersFactory.deserialize( layer.fl ),
+            meta: layer.mt,
         });
     }
 };

@@ -1,12 +1,14 @@
 import type { FileAdapter, ProjectRecord } from '@/file-adapter'
 import type { PageSnapshotMeta, PageSnapshot } from '@/file-adapter/contracts'
 import type { PageStatus } from '@/types/page'
-import type { TextBlock } from '@/types/text-block'
+import type { LayerTextMeta } from '@/types/text-block'
 import { createUlid } from '@/utils/ulid'
 // @ts-expect-error bitmappery JS module
 import DocumentFactory from '@bitmappery/factories/document-factory'
 // @ts-expect-error bitmappery JS module
 import LayerFactory from '@bitmappery/factories/layer-factory'
+import type { Layer } from '@bitmappery/definitions/document'
+import { LayerTypes } from '@bitmappery/definitions/layer-types'
 
 interface SeedProjectSpec extends Omit<ProjectRecord, 'id'> {
   coverText: string
@@ -129,42 +131,76 @@ const seedProjects: SeedProjectSpec[] = [
   },
 ]
 
-function createSeedTextBlocks(pageId: string, status: PageStatus): TextBlock[] {
-  return [
-    {
-      id: `${pageId}-tb-1`,
-      pageId,
-      bbox: { x: 50, y: 80, width: 200, height: 60 },
-      original: 'おはようございます！',
-      translated: status === 'waiting' ? '' : '좋은 아침이에요!',
-      font: 'Noto Sans KR',
-      fontSize: 14,
-      color: '#000000',
-      status: status === 'waiting' ? 'detected' : 'translated',
-    },
-    {
-      id: `${pageId}-tb-2`,
-      pageId,
-      bbox: { x: 300, y: 150, width: 180, height: 80 },
-      original: 'なんだと？！信じられない！',
-      translated: status === 'waiting' ? '' : '뭐라고?! 믿을 수 없어!',
-      font: 'Noto Sans KR',
-      fontSize: 16,
-      color: '#000000',
-      status: status === 'waiting' ? 'detected' : 'edited',
-    },
-    {
-      id: `${pageId}-tb-3`,
-      pageId,
-      bbox: { x: 100, y: 400, width: 220, height: 50 },
-      original: 'ここで待ってて',
-      translated: status === 'waiting' ? '' : '여기서 기다려',
-      font: 'Noto Sans KR',
-      fontSize: 13,
-      color: '#000000',
-      status: status === 'waiting' ? 'detected' : 'translated',
-    },
-  ]
+interface SeedTextSpec {
+  blockSuffix: string
+  bbox: { x: number; y: number; width: number; height: number }
+  original: string
+  translated: string
+  fontSize: number
+  editedStatus: 'translated' | 'edited'
+}
+
+const SEED_TEXT_SPECS: SeedTextSpec[] = [
+  {
+    blockSuffix: 'tb-1',
+    bbox: { x: 50, y: 80, width: 200, height: 60 },
+    original: 'おはようございます！',
+    translated: '좋은 아침이에요!',
+    fontSize: 14,
+    editedStatus: 'translated',
+  },
+  {
+    blockSuffix: 'tb-2',
+    bbox: { x: 300, y: 150, width: 180, height: 80 },
+    original: 'なんだと？！信じられない！',
+    translated: '뭐라고?! 믿을 수 없어!',
+    fontSize: 16,
+    editedStatus: 'edited',
+  },
+  {
+    blockSuffix: 'tb-3',
+    bbox: { x: 100, y: 400, width: 220, height: 50 },
+    original: 'ここで待ってて',
+    translated: '여기서 기다려',
+    fontSize: 13,
+    editedStatus: 'translated',
+  },
+]
+
+// bitmappery 텍스트 layer는 layer.width/height 크기 canvas에 텍스트를 렌더링하므로,
+// bbox는 left/top으로만 위치를 잡고 layer 영역은 document 전체로 확보한다
+// (글자 잘림 방지, 기존 bitmappery layer-add-text-layer.ts 패턴과 일관).
+function createSeedTextLayers(pageId: string, status: PageStatus, docW: number, docH: number): Layer[] {
+  const detected = status === 'waiting'
+  return SEED_TEXT_SPECS.map((spec, index) => {
+    const blockId = `${pageId}-${spec.blockSuffix}`
+    const meta: LayerTextMeta = {
+      blockId,
+      original: spec.original,
+      status: detected ? 'detected' : spec.editedStatus,
+    }
+    return LayerFactory.create({
+      id: `layer_seed_${blockId}`,
+      name: `텍스트 #${String(index + 1).padStart(2, '0')}`,
+      type: LayerTypes.LAYER_TEXT,
+      left: spec.bbox.x,
+      top: spec.bbox.y,
+      width: docW,
+      height: docH,
+      transparent: true,
+      visible: true,
+      text: {
+        value: detected ? '' : spec.translated,
+        font: 'Noto Sans KR',
+        size: spec.fontSize,
+        unit: 'px',
+        lineHeight: 0,
+        spacing: 0,
+        color: '#000000',
+      },
+      meta,
+    }) as Layer
+  })
 }
 
 /**
@@ -247,7 +283,6 @@ export async function seedDummyDataIfEmpty(adapter: FileAdapter): Promise<boolea
     for (let i = 0; i < project.pageCount; i++) {
       const pageId = createUlid()
       const status = statuses[Math.min(i, statuses.length - 1)]
-      const textBlocks = createSeedTextBlocks(pageId, status)
 
       // 원본 이미지 (800x1200)
       const imgBlob = await generatePlaceholderImage(
@@ -256,6 +291,7 @@ export async function seedDummyDataIfEmpty(adapter: FileAdapter): Promise<boolea
 
       // bitmappery 문서 생성 → 직렬화 → layerBlob
       const imgCanvas = await blobToCanvas(imgBlob)
+      const textLayers = createSeedTextLayers(pageId, status, imgCanvas.width, imgCanvas.height)
       const doc = DocumentFactory.create({
         name: `page-${pageId}`,
         width: imgCanvas.width,
@@ -267,6 +303,7 @@ export async function seedDummyDataIfEmpty(adapter: FileAdapter): Promise<boolea
             width: imgCanvas.width,
             height: imgCanvas.height,
           }),
+          ...textLayers,
         ],
       })
       const layerBlob = await DocumentFactory.toBlob(doc)
@@ -279,7 +316,6 @@ export async function seedDummyDataIfEmpty(adapter: FileAdapter): Promise<boolea
         projectId: project.id,
         index: i + 1, // createPage가 override하지만 논리적 일관성을 위해
         status,
-        textBlocks,
       }
 
       const snapshot: PageSnapshot = {

@@ -41,6 +41,7 @@ export type Layer = {
     transform: Transform;
     filters: Filters;
     text: Text;
+    meta?: Record<string, unknown>;
 };
 
 export type Transform = {
