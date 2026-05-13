@@ -135,6 +135,13 @@ function handleKeyDown( event: KeyboardEvent ): void {
     if ( suspended ) {
         return;
     }
+    const target = event.target as HTMLElement | null;
+    if ( target ) {
+        const tag = target.tagName;
+        if ( tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable ) {
+            return;
+        }
+    }
     const keyCode = event.keyCode; // the current step position and channel within the pattern
     shiftDown = !!event.shiftKey;
     altDown   = event.altKey;
