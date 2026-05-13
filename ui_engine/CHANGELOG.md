@@ -4,6 +4,14 @@
 
 ---
 
+## 2026-05-14
+
+### 00:37 — bitmappery 키보드 단축키 가드 2종 (U6/B1, B2)
+- **U6/B1**: `towa-app/src/router/index.ts`에 `beforeEach` 가드 추가. `editor`·`detail-editor` 외 라우트 진입 시 `KeyboardService.setSuspended(true)` 호출해 캔버스가 안 보이는 라우트에서 C/V/Z 등 단축키 발사 차단
+- **B2**: `bitmappery/src/services/keyboard-service.ts` `handleKeyDown` 진입부에 `INPUT/TEXTAREA/SELECT/contentEditable` target 가드 블록 추가. 입력란에서 타이핑 시 단축키로 발사되던 버그 수정
+
+---
+
 ## 2026-05-07
 
 ### 15:52 — Landing/Login 풀페이지 + 라우터 가드 (manga panel 디자인)

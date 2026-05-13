@@ -8,6 +8,9 @@ import EditorTab from '@/views/EditorTab.vue'
 import DetailEditorTab from '@/views/DetailEditorTab.vue'
 import store from '@/store'
 import { DEPLOYMENT_MODE } from '@/config/deployment'
+import KeyboardService from '@bitmappery/services/keyboard-service'
+
+const CANVAS_ROUTES = new Set(['editor', 'detail-editor'])
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -54,6 +57,8 @@ const router = createRouter({
 })
 
 router.beforeEach((to) => {
+  KeyboardService.setSuspended(!CANVAS_ROUTES.has(to.name as string))
+
   const isCloud = DEPLOYMENT_MODE.value === 'cloud'
   const isLoggedIn = store.getters['auth/isLoggedIn']
 
