@@ -68,6 +68,7 @@ describe('applyAiJobSnapshotToCurrentPage', () => {
           blockId: 'tb-new',
           original: 'hello',
           status: 'translated',
+          boxMode: 'fixed',
         }),
       }),
     )

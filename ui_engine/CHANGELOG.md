@@ -6,6 +6,15 @@
 
 ## 2026-05-14
 
+### 09:21 — F5 후속 1단계: 텍스트 박스 보존 + 폰트 fresh 재렌더 + CJK 위 잘림 fix
+- bitmappery `Layer.meta.boxMode='fixed'` 분기 도입(`render-service.ts`). fixed 모드면 `replaceLayerSource` 우회 → `layer.left/top/width/height` 보존. native bitmappery 동작은 boxMode 미지정 시 그대로.
+- `font-service.loadGoogleFontDetailed` 신규: `document.fonts.load` API로 실제 폰트 로드 완료 보장 + `freshlyLoaded` flag 반환. 기존 `loadGoogleFont`는 호환 시그니처(`Promise<boolean>`) 유지.
+- `render-service.renderText` 반환을 `{ bitmap, fontFreshlyLoaded }`로 확장. `freshlyLoaded=true`이면 텍스트 캐시 무효화 + `requestAnimationFrame`으로 `cacheEffects` 한 번 더 트리거 → fallback 폰트 measure로 인한 잘림 회피.
+- `rendering/operations/text.ts:measureLines`에 위 안전 패딩(font size × 0.2) 추가. 한국어/일본어/이모지 글리프가 `actualBoundingBoxAscent`를 초과해 canvas top으로 잘리는 문제 fix. `lineHeight`는 그대로 두고 `topOffset`과 `height`에만 패딩 반영.
+- TOWA: `types/text-block.ts`에 `TextBoxMode` 타입 + `LayerTextMeta.boxMode`. `result-applier`/`dummy`/`EditorTab.addEmptyTextLayer` 모두 `boxMode: 'fixed'`. spec에 `meta.boxMode === 'fixed'` 검증.
+- 검증: `npx vue-tsc --noEmit` 통과, `npm test` 25 tests pass, 사용자 Chrome에서 박스 보존·CJK 위 잘림 해소 확인.
+- 후속: 텍스트박스 UX 개편(box-content 분리, 가로/세로 정렬, text-tool 통합 drag-resize·이동)은 별도 plan으로. 본 작업을 ui_engine으로 통합한 뒤 거기 베이스로 새 worktree에서 진행 예정.
+
 ### 01:34 — TranslationPanel ↔ bitmappery 텍스트 layer 통합 (F5)
 - 데이터 중복 해소: bitmappery 텍스트 layer를 단일 source로. TOWA 측 TextBlock 메타 객체 제거.
 - bitmappery 코어 최소 침습:

@@ -178,6 +178,7 @@ function createSeedTextLayers(pageId: string, status: PageStatus, docW: number, 
       blockId,
       original: spec.original,
       status: detected ? 'detected' : spec.editedStatus,
+      boxMode: 'fixed',
     }
     return LayerFactory.create({
       id: `layer_seed_${blockId}`,

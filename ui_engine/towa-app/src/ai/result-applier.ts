@@ -139,6 +139,7 @@ function createAiTextLayerFromPayload(
     blockId,
     original,
     status: translated ? 'translated' : 'detected',
+    boxMode: 'fixed',
   }
   // layer.width/height는 텍스트 렌더링 canvas 크기. bbox는 left/top으로만 반영하고
   // canvas 영역은 document 전체로 잡아 글자가 잘리지 않게 함.

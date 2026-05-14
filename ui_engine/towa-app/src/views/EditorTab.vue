@@ -122,7 +122,7 @@ function addEmptyTextLayer() {
       color: '#000000',
     },
   }) as Layer
-  layer.meta = { blockId: layer.id, original: '', status: 'edited' }
+  layer.meta = { blockId: layer.id, original: '', status: 'edited', boxMode: 'fixed' }
   store.commit('bmp/addLayer', layer)
   store.commit('editor/SELECT_LAYER', layer.id)
   const layers = doc.layers ?? []
