@@ -60,6 +60,7 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - API job 실행 시 `workspace://...` 같은 외부 논리 workspace를 서버 내부 `file://` 실행 workspace로 보정해 stage artifact 저장이 실제 서빙 경로에서도 동작
 - job 생성/시작/완료, background executor 예외, billing finalization 실패, stage 시작/종료/실패를 structured app log로 남기도록 보강
 - 로그 payload는 `job_id`, `pipeline_id`, `operation_kind`, `request_ref`, `stage_name`, `stage_run_id`, `status`, `error_code` 중심으로 남기고 credential/session/token 계열 값은 redaction
+- Mindlogic Gateway image edit 연동 전 실 API shape를 확인하기 위한 `scripts/probe_mindlogic_image_edit.py` probe 스크립트 추가
 
 ## 2026-05-12 세션 handoff
 
