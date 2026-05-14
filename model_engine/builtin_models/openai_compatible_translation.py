@@ -212,7 +212,11 @@ def _post_chat_completions(
 ) -> object:
     endpoint = _chat_completions_url(base_url)
     payload = json.dumps(body, ensure_ascii=False).encode("utf-8")
-    headers = {"Content-Type": "application/json"}
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "User-Agent": "curl/8.7.1",
+    }
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
     request = urlrequest.Request(endpoint, data=payload, headers=headers, method="POST")

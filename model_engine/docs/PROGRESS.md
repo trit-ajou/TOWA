@@ -101,6 +101,7 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - `TOWA_OPENAI_COMPATIBLE_BASE_URL`, `TOWA_TRANSLATION_MODEL_NAME`, `TOWA_TRANSLATION_BACKEND` 키를 중간 폴백으로 읽는다
 - `TOWA_OPENAI_COMPATIBLE_API_KEY`를 stage config의 `api_key`로 주입한다
 - `run_openai_compatible_translation`에서 credential 시스템에 API key가 없으면 stage config의 `api_key`를 폴백으로 사용한다
+- Mindlogic API Gateway처럼 Cloudflare가 Python 기본 User-Agent를 막는 OpenAI-compatible endpoint를 위해 chat completions 요청에 `Accept: application/json`, `User-Agent: curl/8.7.1` 헤더를 추가했다. 로컬 개발 runtime config는 `gemini-3.1-flash-lite-preview`와 `https://factchat-cloud.mindlogic.ai/v1/gateway` 조합으로 검증했다
 - 인페인트 설정(`_inpaint_provider_config_from_runtime`)과 동일한 패턴으로 통일했다
 
 ### 2. 인페인트 파이프라인 단순화
