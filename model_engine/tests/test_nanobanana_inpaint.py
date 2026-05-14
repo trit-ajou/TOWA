@@ -184,6 +184,38 @@ class NanobananaInpaintTests(unittest.TestCase):
             self.assertEqual(MINDLOGIC_INPAINT_MODEL_ID, response.stage_report.metrics["model_id"])
             self.assertEqual("mindlogic_google_edit", response.patches[1].payload["value"]["engine"])
 
+    def test_registry_runs_mindlogic_inpaint_with_bitmap_only(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace_dir = Path(tmpdir)
+            _write_base_image(workspace_dir / "page.png")
+            registry = ModelRegistry()
+            register_mindlogic_inpaint_model(registry)
+            stage = AdapterBackedStage(
+                "inpaint",
+                stage_kind=StageKind.INPAINT,
+                registry=registry,
+                preferred_model_id=MINDLOGIC_INPAINT_MODEL_ID,
+                config={"provider": "mindlogic"},
+            )
+
+            with patch(
+                "model_engine.builtin_models.nanobanana_inpaint._generate_with_mindlogic_google_edit",
+                side_effect=_fake_generate_edit,
+            ):
+                response = stage.run(
+                    _inpaint_request(
+                        workspace_dir,
+                        {},
+                        provider="mindlogic",
+                    )
+                )
+
+            self.assertEqual(StageStatus.SUCCEEDED, response.status)
+            self.assertEqual(MINDLOGIC_INPAINT_MODEL_ID, response.stage_report.metrics["model_id"])
+            self.assertEqual("0", str(response.stage_report.metrics["task_count"]))
+            self.assertEqual("none", response.stage_report.metrics["composite_mask_mode"])
+            self.assertEqual("mindlogic_google_edit", response.patches[1].payload["value"]["engine"])
+
     def test_nanobanana_inpaint_resizes_provider_output_to_base_size(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             planning_response = run_mask_or_erase_planning(_planning_request(Path(tmpdir)))

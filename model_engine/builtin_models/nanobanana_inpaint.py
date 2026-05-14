@@ -50,7 +50,7 @@ def build_nanobanana_inpaint_manifest() -> StageManifest:
         model_id=NANOBANANA_INPAINT_MODEL_ID,
         adapter_id="adapter.builtin.nanobanana.inpaint",
         stage_kind=StageKind.INPAINT,
-        required_artifact_kinds=["bitmap", "inpaint_tasks"],
+        required_artifact_kinds=["bitmap"],
         produced_artifact_kinds=["bitmap"],
         supported_modes=[ExecutionMode.LOCAL, ExecutionMode.SAAS],
         allowed_credential_sources=[
@@ -79,7 +79,7 @@ def build_mindlogic_inpaint_manifest() -> StageManifest:
         model_id=MINDLOGIC_INPAINT_MODEL_ID,
         adapter_id="adapter.builtin.mindlogic.inpaint",
         stage_kind=StageKind.INPAINT,
-        required_artifact_kinds=["bitmap", "inpaint_tasks"],
+        required_artifact_kinds=["bitmap"],
         produced_artifact_kinds=["bitmap"],
         supported_modes=[ExecutionMode.LOCAL, ExecutionMode.SAAS],
         allowed_credential_sources=[

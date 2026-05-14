@@ -123,6 +123,7 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - 프롬프트가 이미 "모든 텍스트를 찾아서 지워라"고 지시하므로 CRAFT 검출이 불필요
 - provider에 원본 이미지 전체를 보내고, provider 결과를 그대로 `layer_inpainting`으로 사용
 - `inpaint_tasks` artifact가 있으면(기존 마스크 기반 경로) 여전히 마스크 합성 fallback으로 동작
+- `builtin.nanobanana.inpaint`, `builtin.mindlogic.inpaint` manifest의 필수 artifact를 `bitmap`으로 맞춰 UI 단독 inpaint 요청에서도 registry selection이 통과하도록 수정
 
 효과:
 
