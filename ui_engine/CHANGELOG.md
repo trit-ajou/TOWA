@@ -6,6 +6,12 @@
 
 ## 2026-05-14
 
+### 10:27 — 페이지 전환 시 캔버스 가로 비율 깨짐 fix
+- 증상: 첫 진입 후 페이지 전환하면 canvas dimension이 fit-to-window 비율을 잃고 가로로 늘어남 (예: 583×875 → 1010×875). 페이지 placeholder가 화면 중앙에 작게 보이고 나머지가 빈 공간
+- 원인: `usePageLoader.loadPage`가 `store.commit('bmp/addNewDocument')` 직후 `window.dispatchEvent(new Event('resize'))`를 호출 → `bitmappery.vue` handleResize 트리거 → `setToolOptionValue(ZOOM, level=1)`으로 zoom 강제 reset → activeDocument watcher의 `calcIdealDimensions(true)`가 fit-to-window 값으로 재설정하기 직전에 캔버스가 비율 깨진 상태로 commit됨
+- `composables/usePageLoader.ts`: dispatchEvent 한 줄 제거. v-show false→true 토글 시점의 layout 재계산은 `views/ProjectView.vue:40-44`의 별도 watcher가 이미 같은 dispatchEvent를 호출하므로 잉여
+- 검증: Playwright로 5회 연속 페이지 전환 (2p→4p→6p→1p→7p) 시 canvas attr 583×875 유지 확인
+
 ### 09:21 — F5 후속 1단계: 텍스트 박스 보존 + 폰트 fresh 재렌더 + CJK 위 잘림 fix
 - bitmappery `Layer.meta.boxMode='fixed'` 분기 도입(`render-service.ts`). fixed 모드면 `replaceLayerSource` 우회 → `layer.left/top/width/height` 보존. native bitmappery 동작은 boxMode 미지정 시 그대로.
 - `font-service.loadGoogleFontDetailed` 신규: `document.fonts.load` API로 실제 폰트 로드 완료 보장 + `freshlyLoaded` flag 반환. 기존 `loadGoogleFont`는 호환 시그니처(`Promise<boolean>`) 유지.

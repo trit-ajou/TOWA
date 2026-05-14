@@ -70,9 +70,13 @@ export function usePageLoader() {
     }
 
     store.commit('bmp/addNewDocument', doc)
-    // 캔버스가 display:none → visible 전환 직후일 수 있으므로 크기 재계산
+    // bitmappery activeDocument watcher가 자동으로 calcIdealDimensions(true)를
+    // 호출하여 캔버스 크기를 재계산하므로 별도 트리거 불필요.
+    // 이전 코드의 window.dispatchEvent('resize')는 bitmappery.handleResize를 호출하는데,
+    // handleResize가 setToolOptionValue(ZOOM, level=1)로 zoom을 강제 reset해서
+    // fit-to-window 비율(첫 진입 시 계산된 zoom)이 깨졌음. 페이지 전환마다 캔버스가
+    // 가로로 늘어나는 ratio 버그의 원인이었음.
     await nextTick()
-    window.dispatchEvent(new Event('resize'))
   }
 
   /**
