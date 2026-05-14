@@ -150,7 +150,7 @@ def _translate_blocks_with_openai_compatible(
     source_language = str(config.get("source_language", "Japanese"))
     target_language = str(config.get("target_language", "Korean"))
     temperature = float(config.get("temperature", 0.1))
-    timeout_seconds = float(config.get("timeout_seconds", 120))
+    timeout_seconds = float(config.get("timeout_seconds", 300))
 
     request_payload = {
         "source_language": source_language,
