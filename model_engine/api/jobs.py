@@ -23,6 +23,7 @@ from .artifact_io import (
     artifact_descriptors_from_api_payload,
     file_artifact_path,
 )
+from ..config.runtime_config import load_runtime_config, runtime_config_value
 from ..builtin_models import (
     CRAFT_TEXT_DETECTION_MODEL_ID,
     MANGA_OCR_MODEL_ID,
@@ -61,6 +62,7 @@ if TYPE_CHECKING:
     from .schemas import ModelJobCreateRequest
 
 logger = logging.getLogger(__name__)
+RUNTIME_CONFIG = load_runtime_config()
 
 
 class ModelJobStatus(str, Enum):
@@ -1048,7 +1050,7 @@ def _inpaint_provider_config_from_runtime(
             "provider": "mindlogic",
             "model_name": str(
                 runtime_context.metadata.get("inpaint_model_name")
-                or os.environ.get("TOWA_INPAINT_MODEL_NAME")
+                or runtime_config_value(RUNTIME_CONFIG, "TOWA_INPAINT_MODEL_NAME")
                 or MINDLOGIC_IMAGE_MODEL
             ),
         }
@@ -1058,7 +1060,11 @@ def _inpaint_provider_config_from_runtime(
 def _inpaint_provider_from_runtime(runtime_context: StageRuntimeContext) -> str:
     return str(
         runtime_context.metadata.get("inpaint_provider")
-        or os.environ.get("TOWA_INPAINT_PROVIDER")
+        or runtime_config_value(
+            RUNTIME_CONFIG,
+            "TOWA_INPAINT_PROVIDER",
+            aliases=("inpaint_provider", "inpaint.provider"),
+        )
         or "nanobanana"
     )
 

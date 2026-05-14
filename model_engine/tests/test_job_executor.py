@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 from PIL import Image
 
+import model_engine.api.jobs as jobs_module
 from model_engine.api.jobs import (
     JobExecutionRequest,
     JobExecutionResult,
@@ -205,6 +206,29 @@ class OrchestratedJobExecutorTests(unittest.TestCase):
         self.assertIn(response["job_id"], logs)
         self.assertIn("pipe_", logs)
         self.assertIn("RuntimeError: executor boom", logs)
+
+    def test_inpaint_provider_selection_uses_runtime_config(self) -> None:
+        original_config = jobs_module.RUNTIME_CONFIG
+        try:
+            jobs_module.RUNTIME_CONFIG = {
+                "TOWA_INPAINT_PROVIDER": "mindlogic",
+                "TOWA_INPAINT_MODEL_NAME": "runtime-model",
+            }
+            runtime_context = StageRuntimeContext(
+                mode=ExecutionMode.SAAS,
+                workspace_uri="file:///tmp/towa/saas",
+            )
+
+            self.assertEqual(
+                "builtin.mindlogic.inpaint",
+                jobs_module._inpaint_model_id_from_runtime(runtime_context),
+            )
+            self.assertEqual(
+                {"provider": "mindlogic", "model_name": "runtime-model"},
+                jobs_module._inpaint_provider_config_from_runtime(runtime_context),
+            )
+        finally:
+            jobs_module.RUNTIME_CONFIG = original_config
 
 
 def _job_request(workspace_dir: Path, *, operation_kind: str) -> JobExecutionRequest:

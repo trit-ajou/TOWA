@@ -59,6 +59,8 @@ services:
     depends_on:
       service-engine:
         condition: service_healthy
+    volumes:
+      - ./model_engine/.runtime:/app/model_engine/.runtime
     ports:
       - "${MODEL_ENGINE_PORT:-8100}:8100"
     healthcheck:

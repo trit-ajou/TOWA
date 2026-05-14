@@ -67,6 +67,37 @@ class DefaultCredentialResolverTests(unittest.TestCase):
         self.assertEqual(BillingMode.PLATFORM_CREDIT, binding.billing_mode)
         self.assertEqual("platform-secret", resolved["primary_provider"].secret("api_key"))
 
+    def test_resolves_platform_credential_from_runtime_config(self) -> None:
+        resolver = DefaultCredentialResolver(
+            environ={},
+            runtime_config={
+                "inpaint": {
+                    "mindlogic_api_key": "runtime-secret",
+                },
+                "providers": {
+                    "mindlogic": {
+                        "credential_version": "runtime-version",
+                    }
+                },
+            },
+        )
+        runtime_context = StageRuntimeContext(
+            mode=ExecutionMode.SAAS,
+            workspace_uri="file:///tmp/towa/saas",
+        )
+
+        bindings, resolved = resolver.resolve_for_stage(
+            stage_name="inpaint",
+            runtime_context=runtime_context,
+            stage_config={"provider": "mindlogic"},
+        )
+
+        binding = bindings["primary_provider"]
+        self.assertEqual("mindlogic", binding.provider)
+        self.assertEqual("runtime-version", binding.credential_version)
+        self.assertEqual(CredentialSource.PLATFORM_MANAGED, binding.credential_source)
+        self.assertEqual("runtime-secret", resolved["primary_provider"].secret("api_key"))
+
 
 if __name__ == "__main__":
     unittest.main()
