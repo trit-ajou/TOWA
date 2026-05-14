@@ -1028,7 +1028,10 @@ def _resolve_primary_bitmap_artifact_ref(artifacts: dict[str, ArtifactDescriptor
 
 
 def _translation_model_id_from_runtime(runtime_context: StageRuntimeContext) -> str:
-    backend = runtime_context.metadata.get("translation_backend")
+    backend = (
+        runtime_context.metadata.get("translation_backend")
+        or runtime_config_value(RUNTIME_CONFIG, "TOWA_TRANSLATION_BACKEND")
+    )
     if backend == "vertex":
         return VERTEX_TRANSLATION_MODEL_ID
     return OPENAI_COMPATIBLE_TRANSLATION_MODEL_ID
@@ -1072,32 +1075,43 @@ def _inpaint_provider_from_runtime(runtime_context: StageRuntimeContext) -> str:
 def _translation_provider_config_from_runtime(
     runtime_context: StageRuntimeContext,
 ) -> dict[str, object]:
-    backend = runtime_context.metadata.get("translation_backend")
+    backend = (
+        runtime_context.metadata.get("translation_backend")
+        or runtime_config_value(RUNTIME_CONFIG, "TOWA_TRANSLATION_BACKEND")
+    )
     if backend == "vertex":
         return {
             "provider": "translation_provider",
             "model_name": str(
-                runtime_context.metadata.get(
-                    "translation_model_name",
-                    "gemini-3.1-flash-lite-preview",
-                )
+                runtime_context.metadata.get("translation_model_name")
+                or runtime_config_value(RUNTIME_CONFIG, "TOWA_TRANSLATION_MODEL_NAME")
+                or "gemini-3.1-flash-lite-preview"
             ),
         }
 
+    api_key = str(
+        runtime_context.metadata.get("openai_compatible_api_key")
+        or runtime_config_value(
+            RUNTIME_CONFIG,
+            "TOWA_OPENAI_COMPATIBLE_API_KEY",
+            aliases=("openai_compatible_api_key", "translation.openai_compatible_api_key"),
+        )
+        or ""
+    )
     config: dict[str, object] = {
         "base_url": str(
-            runtime_context.metadata.get(
-                "openai_compatible_base_url",
-                OPENAI_COMPATIBLE_DEFAULT_BASE_URL,
-            )
+            runtime_context.metadata.get("openai_compatible_base_url")
+            or runtime_config_value(RUNTIME_CONFIG, "TOWA_OPENAI_COMPATIBLE_BASE_URL")
+            or OPENAI_COMPATIBLE_DEFAULT_BASE_URL
         ),
         "model_name": str(
-            runtime_context.metadata.get(
-                "translation_model_name",
-                OPENAI_COMPATIBLE_DEFAULT_MODEL,
-            )
+            runtime_context.metadata.get("translation_model_name")
+            or runtime_config_value(RUNTIME_CONFIG, "TOWA_TRANSLATION_MODEL_NAME")
+            or OPENAI_COMPATIBLE_DEFAULT_MODEL
         ),
     }
+    if api_key:
+        config["api_key"] = api_key
     if "openai_compatible" in runtime_context.session_provider_secrets:
         config["provider"] = "openai_compatible"
     else:
