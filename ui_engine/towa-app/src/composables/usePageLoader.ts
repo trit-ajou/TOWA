@@ -113,7 +113,6 @@ export function usePageLoader() {
         projectId: page.projectId,
         index: page.index,
         status: page.status,
-        textBlocks: page.textBlocks ?? [],
       },
       originalImage,
       layerBlob,
