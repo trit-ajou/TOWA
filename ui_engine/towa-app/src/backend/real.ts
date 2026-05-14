@@ -509,17 +509,7 @@ function toSnapshotMetaJson(meta: PageSnapshotPayload['metadata']): unknown {
       project_id: meta.page.projectId,
       index: meta.page.index,
       status: meta.page.status,
-      text_blocks: meta.page.textBlocks.map((tb) => ({
-        id: tb.id,
-        page_id: tb.pageId,
-        bbox: { x: tb.bbox.x, y: tb.bbox.y, width: tb.bbox.width, height: tb.bbox.height },
-        original: tb.original,
-        translated: tb.translated,
-        font: tb.font,
-        font_size: tb.fontSize,
-        color: tb.color,
-        status: tb.status,
-      })),
+      text_blocks: [],
     },
   }
 }
@@ -567,27 +557,12 @@ export async function parseMultipartMixed(response: Response): Promise<PageSnaps
   const metaJson = JSON.parse(metaText) as { page: Record<string, unknown> }
   const page = metaJson.page
 
-  const textBlocksRaw = Array.isArray(page.text_blocks) ? page.text_blocks : []
   const metadata: PageSnapshotPayload['metadata'] = {
     page: {
       id: String(page.id),
       projectId: String(page.project_id),
       index: Number(page.index),
       status: String(page.status),
-      textBlocks: textBlocksRaw.map((tb: Record<string, unknown>) => {
-        const bbox = tb.bbox as Record<string, number>
-        return {
-          id: String(tb.id),
-          pageId: String(tb.page_id),
-          bbox: { x: bbox.x, y: bbox.y, width: bbox.width, height: bbox.height },
-          original: String(tb.original),
-          translated: String(tb.translated),
-          font: String(tb.font),
-          fontSize: Number(tb.font_size),
-          color: String(tb.color),
-          status: String(tb.status),
-        }
-      }),
     },
   }
 

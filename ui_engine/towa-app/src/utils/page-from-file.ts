@@ -75,7 +75,6 @@ export async function buildPageSnapshotFromFile(
       projectId,
       index: pageIndex,
       status: 'waiting',
-      textBlocks: [],
     },
     originalImage,
     layerBlob,

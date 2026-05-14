@@ -10,6 +10,8 @@ import { BackendError } from '@/backend/errors'
 import type { AiJobCreateInput, AiJobSnapshot, AiOperationKind } from '@/backend/contracts'
 import type { Page, PageStatus } from '@/types/page'
 import { applyAiJobSnapshotToCurrentPage } from '@/ai/result-applier'
+import { getTextMeta, isTextLayer } from '@/utils/text-layer'
+import type { Layer } from '@bitmappery/definitions/document'
 // @ts-expect-error bitmappery JS module
 import { createSyncSnapshot } from '@bitmappery/utils/document-util'
 // @ts-expect-error bitmappery JS module
@@ -26,7 +28,7 @@ const viewMode = computed(() => store.getters['editor/canvasViewMode'])
 const projectId = computed(() => store.getters['editor/currentProjectId'] as string | null)
 const selectedPageId = computed(() => store.getters['editor/selectedPageId'] as string | null)
 
-async function buildInput(operationKind: AiOperationKind, pageRecord: Page): Promise<AiJobCreateInput> {
+async function buildInput(operationKind: AiOperationKind, _pageRecord: Page): Promise<AiJobCreateInput> {
   const proj = projectId.value ?? 'no-project'
   const page = selectedPageId.value ?? 'no-page'
   const attempt = Date.now()
@@ -37,6 +39,7 @@ async function buildInput(operationKind: AiOperationKind, pageRecord: Page): Pro
   }
   const primaryBitmap = await canvasToBlob(createSyncSnapshot(activeDocument), 'image/png')
   const requestedBy = currentUserEmail() ?? 'ui-engine'
+  const textLayers: Layer[] = (activeDocument.layers ?? []).filter(isTextLayer)
   return {
     schemaVersion: 'v1',
     idempotencyKey: `project:${proj}:page:${page}:op:${operationKind}:v:${attempt}`,
@@ -59,12 +62,15 @@ async function buildInput(operationKind: AiOperationKind, pageRecord: Page): Pro
           source_ref: 'artifact://input/primary_bitmap',
         },
       ],
-      text_blocks: pageRecord.textBlocks.map((block) => ({
-        block_id: block.id,
-        source_lang_text: block.original,
-        translated_text: block.translated,
-        bbox: block.bbox,
-      })),
+      text_blocks: textLayers.map((layer) => {
+        const meta = getTextMeta(layer)
+        return {
+          block_id: meta?.blockId ?? layer.id,
+          source_lang_text: meta?.original ?? '',
+          translated_text: layer.text.value,
+          bbox: { x: layer.left, y: layer.top, width: layer.width, height: layer.height },
+        }
+      }),
       stage_meta: {},
     },
     primaryBitmap,
@@ -100,7 +106,7 @@ async function runAction(action: AiOperationKind) {
     const proj = requireProjectId()
     const pageId = requirePageId()
     const pageRecord = requireCurrentPage(proj, pageId)
-    previousPage = { ...pageRecord, textBlocks: [...pageRecord.textBlocks] }
+    previousPage = { ...pageRecord }
     store.commit('pages/UPDATE_PAGE', { ...pageRecord, status: 'ai-processing' satisfies PageStatus })
     restorePreviousPage = true
 

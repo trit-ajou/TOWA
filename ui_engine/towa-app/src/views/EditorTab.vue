@@ -7,6 +7,13 @@ import { useAutoSave } from '@/composables/useAutoSave'
 import PageSidePanel from '@/components/editor/PageSidePanel.vue'
 import TranslationPanel from '@/components/editor/TranslationPanel.vue'
 import AiToolbar from '@/components/editor/AiToolbar.vue'
+import { isTextLayer, mergeTextMeta } from '@/utils/text-layer'
+import type { Layer, Text } from '@bitmappery/definitions/document'
+import { LayerTypes } from '@bitmappery/definitions/layer-types'
+// @ts-expect-error bitmappery JS module
+import LayerFactory from '@bitmappery/factories/layer-factory'
+// @ts-expect-error bitmappery JS module
+import ToolTypes from '@bitmappery/definitions/tool-types'
 
 defineOptions({ name: 'EditorTab' })
 
@@ -21,16 +28,20 @@ const selectedPageId = computed(() => store.getters['editor/selectedPageId'])
 const currentPage = computed(() =>
   selectedPageId.value ? store.getters['pages/byId'](projectId.value, selectedPageId.value) : null
 )
-const selectedBlockId = computed(() => store.getters['editor/selectedTextBlockId'])
+const selectedLayerId = computed<string | null>(() => store.getters['editor/selectedLayerId'])
 const pagePanelCollapsed = computed(() => store.getters['editor/pagePanelCollapsed'])
 const switching = ref(false)
+
+const textLayers = computed<Layer[]>(() => {
+  const doc = store.getters['bmp/activeDocument'] as { layers?: Layer[] } | undefined
+  return (doc?.layers ?? []).filter(isTextLayer)
+})
 
 const currentPageIndex = computed(() => {
   if (!currentPage.value) return 0
   return currentPage.value.index
 })
 
-// 첫 페이지 자동 선택
 watch(
   [pages, selectedPageId],
   ([pageList, pageId]) => {
@@ -41,7 +52,6 @@ watch(
   { immediate: true },
 )
 
-// 페이지 변경 시 bitmappery에 자동 로드 (초기 진입 포함)
 watch(selectedPageId, async (newId, oldId) => {
   if (!newId || newId === oldId || switching.value) return
   switching.value = true
@@ -56,12 +66,78 @@ function selectPage(pageId: string) {
   store.commit('editor/SET_SELECTED_PAGE', pageId)
 }
 
-function selectBlock(blockId: string) {
-  store.commit('editor/SELECT_TEXT_BLOCK', blockId)
+function selectLayer(layerId: string) {
+  store.commit('editor/SELECT_LAYER', layerId)
+  const idx = findLayerIndex(layerId)
+  if (idx >= 0) {
+    store.commit('bmp/setActiveLayerIndex', idx)
+    const doc = store.getters['bmp/activeDocument'] as { layers?: Layer[] } | undefined
+    const layer = doc?.layers?.[idx]
+    if (layer?.type === LayerTypes.LAYER_TEXT) {
+      store.commit('bmp/setActiveTool', { tool: ToolTypes.TEXT })
+    }
+  }
 }
 
 function setPanelCollapsed(collapsed: boolean) {
   store.commit('editor/SET_PAGE_PANEL_COLLAPSED', collapsed)
+}
+
+function findLayerIndex(layerId: string): number {
+  const doc = store.getters['bmp/activeDocument'] as { layers?: Layer[] } | undefined
+  return (doc?.layers ?? []).findIndex((l) => l.id === layerId)
+}
+
+function updateTextLayer(layerId: string, textPatch: Partial<Text>) {
+  const idx = findLayerIndex(layerId)
+  if (idx < 0) return
+  const doc = store.getters['bmp/activeDocument'] as { layers?: Layer[] } | undefined
+  const layer = doc?.layers?.[idx]
+  if (!layer) return
+  const nextText: Text = { ...layer.text, ...textPatch }
+  const nextMeta = mergeTextMeta(layer, { status: 'edited' })
+  store.commit('bmp/updateLayer', { index: idx, opts: { text: nextText, meta: nextMeta } })
+}
+
+function addEmptyTextLayer() {
+  const doc = store.getters['bmp/activeDocument'] as { width?: number; height?: number; layers?: Layer[] } | undefined
+  if (!doc) return
+  // bitmappery 텍스트 layer는 layer.width/height 크기 canvas에 텍스트를 렌더링하므로
+  // document 전체 크기로 만들어야 글자가 잘리지 않음. (기존 layer-add-text-layer.ts 패턴)
+  const layer = LayerFactory.create({
+    type: LayerTypes.LAYER_TEXT,
+    left: 0,
+    top: 0,
+    width: doc.width ?? 800,
+    height: doc.height ?? 1200,
+    transparent: true,
+    visible: true,
+    text: {
+      value: '',
+      font: 'Noto Sans KR',
+      size: 24,
+      unit: 'px',
+      lineHeight: 0,
+      spacing: 0,
+      color: '#000000',
+    },
+  }) as Layer
+  layer.meta = { blockId: layer.id, original: '', status: 'edited', boxMode: 'fixed' }
+  // bmp/addLayer가 mutation 안에서 state.activeLayerIndex를 자동으로 새 layer의
+  // 인덱스로 설정함 (document-module.ts addLayer). 여기서 또 commit하면 layers.length가
+  // 이미 +1 된 시점 값이라 out-of-bounds (N+1)로 덮어쓰는 회귀가 됨.
+  store.commit('bmp/addLayer', layer)
+  store.commit('editor/SELECT_LAYER', layer.id)
+  store.commit('bmp/setActiveTool', { tool: ToolTypes.TEXT })
+}
+
+function removeTextLayer(layerId: string) {
+  const idx = findLayerIndex(layerId)
+  if (idx < 0) return
+  store.commit('bmp/removeLayer', idx)
+  if (selectedLayerId.value === layerId) {
+    store.commit('editor/SELECT_LAYER', null)
+  }
 }
 
 function goToPrevPage() {
@@ -106,11 +182,14 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 
     <Teleport to="#towa-right-panel" defer>
       <TranslationPanel
-        :blocks="currentPage?.textBlocks ?? []"
-        :selected-block-id="selectedBlockId"
+        :layers="textLayers"
+        :selected-layer-id="selectedLayerId"
         :current-page-index="currentPageIndex"
         :total-pages="pages.length"
-        @select-block="selectBlock"
+        @select-layer="selectLayer"
+        @update-text="updateTextLayer"
+        @add-block="addEmptyTextLayer"
+        @remove-block="removeTextLayer"
         @prev-page="goToPrevPage"
         @next-page="goToNextPage"
       />

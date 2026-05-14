@@ -1,7 +1,6 @@
 import { openDB, type IDBPDatabase, type DBSchema } from 'idb'
 import type { ProjectStatus, ProjectConfig } from '@/types/project'
 import type { PageStatus } from '@/types/page'
-import type { TextBlock } from '@/types/text-block'
 
 // --- DB record types (stored in IndexedDB, no Blob URLs or runtime-only fields) ---
 
@@ -25,7 +24,6 @@ export interface PageRecord {
   projectId: string
   index: number
   status: PageStatus
-  textBlocks: TextBlock[]
 }
 
 // --- IndexedDB schema ---

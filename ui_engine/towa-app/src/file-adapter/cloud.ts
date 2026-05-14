@@ -5,12 +5,10 @@ import type {
   ProjectCreateInput,
   ProjectDto,
   ProjectPatchInput,
-  TextBlockDto,
 } from '@/backend/contracts'
 import { BackendError } from '@/backend/errors'
 import type { PageStatus } from '@/types/page'
 import type { ProjectConfig, ProjectStatus } from '@/types/project'
-import type { TextBlock, TextBlockStatus } from '@/types/text-block'
 
 import type { FileAdapter, PageSnapshot, PageSummary } from './contracts'
 import type { ProjectRecord } from './db'
@@ -171,7 +169,6 @@ function toSnapshotPayload(snapshot: PageSnapshot): PageSnapshotPayload {
         projectId: snapshot.page.projectId,
         index: snapshot.page.index,
         status: snapshot.page.status,
-        textBlocks: snapshot.page.textBlocks.map(toTextBlockDto),
       },
     },
     originalImage: snapshot.originalImage,
@@ -188,39 +185,10 @@ function fromSnapshotPayload(payload: PageSnapshotPayload): PageSnapshot {
       projectId: metaPage.projectId,
       index: metaPage.index,
       status: metaPage.status as PageStatus,
-      textBlocks: metaPage.textBlocks.map(fromTextBlockDto),
     },
     originalImage: payload.originalImage,
     layerBlob: payload.layerBlob,
     thumbnail: payload.thumbnail,
-  }
-}
-
-function toTextBlockDto(tb: TextBlock): TextBlockDto {
-  return {
-    id: tb.id,
-    pageId: tb.pageId,
-    bbox: { x: tb.bbox.x, y: tb.bbox.y, width: tb.bbox.width, height: tb.bbox.height },
-    original: tb.original,
-    translated: tb.translated,
-    font: tb.font,
-    fontSize: tb.fontSize,
-    color: tb.color,
-    status: tb.status,
-  }
-}
-
-function fromTextBlockDto(dto: TextBlockDto): TextBlock {
-  return {
-    id: dto.id,
-    pageId: dto.pageId,
-    bbox: { x: dto.bbox.x, y: dto.bbox.y, width: dto.bbox.width, height: dto.bbox.height },
-    original: dto.original,
-    translated: dto.translated,
-    font: dto.font,
-    fontSize: dto.fontSize,
-    color: dto.color,
-    status: dto.status as TextBlockStatus,
   }
 }
 
