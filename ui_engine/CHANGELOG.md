@@ -12,6 +12,21 @@
 - `composables/usePageLoader.ts`: dispatchEvent 한 줄 제거. v-show false→true 토글 시점의 layout 재계산은 `views/ProjectView.vue:40-44`의 별도 watcher가 이미 같은 dispatchEvent를 호출하므로 잉여
 - 검증: Playwright로 5회 연속 페이지 전환 (2p→4p→6p→1p→7p) 시 canvas attr 583×875 유지 확인
 
+### 09:47 — 페이지 전환 시 캔버스 깜빡임 제거
+- 증상: 페이지 전환 시 1~2 프레임 동안 캔버스가 cleared 상태로 노출되어 CSS transparency 체커보드(흑백 격자)가 비치는 깜빡임
+- 진짜 원인 (Playwright element.width setter trap으로 확정): zCanvas의 `Canvas.setViewport`가 내부 `updateCanvasSize`에서 `element.width`를 재할당 → Canvas API spec상 ctx 자동 reset. `scaleCanvas`는 `zCanvas.setViewport(...)`를 먼저 호출하고 그 다음 `setDocumentScale → setDimensions`를 호출하므로 setViewport에서 이미 ctx가 cleared된 후 setDimensions wrap이 호출되면 backup이 비어있는 element를 복사하는 흐름
+- `bitmappery/src/rendering/actors/zoomable-canvas.ts`:
+  - `setViewport`와 `setDimensions`를 `_snapshotAndCall` 헬퍼로 wrap. element.width 변경 직전 픽셀을 임시 canvas에 백업 → super 호출 → identity transform으로 새 ctx에 복원. **setViewport도 wrap한 게 결정타**
+  - `render()` 가드: children 중 LayerRenderer(`.layer` 속성으로 식별)의 `_bitmap=null` 또는 `_bitmapReady=false`인 게 있으면 render skip. cacheEffects→setBitmap 비동기 파이프라인 동안 이전 frame 유지. GuideRenderer/InteractionPane 등은 가드에서 제외
+- `bitmappery/src/components/document-canvas/document-canvas.vue`:
+  - activeDocument watcher: 새 document swap 시 `flushRendererCache/flushBitmapCache/flushBlendedLayerCache/layerPool.clear` 4줄 제거. `createLayerRenderers`(line 498-507)가 이미 layer별 diff 처리를 갖춰 무차별 청소가 오히려 atomic swap을 깸. `renderState.reset()`만 유지
+  - `createLayerRenderers`: orphan layer cleanup을 `requestAnimationFrame×3` 뒤로 미룸. `renderer.dispose()` 호출 → `Sprite.dispose` → 부모 zCanvas의 `removeChild` 자동
+- towa-app 통합 레이어 (cloud 모드 큰 이미지 load 100ms+ 케이스 안전망):
+  - `components/common/PageTransitionOverlay.vue` 신규: Teleport + 100ms delay + lucide Loader2 spinner
+  - `composables/usePageLoader.ts`: 모듈 수준 `isPageSwitching` ref + `switchPage` try/finally + `loadPage` 직후 `nextTick + rAF×2` yield
+  - `views/ProjectView.vue`: overlay mount
+- 검증: Playwright로 5회 연속 페이지 전환 (3p→7p→1p→5p→2p) 시 canvas center pixel alpha 변화 0건, cleared frame 0개. `npx vue-tsc --noEmit` 통과
+
 ### 09:21 — F5 후속 1단계: 텍스트 박스 보존 + 폰트 fresh 재렌더 + CJK 위 잘림 fix
 - bitmappery `Layer.meta.boxMode='fixed'` 분기 도입(`render-service.ts`). fixed 모드면 `replaceLayerSource` 우회 → `layer.left/top/width/height` 보존. native bitmappery 동작은 boxMode 미지정 시 그대로.
 - `font-service.loadGoogleFontDetailed` 신규: `document.fonts.load` API로 실제 폰트 로드 완료 보장 + `freshlyLoaded` flag 반환. 기존 `loadGoogleFont`는 호환 시그니처(`Promise<boolean>`) 유지.

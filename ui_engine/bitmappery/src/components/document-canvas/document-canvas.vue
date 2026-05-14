@@ -185,11 +185,17 @@ export default {
                 // switching between documents
                 if ( id !== lastDocument ) {
                     lastDocument = id;
-                    flushRendererCache();
-                    flushBitmapCache();
-                    flushBlendedLayerCache();
+                    // Atomic swap: don't pre-flush previous renderers/caches/layerPool here.
+                    // createLayerRenderers (triggered by the `layers` watcher) handles per-layer
+                    // diff: it adds renderers for new layers and calls flushLayerRenderers for
+                    // ids no longer present, whose dispose() in turn calls Sprite.removeChild
+                    // on the parent zCanvas. The previous document's pixels therefore remain
+                    // on screen until the new renderers are ready, eliminating the blank-frame
+                    // flicker that occurred when this code wiped everything up front and let
+                    // ctx.clearRect run against an empty display list.
+                    // renderState.reset() is kept to clear any stale pending counter from the
+                    // outgoing document.
                     renderState.reset();
-                    layerPool.clear();
                     this.calcIdealDimensions( true );
                     this.$nextTick( async (): Promise<void> => {
                         // previously active tool needs to update to new document ref
@@ -501,10 +507,28 @@ export default {
                 }
                 seen.push( layer.id );
             });
-            [ ...layerPool.keys() ].filter( id => !seen.includes( id )).forEach( id => {
-                flushLayerRenderers( layerPool.get( id ));
-                layerPool.delete( id );
-            });
+            // Defer orphan layer cleanup so previous-document renderers remain on screen
+            // until the new ones complete cacheEffects + setBitmap. Removing them
+            // synchronously here would leave a 1-frame gap where ctx.clearRect runs but
+            // no renderer is ready to draw, exposing the canvas CSS checkerboard.
+            // rAF×3 covers cacheEffects's own rAF + the asynchronous setBitmap pass.
+            const orphanIds = [ ...layerPool.keys() ].filter( id => !seen.includes( id ));
+            if ( orphanIds.length ) {
+                requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => {
+                    orphanIds.forEach( id => {
+                        const renderer = layerPool.get( id );
+                        if ( renderer ) {
+                            if ( renderer.layer ) {
+                                flushLayerRenderers( renderer.layer );
+                            }
+                            if ( typeof renderer.dispose === "function" ) {
+                                renderer.dispose();
+                            }
+                            layerPool.delete( id );
+                        }
+                    });
+                })));
+            }
             // ensure the visible layers are at the right position in display list
             // @todo can we do this in the loop above?
             let blendLayer = -1;

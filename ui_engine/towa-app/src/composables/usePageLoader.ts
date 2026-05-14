@@ -1,4 +1,4 @@
-import { nextTick } from 'vue'
+import { nextTick, ref } from 'vue'
 import { useStore } from 'vuex'
 import { useFileAdapter } from './useFileAdapter'
 import { PageCache } from '@/file-adapter/page-cache'
@@ -13,6 +13,9 @@ const pageCache = new PageCache()
 
 /** 원본 이미지 세션 캐시. 탭 종료 시 소멸. */
 const originalImageCache = new Map<string, Blob>()
+
+/** 페이지 전환 중 플래그 (모든 호출자 공유). overlay 노출 트리거. */
+const isPageSwitching = ref(false)
 
 /**
  * bitmappery 캔버스와 FileAdapter(저장소) 사이의 오케스트레이션.
@@ -167,44 +170,56 @@ export function usePageLoader() {
    * 3. 새 페이지 로드
    */
   async function switchPage(fromPageId: string | null, toPageId: string): Promise<void> {
-    // 1. 현재 페이지 저장 + 캐시
-    let prevDocId: string | null = null
-    if (fromPageId) {
-      const doc = store.getters['bmp/activeDocument']
-      if (doc) {
-        prevDocId = doc.id
-        // snapshot 저장 (썸네일 포함)
-        await savePage(fromPageId)
-        // 캐시에도 저장
-        const blob = await DocumentFactory.toBlob(doc)
-        await pageCache.set(fromPageId, blob)
+    isPageSwitching.value = true
+    try {
+      // 1. 현재 페이지 저장 + 캐시
+      let prevDocId: string | null = null
+      if (fromPageId) {
+        const doc = store.getters['bmp/activeDocument']
+        if (doc) {
+          prevDocId = doc.id
+          // snapshot 저장 (썸네일 포함)
+          await savePage(fromPageId)
+          // 캐시에도 저장
+          const blob = await DocumentFactory.toBlob(doc)
+          await pageCache.set(fromPageId, blob)
+        }
       }
-    }
 
-    // 2. 새 페이지 먼저 로드 → bitmappery가 즉시 새 문서로 전환 (Get Started 깜빡임 없음)
-    await loadPage(toPageId)
+      // 2. 새 페이지 먼저 로드 → bitmappery가 즉시 새 문서로 전환 (Get Started 깜빡임 없음)
+      await loadPage(toPageId)
 
-    // 3. 이전 문서를 documents 배열에서 제거 (메모리 정리)
-    if (prevDocId) {
-      const docs = store.state.bmp?.document?.documents
-      if (docs) {
-        const idx = docs.findIndex((d: { id: string }) => d.id === prevDocId)
-        if (idx !== -1 && idx !== store.state.bmp.document.activeIndex) {
-          docs[idx].layers.forEach((layer: { source?: HTMLCanvasElement; mask?: HTMLCanvasElement }) => {
-            if (layer.source) { layer.source.width = 0; layer.source = undefined as any }
-            if (layer.mask) { layer.mask.width = 0; layer.mask = undefined as any }
-          })
-          docs.splice(idx, 1)
-          // activeIndex 보정
-          if (store.state.bmp.document.activeIndex > idx) {
-            store.state.bmp.document.activeIndex--
+      // 2b. bitmappery document-canvas watcher의 cache flush + 첫 render 패스 완료까지 yield.
+      //     overlay가 이 구간 동안 빈 캔버스를 가려 깜빡임 제거.
+      await nextTick()
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+      })
+
+      // 3. 이전 문서를 documents 배열에서 제거 (메모리 정리)
+      if (prevDocId) {
+        const docs = store.state.bmp?.document?.documents
+        if (docs) {
+          const idx = docs.findIndex((d: { id: string }) => d.id === prevDocId)
+          if (idx !== -1 && idx !== store.state.bmp.document.activeIndex) {
+            docs[idx].layers.forEach((layer: { source?: HTMLCanvasElement; mask?: HTMLCanvasElement }) => {
+              if (layer.source) { layer.source.width = 0; layer.source = undefined as any }
+              if (layer.mask) { layer.mask.width = 0; layer.mask = undefined as any }
+            })
+            docs.splice(idx, 1)
+            // activeIndex 보정
+            if (store.state.bmp.document.activeIndex > idx) {
+              store.state.bmp.document.activeIndex--
+            }
           }
         }
       }
+    } finally {
+      isPageSwitching.value = false
     }
   }
 
-  return { loadPage, savePage, switchPage, pageCache }
+  return { loadPage, savePage, switchPage, pageCache, isPageSwitching }
 }
 
 // --- helpers ---
