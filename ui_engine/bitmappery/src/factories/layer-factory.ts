@@ -100,7 +100,10 @@ const LayerFactory = {
             f: TransformFactory.serialize( layer.transform ),
             fl: FiltersFactory.serialize( layer.filters ),
             v: layer.visible,
-            mt: layer.meta,
+            // structuredClone (compression worker postMessage)이 Vue reactive proxy를
+            // 거부하므로 plain object로 복사한다. meta는 string/number/boolean만 담는
+            // 평탄한 dict라 JSON 라운드트립이 안전.
+            mt: layer.meta ? JSON.parse( JSON.stringify( layer.meta )) : undefined,
         };
     },
 
