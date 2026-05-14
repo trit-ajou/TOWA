@@ -80,12 +80,12 @@ async function buildInput(operationKind: AiOperationKind, pageRecord: Page): Pro
 
 async function pollUntilTerminal(jobId: string, sessionKey: string | null): Promise<AiJobSnapshot> {
   const opts = sessionKey ? { sessionKey } : undefined
-  for (let i = 0; i < 300; i++) {
+  for (let i = 0; i < 60; i++) {
     const snap = await backend.aiJobs.getJob(jobId, opts)
     if (snap.status === 'succeeded' || snap.status === 'failed' || snap.status === 'partial') {
       return snap
     }
-    await new Promise((r) => setTimeout(r, 1000))
+    await new Promise((r) => setTimeout(r, 500))
   }
   throw new Error(`polling timed out for job ${jobId}`)
 }

@@ -452,6 +452,27 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - retry/backoff 및 provider compatibility 보강
 - glossary / term map 추가
 
+### 9-3-1. OpenAI-compatible Translation runtime_config fallback
+
+구현 파일:
+
+- `api/jobs.py`
+- `builtin_models/openai_compatible_translation.py`
+
+구현 내용:
+
+- `_translation_model_id_from_runtime`과 `_translation_provider_config_from_runtime`에서 `runtime_context.metadata` → `runtime_config.json` → 하드코딩 디폴트 순서로 fallback 체인을 추가
+- 기존에는 UI가 `runtime_context.metadata`에 `openai_compatible_base_url`, `translation_model_name`, `translation_backend`를 보내지 않으면 하드코딩 디폴트(`http://127.0.0.1:1234/v1`, `local-model`)로만 폴백되었다
+- 이제 `runtime_config.json`의 `TOWA_TRANSLATION_BACKEND`, `TOWA_OPENAI_COMPATIBLE_BASE_URL`, `TOWA_TRANSLATION_MODEL_NAME`을 중간 폴백으로 읽는다
+- API key도 동일 방식으로 추가: `runtime_config.json`의 `TOWA_OPENAI_COMPATIBLE_API_KEY`를 stage config에 `api_key`로 주입한다
+- `run_openai_compatible_translation`에서 credential 시스템에 API key가 없으면 stage config의 `api_key`를 폴백으로 사용한다
+- 인페인트 설정(`_inpaint_provider_config_from_runtime`)과 동일한 `metadata → runtime_config → default` 패턴으로 통일했다
+
+비고:
+
+- Docker 컨테이너 내에서 `127.0.0.1:1234`는 컨테이너 자신의 localhost이므로 호스트 LM Studio에 접근할 수 없었다. `runtime_config.json`에 `http://host.docker.internal:1234/v1`을 설정하면 Docker에서도 호스트 모델에 접근 가능하다
+- credential 시스템(`_optional_api_key`)은 `resolved_credentials`에서 provider를 찾는데, local 모드에서 provider secrets가 없으면 None을 반환한다. 이 경우 `runtime_config.json`의 `TOWA_OPENAI_COMPATIBLE_API_KEY`가 폴백으로 동작한다
+
 ### 9-4. OCR Post-processing / Reading Order
 
 구현 파일:
