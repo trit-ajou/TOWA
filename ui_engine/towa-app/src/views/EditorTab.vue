@@ -123,10 +123,11 @@ function addEmptyTextLayer() {
     },
   }) as Layer
   layer.meta = { blockId: layer.id, original: '', status: 'edited', boxMode: 'fixed' }
+  // bmp/addLayer가 mutation 안에서 state.activeLayerIndex를 자동으로 새 layer의
+  // 인덱스로 설정함 (document-module.ts addLayer). 여기서 또 commit하면 layers.length가
+  // 이미 +1 된 시점 값이라 out-of-bounds (N+1)로 덮어쓰는 회귀가 됨.
   store.commit('bmp/addLayer', layer)
   store.commit('editor/SELECT_LAYER', layer.id)
-  const layers = doc.layers ?? []
-  store.commit('bmp/setActiveLayerIndex', layers.length) // 방금 추가됨 → 마지막 index
   store.commit('bmp/setActiveTool', { tool: ToolTypes.TEXT })
 }
 

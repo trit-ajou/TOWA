@@ -29,7 +29,6 @@
 - 기존 저장 페이지 마이그레이션 없음 (프로토타이핑 단계).
 - 검증: `npx vue-tsc --noEmit` 통과, `npm test` 25 tests pass, `npm run build` 성공, Playwright로 panel↔canvas 텍스트 양방향 sync + 추가/삭제 + 활성화 동작 확인.
 - 한계: bitmappery 텍스트 layer 자체가 `replaceLayerSource`로 텍스트 bbox 크기로 layer 영역을 줄이고 left/top을 중앙 보정하는 모델이라, AI 검출 bbox 좌표가 렌더 후 무시되고 layer가 캔버스 중앙으로 이동함. 또한 텍스트가 측정 bbox보다 클 때 잘림 가능 (fallback 폰트 측정 등). F5 양방향 sync 본질 외 작업으로 별도 분리 필요.
-- 작업 디렉토리: `/Users/nangtural02/dev/personal/TOWA-f5` (worktree, branch `ui_engine-feature/f5-textblock-sync`).
 
 ---
 
