@@ -150,20 +150,21 @@ def run_nanobanana_inpaint(
     engine_name: str = "nanobanana_vertex",
 ) -> StageResponse:
     started_at = datetime.now(timezone.utc)
-    tasks_artifact = _resolve_inpaint_tasks_artifact(request)
-    tasks_payload = inpaint_tasks_payload_from_mapping(
-        json.loads(_file_path_from_uri(tasks_artifact.uri).read_text(encoding="utf-8"))
-    )
-    if not tasks_payload.tasks:
-        raise ValueError("Nanobanana inpaint requires at least one inpaint task")
+    target_layer_id = str(request.stage_config.get("target_layer_id", "layer_inpainting"))
 
-    target_layer_id = tasks_payload.target_layer_id
-    if target_layer_id != "layer_inpainting":
-        raise ValueError("Nanobanana inpaint can only target layer_inpainting")
+    tasks_payload = _try_resolve_inpaint_tasks(request)
+    use_mask = tasks_payload is not None and len(tasks_payload.tasks) > 0
 
-    base_artifact = request.artifacts[tasks_payload.source_artifact_ref]
+    if use_mask:
+        base_artifact = request.artifacts[tasks_payload.source_artifact_ref]
+    else:
+        input_ref = str(request.stage_config.get("input_artifact_ref", ""))
+        if input_ref and input_ref in request.artifacts:
+            base_artifact = request.artifacts[input_ref]
+        else:
+            base_artifact = _resolve_first_bitmap_artifact(request)
+
     base_image = Image.open(_file_path_from_uri(base_artifact.uri)).convert("RGBA")
-    edited_image = _initial_inpainting_canvas(request, base_image, target_layer_id)
 
     generate_edit_fn = generate_edit_fn or _generate_with_nanobanana_vertex
     request_provider = request.resolved_credentials.get("primary_provider")
@@ -179,10 +180,6 @@ def run_nanobanana_inpaint(
     warnings: list[str] = []
 
     try:
-        for task in tasks_payload.tasks:
-            if task.target_layer_id != "layer_inpainting":
-                raise ValueError("Nanobanana inpaint task attempted to target a non-inpainting layer")
-
         page_bytes = _image_to_bytes(base_image, format_hint="PNG")
         generated_bytes = generate_edit_fn(
             page_bytes,
@@ -200,13 +197,18 @@ def run_nanobanana_inpaint(
             generated_page,
             provider_name,
         )
-        composite_mask = _build_composite_mask(request, tasks_payload, base_image.size)
-        edited_image.paste(generated_page, (0, 0), composite_mask)
+
+        if use_mask:
+            edited_image = _initial_inpainting_canvas(request, base_image, target_layer_id)
+            composite_mask = _build_composite_mask(request, tasks_payload, base_image.size)
+            edited_image.paste(generated_page, (0, 0), composite_mask)
+        else:
+            edited_image = generated_page
     except Exception as exc:
         return _failed_response(
             request,
             started_at=started_at,
-            edited_image=edited_image,
+            edited_image=Image.new("RGBA", base_image.size, color=(0, 0, 0, 0)),
             tasks_payload=tasks_payload,
             model_name=model_name,
             provider_name=provider_name,
@@ -221,6 +223,7 @@ def run_nanobanana_inpaint(
         engine_name,
     )
     finished_at = datetime.now(timezone.utc)
+    task_count = len(tasks_payload.tasks) if tasks_payload else 0
     report = StageReport(
         stage_name=request.stage_name,
         stage_run_id=request.stage_run_id,
@@ -231,10 +234,10 @@ def run_nanobanana_inpaint(
         metrics={
             "provider": provider_name,
             "model_name": model_name,
-            "task_count": len(tasks_payload.tasks),
+            "task_count": task_count,
             "target_layer_id": target_layer_id,
             "provider_call_mode": "full_page_single_call",
-            "composite_mask_mode": "local_mask_only",
+            "composite_mask_mode": "local_mask_only" if use_mask else "none",
             "provider_output_size": f"{generated_page.width}x{generated_page.height}",
             "base_image_size": f"{base_image.width}x{base_image.height}",
             "provider_output_resized": "yes" if resize_warning is not None else "no",
@@ -268,6 +271,24 @@ def _resolve_inpaint_tasks_artifact(request: StageRequest) -> ArtifactDescriptor
         if artifact.kind == "inpaint_tasks":
             return artifact
     raise ValueError("Nanobanana inpaint requires an inpaint_tasks artifact")
+
+
+def _try_resolve_inpaint_tasks(request: StageRequest) -> Optional[object]:
+    """Resolve inpaint_tasks artifact if available, return None otherwise."""
+    try:
+        tasks_artifact = _resolve_inpaint_tasks_artifact(request)
+    except (ValueError, KeyError):
+        return None
+    return inpaint_tasks_payload_from_mapping(
+        json.loads(_file_path_from_uri(tasks_artifact.uri).read_text(encoding="utf-8"))
+    )
+
+
+def _resolve_first_bitmap_artifact(request: StageRequest) -> ArtifactDescriptor:
+    for artifact in request.artifacts.values():
+        if artifact.kind == "bitmap":
+            return artifact
+    raise ValueError("Inpaint requires at least one bitmap artifact")
 
 
 def _file_path_from_uri(uri: str) -> Path:
