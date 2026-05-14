@@ -14,8 +14,11 @@ from PIL import Image
 
 from model_engine.builtin_models import (
     CRAFT_TEXT_DETECTION_MODEL_ID,
+    MINDLOGIC_IMAGE_MODEL,
+    MINDLOGIC_INPAINT_MODEL_ID,
     NANOBANANA_INPAINT_MODEL_ID,
     register_craft_text_detection_model,
+    register_mindlogic_inpaint_model,
     register_nanobanana_inpaint_model,
 )
 from model_engine.contracts.artifacts import ArtifactDescriptor
@@ -67,9 +70,15 @@ def main() -> int:
         help="Directory used for generated transaction artifacts.",
     )
     parser.add_argument(
+        "--provider",
+        choices=("nanobanana", "mindlogic"),
+        default="nanobanana",
+        help="Inpaint provider adapter to run.",
+    )
+    parser.add_argument(
         "--api-key-env",
-        default="TOWA_NANOBANANA_API_KEY",
-        help="Environment variable that contains the nanobanana API key.",
+        default=None,
+        help="Environment variable that contains the selected provider API key.",
     )
     parser.add_argument(
         "--padding",
@@ -97,15 +106,16 @@ def main() -> int:
     )
     parser.add_argument(
         "--model-name",
-        default="gemini-3.1-flash-image-preview",
-        help="Nanobanana image model name.",
+        default=None,
+        help="Provider image model name.",
     )
     args = parser.parse_args()
 
-    api_key = os.environ.get(args.api_key_env)
+    api_key_env = args.api_key_env or _default_api_key_env(args.provider)
+    api_key = os.environ.get(api_key_env)
     if not api_key:
         raise RuntimeError(
-            f"Missing nanobanana API key. Set the environment variable {args.api_key_env} before running."
+            f"Missing {args.provider} API key. Set the environment variable {api_key_env} before running."
         )
 
     image_path = Path(args.image).resolve()
@@ -137,6 +147,9 @@ def main() -> int:
     registry = ModelRegistry()
     register_craft_text_detection_model(registry)
     register_nanobanana_inpaint_model(registry)
+    register_mindlogic_inpaint_model(registry)
+    inpaint_model_id = _inpaint_model_id(args.provider)
+    inpaint_model_name = args.model_name or _default_model_name(args.provider)
 
     stages: list[Stage] = [
         AdapterBackedStage(
@@ -164,10 +177,11 @@ def main() -> int:
             "inpaint",
             stage_kind=StageKind.INPAINT,
             registry=registry,
-            preferred_model_id=NANOBANANA_INPAINT_MODEL_ID,
+            preferred_model_id=inpaint_model_id,
             config={
                 "input_artifact_ref": input_artifact.artifact_ref,
-                "model_name": args.model_name,
+                "model_name": inpaint_model_name,
+                "provider": args.provider,
                 "target_layer_id": "layer_inpainting",
             },
         ),
@@ -181,7 +195,7 @@ def main() -> int:
             mode=ExecutionMode.LOCAL,
             workspace_uri=workspace_path.as_uri(),
             requested_by="run_inpaint_sample",
-            session_provider_secrets={"nanobanana": api_key},
+            session_provider_secrets={args.provider: api_key},
         ),
         initial_artifacts={input_artifact.artifact_ref: input_artifact},
         job_id="job_inpaint_sample",
@@ -232,6 +246,24 @@ def _media_type_for_suffix(suffix: str) -> str:
     if normalized == ".webp":
         return "image/webp"
     return "image/png"
+
+
+def _default_api_key_env(provider: str) -> str:
+    if provider == "mindlogic":
+        return "TOWA_MINDLOGIC_API_KEY"
+    return "TOWA_NANOBANANA_API_KEY"
+
+
+def _inpaint_model_id(provider: str) -> str:
+    if provider == "mindlogic":
+        return MINDLOGIC_INPAINT_MODEL_ID
+    return NANOBANANA_INPAINT_MODEL_ID
+
+
+def _default_model_name(provider: str) -> str:
+    if provider == "mindlogic":
+        return MINDLOGIC_IMAGE_MODEL
+    return "gemini-3.1-flash-image-preview"
 
 
 if __name__ == "__main__":

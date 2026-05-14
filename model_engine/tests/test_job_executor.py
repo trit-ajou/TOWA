@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 from PIL import Image
 
+import model_engine.api.jobs as jobs_module
 from model_engine.api.jobs import (
     JobExecutionRequest,
     JobExecutionResult,
@@ -42,6 +43,14 @@ class OrchestratedJobExecutorTests(unittest.TestCase):
             self.assertEqual(ModelJobStatus.SUCCEEDED, result.status)
             self.assertEqual(["text_detection"], [report.stage_name for report in result.stage_reports])
             self.assertEqual("craft", result.document.stage_meta["text_detection"]["engine"])
+            self.assertEqual(1, len(result.document.text_blocks))
+            self.assertEqual("block_0001", result.document.text_blocks[0].block_id)
+            self.assertEqual("", result.document.text_blocks[0].source_lang_text)
+            self.assertEqual("region_0001", result.document.text_blocks[0].source_region_ref)
+            self.assertEqual(
+                ["replace_text_blocks", "set_stage_meta"],
+                [patch.op.value for patch in result.document_patch],
+            )
 
     def test_translate_job_runs_detection_then_ocr_before_openai_compatible_translation(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -69,6 +78,17 @@ class OrchestratedJobExecutorTests(unittest.TestCase):
             self.assertEqual("縦書きテキスト", result.document.text_blocks[0].source_lang_text)
             self.assertEqual("세로쓰기 텍스트", result.document.text_blocks[0].translated_text)
             self.assertEqual("manga_ocr", result.document.stage_meta["ocr"]["engine"])
+            text_block_patches = [
+                patch for patch in result.document_patch if patch.op.value == "replace_text_blocks"
+            ]
+            self.assertEqual(2, len(text_block_patches))
+            self.assertEqual(
+                ["縦書きテキスト", "縦書きテキスト"],
+                [
+                    patch.payload["text_blocks"][0]["source_lang_text"]
+                    for patch in text_block_patches
+                ],
+            )
             self.assertEqual(
                 "openai_compatible_translation",
                 result.document.stage_meta["translation"]["engine"],
@@ -169,6 +189,46 @@ class OrchestratedJobExecutorTests(unittest.TestCase):
             "workspace://project/proj-1/page/001",
             execution_context.metadata["client_workspace_uri"],
         )
+
+    def test_background_executor_exception_is_logged_with_job_context(self) -> None:
+        manager = ModelJobManager(executor=_ExplodingExecutor())
+        submission = submission_from_api_payload(
+            _payload_object(_job_payload(operation_kind="detect", mode="local"))
+        )
+
+        with self.assertLogs("model_engine.api.jobs", level="ERROR") as captured:
+            _, response = manager.create_job(submission)
+            detail = _wait_for_terminal_job(manager, response["job_id"])
+
+        logs = "\n".join(captured.output)
+        self.assertEqual("failed", detail["status"])
+        self.assertIn("model_job_exception", logs)
+        self.assertIn(response["job_id"], logs)
+        self.assertIn("pipe_", logs)
+        self.assertIn("RuntimeError: executor boom", logs)
+
+    def test_inpaint_provider_selection_uses_runtime_config(self) -> None:
+        original_config = jobs_module.RUNTIME_CONFIG
+        try:
+            jobs_module.RUNTIME_CONFIG = {
+                "TOWA_INPAINT_PROVIDER": "mindlogic",
+                "TOWA_INPAINT_MODEL_NAME": "runtime-model",
+            }
+            runtime_context = StageRuntimeContext(
+                mode=ExecutionMode.SAAS,
+                workspace_uri="file:///tmp/towa/saas",
+            )
+
+            self.assertEqual(
+                "builtin.mindlogic.inpaint",
+                jobs_module._inpaint_model_id_from_runtime(runtime_context),
+            )
+            self.assertEqual(
+                {"provider": "mindlogic", "model_name": "runtime-model"},
+                jobs_module._inpaint_provider_config_from_runtime(runtime_context),
+            )
+        finally:
+            jobs_module.RUNTIME_CONFIG = original_config
 
 
 def _job_request(workspace_dir: Path, *, operation_kind: str) -> JobExecutionRequest:
@@ -273,6 +333,12 @@ class _CapturingExecutor(JobExecutor):
             document_patch=[],
             stage_reports=[],
         )
+
+
+class _ExplodingExecutor(JobExecutor):
+    def execute(self, request: JobExecutionRequest) -> JobExecutionResult:
+        _ = request
+        raise RuntimeError("executor boom")
 
 
 def _job_payload(*, operation_kind: str, mode: str) -> dict[str, object]:

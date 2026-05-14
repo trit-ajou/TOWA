@@ -123,11 +123,18 @@ class OrchestratorTests(unittest.TestCase):
                 ),
             ]
 
-            result = orchestrator.run(document=document, stages=stages, runtime_context=runtime_context)
+            with self.assertLogs("model_engine.orchestrator", level="ERROR") as captured:
+                result = orchestrator.run(document=document, stages=stages, runtime_context=runtime_context)
 
             self.assertEqual(StageStatus.FAILED, result.status)
             self.assertEqual(2, len(result.stage_reports))
             self.assertNotIn("translation", result.document.stage_meta)
+            logs = "\n".join(captured.output)
+            self.assertIn("model_stage_finished", logs)
+            self.assertIn('"stage_name":"inpaint"', logs)
+            self.assertIn('"status":"failed"', logs)
+            self.assertIn('"error_code":"provider_timeout"', logs)
+            self.assertNotIn("local-secret", logs)
 
 
 def _write_local_credentials(tmpdir: str, *, provider: str, api_key: str) -> str:

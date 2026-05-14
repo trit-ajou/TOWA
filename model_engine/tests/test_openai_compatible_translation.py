@@ -11,6 +11,7 @@ from model_engine.builtin_models.openai_compatible_translation import (
     _chat_completions_url,
     _chat_completion_response_text,
     _normalize_translation_entries,
+    _post_chat_completions,
     register_openai_compatible_translation_model,
     run_openai_compatible_translation,
 )
@@ -88,6 +89,40 @@ class OpenAICompatibleTranslationTests(unittest.TestCase):
                 {"translations": [{"block_id": "b1", "translated_text": "안녕"}]}
             ),
         )
+
+    def test_post_chat_completions_sends_gateway_compatible_headers(self) -> None:
+        class _Response:
+            def __enter__(self) -> "_Response":
+                return self
+
+            def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+                return None
+
+            def read(self) -> bytes:
+                return b'{"choices":[{"message":{"content":"{\\"translations\\":[]}"}}]}'
+
+        captured: dict[str, str] = {}
+
+        def _fake_urlopen(request: object, timeout: float) -> _Response:
+            _ = timeout
+            captured.update(dict(request.header_items()))
+            return _Response()
+
+        with patch(
+            "model_engine.builtin_models.openai_compatible_translation.urlrequest.urlopen",
+            side_effect=_fake_urlopen,
+        ):
+            _post_chat_completions(
+                base_url="https://factchat-cloud.mindlogic.ai/v1/gateway",
+                body={"model": "gemini-3.1-flash-lite-preview", "messages": []},
+                api_key="test-key",
+                timeout_seconds=3,
+            )
+
+        self.assertEqual("application/json", captured["Accept"])
+        self.assertEqual("application/json", captured["Content-type"])
+        self.assertEqual("curl/8.7.1", captured["User-agent"])
+        self.assertEqual("Bearer test-key", captured["Authorization"])
 
 
 def _stage_request(workspace_dir: Path) -> StageRequest:

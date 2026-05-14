@@ -58,6 +58,157 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - 장기 이상형인 `API / Worker` 분리 전에, 현재 단계에서는 `API + Inference` 통합 서빙 컨테이너를 먼저 만들기로 전략을 정리
 - root compose가 띄우는 `Dockerfile.api` 서빙 이미지도 Python 3.10 기반 CRAFT/Manga OCR 추론 의존성을 포함하도록 전환
 - API job 실행 시 `workspace://...` 같은 외부 논리 workspace를 서버 내부 `file://` 실행 workspace로 보정해 stage artifact 저장이 실제 서빙 경로에서도 동작
+- job 생성/시작/완료, background executor 예외, billing finalization 실패, stage 시작/종료/실패를 structured app log로 남기도록 보강
+- 로그 payload는 `job_id`, `pipeline_id`, `operation_kind`, `request_ref`, `stage_name`, `stage_run_id`, `status`, `error_code` 중심으로 남기고 credential/session/token 계열 값은 redaction
+- Mindlogic image 연동 전 실 API shape를 확인하기 위한 `scripts/probe_mindlogic_image_edit.py` probe 스크립트 추가. `/v1/gateway/images/generate/`와 legacy `/v1/api/google/models/edit-image` payload를 모두 확인할 수 있게 구성
+- built-in `inpaint=mindlogic` adapter 추가. 기존 나노바나나 인페인트와 동일한 `NANOBANANA_DEFAULT_PROMPT`, full-page provider call, local mask composite 계약을 유지하고 provider 호출부만 Mindlogic Google edit endpoint로 분리
+- API job inpaint 경로는 `TOWA_INPAINT_PROVIDER=mindlogic` 또는 runtime metadata `inpaint_provider=mindlogic`일 때 `builtin.mindlogic.inpaint`를 선택한다. SaaS/platform key env는 `TOWA_PLATFORM_PROVIDER_MINDLOGIC_API_KEY`
+- Docker inference sample에서 `CRAFT -> mask_or_erase_planning -> Mindlogic inpaint` 추론 성공 확인. 결과 artifact는 `model_engine/.runtime/mindlogic_inpaint_docker/transactions/pipe_inpaint_sample/inpaint/pipe_inpaint_sample_inpaint_3/`
+- Docker `model-engine`은 `model_engine/.runtime`을 `/app/model_engine/.runtime`로 마운트해 API 서버도 `runtime_config.json`을 읽는다. `TOWA_INPAINT_PROVIDER`, `TOWA_INPAINT_MODEL_NAME`, provider API key는 env 우선, runtime config fallback 순서로 해석한다
+- Docker `model-engine`은 `model_engine/.cache/models`도 `/cache/models`로 마운트한다. UI에서 첫 inpaint job을 테스트할 때 CRAFT detector/refiner 가중치를 컨테이너 재생성마다 다시 다운로드하지 않도록 하여 polling timeout 가능성을 줄인다
+
+## 2026-05-14 세션 handoff
+
+현재 작업 브랜치와 PR 상태:
+
+- branch: `model_engine`
+- latest pushed commit: `88383a6` (origin/model_engine)
+- 로컬 미푸시 커밋 4개 (아래 참고)
+- PR: `https://github.com/trit-ajou/TOWA/pull/8`
+- PR 상태: draft
+
+이번 세션에서 수행한 작업:
+
+### 1. 번역 설정 runtime_config.json fallback 추가
+
+커밋: `c096a83`, `c91b3fe`, `23ab9d4`
+
+수정 파일:
+
+- `model_engine/api/jobs.py`
+- `model_engine/builtin_models/openai_compatible_translation.py`
+
+문제:
+
+- UI에서 번역 요청 시 `runtime_context.metadata`에 `openai_compatible_base_url`, `translation_model_name`을 보내지 않았다
+- `_translation_provider_config_from_runtime`은 `runtime_config.json`을 읽지 않고 metadata만 확인했다
+- Docker 컨테이너 내에서 폴백 디폴트 `http://127.0.0.1:1234/v1`은 호스트에 접근 불가 → `Connection refused`
+- API key도 credential 시스템에서만 가져왔는데, local 모드에서는 provider secrets가 없어서 None → `401 API key required`
+
+반영한 변경:
+
+- `_translation_model_id_from_runtime`과 `_translation_provider_config_from_runtime`에서 `metadata → runtime_config.json → 하드코딩 디폴트` 순서 fallback 체인 추가
+- `TOWA_OPENAI_COMPATIBLE_BASE_URL`, `TOWA_TRANSLATION_MODEL_NAME`, `TOWA_TRANSLATION_BACKEND` 키를 중간 폴백으로 읽는다
+- `TOWA_OPENAI_COMPATIBLE_API_KEY`를 stage config의 `api_key`로 주입한다
+- `run_openai_compatible_translation`에서 credential 시스템에 API key가 없으면 stage config의 `api_key`를 폴백으로 사용한다
+- Mindlogic API Gateway처럼 Cloudflare가 Python 기본 User-Agent를 막는 OpenAI-compatible endpoint를 위해 chat completions 요청에 `Accept: application/json`, `User-Agent: curl/8.7.1` 헤더를 추가했다. 로컬 개발 runtime config는 `gemini-3.1-flash-lite-preview`와 `https://factchat-cloud.mindlogic.ai/v1/gateway` 조합으로 검증했다
+- 인페인트 설정(`_inpaint_provider_config_from_runtime`)과 동일한 패턴으로 통일했다
+
+### 2. 인페인트 파이프라인 단순화
+
+커밋: `d088d7a`
+
+수정 파일:
+
+- `model_engine/api/jobs.py`
+- `model_engine/builtin_models/nanobanana_inpaint.py`
+
+변경 전:
+
+- `inpaint` 요청 시 `text_detection(CRAFT) → mask_or_erase_planning → inpaint` 3단계 실행
+- CRAFT 텍스트 검출 후 마스크를 만들고, provider 결과에서 마스크 영역만 합성
+
+변경 후:
+
+- `inpaint` 요청 시 `inpaint` 1단계만 실행
+- 프롬프트가 이미 "모든 텍스트를 찾아서 지워라"고 지시하므로 CRAFT 검출이 불필요
+- provider에 원본 이미지 전체를 보내고, provider 결과를 그대로 `layer_inpainting`으로 사용
+- `inpaint_tasks` artifact가 있으면(기존 마스크 기반 경로) 여전히 마스크 합성 fallback으로 동작
+- `builtin.nanobanana.inpaint`, `builtin.mindlogic.inpaint` manifest의 필수 artifact를 `bitmap`으로 맞춰 UI 단독 inpaint 요청에서도 registry selection이 통과하도록 수정
+
+효과:
+
+- CRAFT 모델 로딩/추론 시간 생략 → 인페인트 속도 개선
+- 파이프라인 단계 감소로 실패 지점 감소
+
+### 3. 임시 변경 (커밋 미포함)
+
+- `ui_engine/towa-app/src/components/editor/AiToolbar.vue`의 `pollUntilTerminal` 타임아웃을 30초(60×500ms) → 5분(300×1000ms)으로 임시 확장
+- 이 변경은 커밋에 포함하지 않았으며, UI 개발자에게 정식 수정을 요청해야 한다
+- 로컬 LLM(gemma-4-e4b 등)이 느려서 UI 폴링이 먼저 타임아웃되는 문제 대응용
+
+다음 세션에서 확인/진행할 항목:
+
+- `git push`로 로컬 커밋 4개를 origin에 반영
+- Docker 재빌드 후 번역/인페인트 end-to-end 테스트
+- `c91b3fe` 커밋의 timeout 120→300 변경은 model engine 쪽인데, 현재 revert되어 120으로 돌아가 있다. 필요 시 다시 올릴 것
+- UI 개발자에게 폴링 타임아웃 확장 요청 (최소 2~3분)
+- `replace_source_ref` patch 처리 시 UI가 기존 레이어를 교체하지 않고 새 레이어를 추가하는 문제 확인
+
+## 2026-05-12 세션 handoff
+
+현재 작업 브랜치와 PR 상태:
+
+- branch: `model_engine`
+- history cleanup 전 backup branch: `backup/model_engine-before-history-fix-20260514`
+- latest pushed commit은 새 세션에서 `git log -1 --oneline`으로 확인
+- PR: `https://github.com/trit-ajou/TOWA/pull/8`
+- PR 상태: draft
+- local status는 새 세션에서 `git status --short --branch`로 확인
+
+이번 세션의 주된 요청은 UI/server engine 개발자가 model engine 테스트 중 오류 로그를 보기 어렵다는 문제의 원인 조사와 개선이었다.
+
+조사 결과:
+
+- `ModelJobManager._run_job`에서 background executor 예외가 job error payload로 변환되지만 app log에 traceback/context가 남지 않았다.
+- `PipelineOrchestrator.run`에서 stage 시작, 종료, 실패, 예외 전환점이 로그로 남지 않았다.
+- `/v1/jobs` create path와 `/bridge/service/...` path의 validation/service 오류가 HTTP JSON 응답으로만 반환되고 container log에서 원인 추적용 event가 부족했다.
+- 민감정보 정책상 credential/session/token류는 로그에 남기면 안 되므로, structured log helper에서 redaction을 먼저 고정해야 했다.
+
+반영한 변경:
+
+- `model_engine/logging_utils.py` 추가
+  - structured log payload를 JSON string으로 출력
+  - `authorization`, `api_key`, `credential`, `password`, `secret`, `session_key`, `token`, bearer 문자열을 redaction
+  - exception log는 redacted traceback을 payload에 포함
+- `model_engine/api/jobs.py`
+  - `model_job_accepted`
+  - `model_job_started`
+  - `model_job_finished`
+  - `model_job_idempotent_replay`
+  - `model_job_exception`
+  - `model_job_billing_finalization_failed`
+  - `model_job_usage_hold_authorized`
+- `model_engine/orchestrator.py`
+  - `model_stage_started`
+  - `model_stage_finished`
+  - `model_stage_exception`
+- `model_engine/api/app.py`
+  - job create validation/service error 로그 추가
+  - bridge service error/unavailable 로그 추가
+- `model_engine/tests/test_job_executor.py`
+  - background executor exception이 job context와 traceback을 남기는지 검증
+- `model_engine/tests/test_orchestrator.py`
+  - stage failure가 stage/status/error_code와 함께 로그에 남고 secret이 노출되지 않는지 검증
+
+원격 `origin/model_engine`에 이미 있던 변경을 기준 base로 삼아 history를 정리했다.
+
+- CRAFT detect job이 text blocks patch를 낼 수 있는 변경
+- model image의 torch execstack 처리 변경
+- 관련 contract/docs 업데이트
+- 불필요한 `Merge remote-tracking branch 'origin/model_engine' into model_engine` 커밋은 backup branch에 보존한 뒤 제거하고, logging 변경을 다시 얹는 방식으로 정리했다.
+
+검증:
+
+- `python3 -m unittest model_engine.tests.test_job_executor model_engine.tests.test_orchestrator model_engine.tests.test_craft_text_detection -v`
+- `PYTHONPYCACHEPREFIX=/private/tmp/towa_model_engine_pycache python3 -m compileall -q model_engine`
+
+참고:
+
+- 로컬 기본 `python3 -m compileall -q model_engine`은 macOS Python이 `/Users/kmins/Library/Caches/com.apple.python/...` 아래 pyc를 쓰려다가 sandbox 권한에 막힐 수 있다.
+- 이 경우 위처럼 `PYTHONPYCACHEPREFIX=/private/tmp/towa_model_engine_pycache`를 지정한다.
+- `model_engine/tests/test_job_api.py`는 현재 로컬 Python 환경에 `fastapi`가 없으면 실행되지 않는다. Docker/API 의존성 환경에서 돌려야 한다.
+- 컨테이너 로그 확인 시 `model_job_` 또는 `model_stage_` event prefix로 필터링하면 된다.
 
 ### 1. Canonical IR
 
@@ -378,6 +529,27 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - 많은 block에 대한 chunking 정책
 - retry/backoff 및 provider compatibility 보강
 - glossary / term map 추가
+
+### 9-3-1. OpenAI-compatible Translation runtime_config fallback
+
+구현 파일:
+
+- `api/jobs.py`
+- `builtin_models/openai_compatible_translation.py`
+
+구현 내용:
+
+- `_translation_model_id_from_runtime`과 `_translation_provider_config_from_runtime`에서 `runtime_context.metadata` → `runtime_config.json` → 하드코딩 디폴트 순서로 fallback 체인을 추가
+- 기존에는 UI가 `runtime_context.metadata`에 `openai_compatible_base_url`, `translation_model_name`, `translation_backend`를 보내지 않으면 하드코딩 디폴트(`http://127.0.0.1:1234/v1`, `local-model`)로만 폴백되었다
+- 이제 `runtime_config.json`의 `TOWA_TRANSLATION_BACKEND`, `TOWA_OPENAI_COMPATIBLE_BASE_URL`, `TOWA_TRANSLATION_MODEL_NAME`을 중간 폴백으로 읽는다
+- API key도 동일 방식으로 추가: `runtime_config.json`의 `TOWA_OPENAI_COMPATIBLE_API_KEY`를 stage config에 `api_key`로 주입한다
+- `run_openai_compatible_translation`에서 credential 시스템에 API key가 없으면 stage config의 `api_key`를 폴백으로 사용한다
+- 인페인트 설정(`_inpaint_provider_config_from_runtime`)과 동일한 `metadata → runtime_config → default` 패턴으로 통일했다
+
+비고:
+
+- Docker 컨테이너 내에서 `127.0.0.1:1234`는 컨테이너 자신의 localhost이므로 호스트 LM Studio에 접근할 수 없었다. `runtime_config.json`에 `http://host.docker.internal:1234/v1`을 설정하면 Docker에서도 호스트 모델에 접근 가능하다
+- credential 시스템(`_optional_api_key`)은 `resolved_credentials`에서 provider를 찾는데, local 모드에서 provider secrets가 없으면 None을 반환한다. 이 경우 `runtime_config.json`의 `TOWA_OPENAI_COMPATIBLE_API_KEY`가 폴백으로 동작한다
 
 ### 9-4. OCR Post-processing / Reading Order
 

@@ -1367,6 +1367,11 @@ v1에서는 planner를 규칙 기반으로 시작한다.
   - Docker Compose 기본 base URL: `http://host.docker.internal:1234/v1`
   - 주 사용 대상: LM Studio, Ollama OpenAI-compatible endpoint, custom proxy
   - provider name: `openai_compatible` (API key가 필요한 proxy일 때만 사용)
+  - Mindlogic API Gateway도 같은 경로로 사용한다:
+    - base URL: `https://factchat-cloud.mindlogic.ai/v1/gateway`
+    - model: `gemini-3.1-flash-lite-preview`
+    - API key: `TOWA_OPENAI_COMPATIBLE_API_KEY`
+    - Cloudflare 차단을 피하기 위해 adapter는 `Accept: application/json`, `User-Agent: curl/8.7.1` 헤더를 보낸다.
 - Vertex 경로:
   - provider name: `translation_provider`
   - runtime library: `google-genai`
@@ -1399,6 +1404,23 @@ v1에서는 planner를 규칙 기반으로 시작한다.
 - OCR 결과는 block별 호출이 아니라 page block 전체를 모아 한 번의 LLM 호출로 번역한다.
 - OpenAI-compatible backend는 LM Studio, Ollama OpenAI-compatible endpoint, custom proxy를 같은 contract로 받는다.
 - local runtime 값은 `env > .runtime/runtime_config.json > default` 우선순위로 해석한다.
+- Mindlogic API Gateway를 개발용 번역 backend로 쓸 때는 아래처럼 설정한다. 실제 key는 Git에 올리지 않는다.
+
+```json
+{
+  "TOWA_TRANSLATION_BACKEND": "openai_compatible",
+  "TOWA_TRANSLATION_MODEL_NAME": "gemini-3.1-flash-lite-preview",
+  "TOWA_OPENAI_COMPATIBLE_BASE_URL": "https://factchat-cloud.mindlogic.ai/v1/gateway",
+  "TOWA_OPENAI_COMPATIBLE_API_KEY": "YOUR_MINDLOGIC_API_KEY",
+  "TOWA_INPAINT_PROVIDER": "mindlogic",
+  "TOWA_MINDLOGIC_API_KEY": "YOUR_MINDLOGIC_API_KEY",
+  "inpaint": {
+    "provider": "mindlogic",
+    "mindlogic_api_key": "YOUR_MINDLOGIC_API_KEY"
+  }
+}
+```
+
 - OCR stage가 `style_hint.ocr_status=needs_review`, `ocr_warnings`, density/area/text length를 남기므로, 번역 전후 분석 기준점이 생겼다.
 
 현재 남아 있는 보완 항목:

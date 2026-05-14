@@ -51,10 +51,17 @@ services:
       APP_ENV: docker
       TOWA_SERVICE_ENGINE_URL: ${TOWA_SERVICE_ENGINE_URL:-http://service-engine:8000}
       TOWA_SERVICE_ENGINE_TIMEOUT_SECONDS: ${TOWA_SERVICE_ENGINE_TIMEOUT_SECONDS:-10}
+      TOWA_INPAINT_PROVIDER: ${TOWA_INPAINT_PROVIDER:-}
+      TOWA_INPAINT_MODEL_NAME: ${TOWA_INPAINT_MODEL_NAME:-}
       MODEL_ENGINE_CORS_ALLOW_ORIGINS: ${MODEL_ENGINE_CORS_ALLOW_ORIGINS:-http://localhost:5173}
+      TOWA_PLATFORM_PROVIDER_MINDLOGIC_API_KEY: ${TOWA_PLATFORM_PROVIDER_MINDLOGIC_API_KEY:-}
+      TOWA_PLATFORM_PROVIDER_NANOBANANA_API_KEY: ${TOWA_PLATFORM_PROVIDER_NANOBANANA_API_KEY:-}
     depends_on:
       service-engine:
         condition: service_healthy
+    volumes:
+      - ./model_engine/.runtime:/app/model_engine/.runtime
+      - ./model_engine/.cache/models:/cache/models
     ports:
       - "${MODEL_ENGINE_PORT:-8100}:8100"
     healthcheck:
