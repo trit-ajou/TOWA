@@ -10,9 +10,13 @@ from unittest.mock import patch
 from PIL import Image
 
 from model_engine.builtin_models.nanobanana_inpaint import (
+    MINDLOGIC_IMAGE_MODEL,
+    MINDLOGIC_INPAINT_MODEL_ID,
+    NANOBANANA_DEFAULT_PROMPT,
     NANOBANANA_INPAINT_MODEL_ID,
     _missing_image_error,
     _image_part_to_png_bytes,
+    register_mindlogic_inpaint_model,
     register_nanobanana_inpaint_model,
     run_nanobanana_inpaint,
 )
@@ -125,6 +129,60 @@ class NanobananaInpaintTests(unittest.TestCase):
                 "preferred_model_id=builtin.nanobanana.inpaint",
                 response.stage_report.metrics["selection_reason"],
             )
+
+    def test_registry_runs_mindlogic_inpaint_with_shared_prompt(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            planning_response = run_mask_or_erase_planning(_planning_request(Path(tmpdir)))
+            registry = ModelRegistry()
+            register_mindlogic_inpaint_model(registry)
+            stage = AdapterBackedStage(
+                "inpaint",
+                stage_kind=StageKind.INPAINT,
+                registry=registry,
+                preferred_model_id=MINDLOGIC_INPAINT_MODEL_ID,
+                config={"provider": "mindlogic"},
+            )
+            captured: dict[str, str] = {}
+
+            def _capture_generate_edit(
+                source_image_bytes: bytes,
+                source_mime_type: str,
+                prompt: str,
+                model_name: str,
+                api_key: str,
+            ) -> bytes:
+                captured["source_mime_type"] = source_mime_type
+                captured["prompt"] = prompt
+                captured["model_name"] = model_name
+                captured["api_key"] = api_key
+                return _fake_generate_edit(
+                    source_image_bytes,
+                    source_mime_type,
+                    prompt,
+                    model_name,
+                    api_key,
+                )
+
+            with patch(
+                "model_engine.builtin_models.nanobanana_inpaint._generate_with_mindlogic_google_edit",
+                side_effect=_capture_generate_edit,
+            ):
+                response = stage.run(
+                    _inpaint_request(
+                        Path(tmpdir),
+                        planning_response.artifacts,
+                        provider="mindlogic",
+                    )
+                )
+
+            self.assertEqual(StageStatus.SUCCEEDED, response.status)
+            self.assertEqual(NANOBANANA_DEFAULT_PROMPT, captured["prompt"])
+            self.assertEqual(MINDLOGIC_IMAGE_MODEL, captured["model_name"])
+            self.assertEqual("image/png", captured["source_mime_type"])
+            self.assertEqual("test-key", captured["api_key"])
+            self.assertEqual("mindlogic", response.stage_report.metrics["provider"])
+            self.assertEqual(MINDLOGIC_INPAINT_MODEL_ID, response.stage_report.metrics["model_id"])
+            self.assertEqual("mindlogic_google_edit", response.patches[1].payload["value"]["engine"])
 
     def test_nanobanana_inpaint_resizes_provider_output_to_base_size(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -289,6 +347,8 @@ def _planning_request(workspace_dir: Path) -> StageRequest:
 def _inpaint_request(
     workspace_dir: Path,
     planning_artifacts: dict[str, ArtifactDescriptor],
+    *,
+    provider: str = "nanobanana",
 ) -> StageRequest:
     artifacts = dict(planning_artifacts)
     image_path = workspace_dir / "page.png"
@@ -301,9 +361,9 @@ def _inpaint_request(
         height=10,
     )
     binding = CredentialBinding(
-        provider="nanobanana",
+        provider=provider,
         credential_source=CredentialSource.USER_PERSONAL_SESSION,
-        credential_id="session/nanobanana/active",
+        credential_id=f"session/{provider}/active",
         credential_version="session",
         billing_mode=BillingMode.USER_DIRECT,
     )

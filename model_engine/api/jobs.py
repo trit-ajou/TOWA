@@ -26,6 +26,8 @@ from .artifact_io import (
 from ..builtin_models import (
     CRAFT_TEXT_DETECTION_MODEL_ID,
     MANGA_OCR_MODEL_ID,
+    MINDLOGIC_IMAGE_MODEL,
+    MINDLOGIC_INPAINT_MODEL_ID,
     NANOBANANA_INPAINT_MODEL_ID,
     OPENAI_COMPATIBLE_DEFAULT_BASE_URL,
     OPENAI_COMPATIBLE_DEFAULT_MODEL,
@@ -33,6 +35,7 @@ from ..builtin_models import (
     VERTEX_TRANSLATION_MODEL_ID,
     register_craft_text_detection_model,
     register_manga_ocr_model,
+    register_mindlogic_inpaint_model,
     register_nanobanana_inpaint_model,
     register_openai_compatible_translation_model,
     register_vertex_translation_model,
@@ -904,6 +907,7 @@ def _build_builtin_registry() -> ModelRegistry:
     register_craft_text_detection_model(registry)
     register_manga_ocr_model(registry)
     register_nanobanana_inpaint_model(registry)
+    register_mindlogic_inpaint_model(registry)
     register_openai_compatible_translation_model(registry)
     register_vertex_translation_model(registry)
     return registry
@@ -1002,10 +1006,11 @@ def _build_operation_stages(
                 "inpaint",
                 stage_kind=StageKind.INPAINT,
                 registry=registry,
-                preferred_model_id=NANOBANANA_INPAINT_MODEL_ID,
+                preferred_model_id=_inpaint_model_id_from_runtime(request.runtime_context),
                 config={
                     "input_artifact_ref": input_artifact_ref,
                     "target_layer_id": "layer_inpainting",
+                    **_inpaint_provider_config_from_runtime(request.runtime_context),
                 },
             ),
         ]
@@ -1025,6 +1030,37 @@ def _translation_model_id_from_runtime(runtime_context: StageRuntimeContext) -> 
     if backend == "vertex":
         return VERTEX_TRANSLATION_MODEL_ID
     return OPENAI_COMPATIBLE_TRANSLATION_MODEL_ID
+
+
+def _inpaint_model_id_from_runtime(runtime_context: StageRuntimeContext) -> str:
+    provider = _inpaint_provider_from_runtime(runtime_context)
+    if provider == "mindlogic":
+        return MINDLOGIC_INPAINT_MODEL_ID
+    return NANOBANANA_INPAINT_MODEL_ID
+
+
+def _inpaint_provider_config_from_runtime(
+    runtime_context: StageRuntimeContext,
+) -> dict[str, object]:
+    provider = _inpaint_provider_from_runtime(runtime_context)
+    if provider == "mindlogic":
+        return {
+            "provider": "mindlogic",
+            "model_name": str(
+                runtime_context.metadata.get("inpaint_model_name")
+                or os.environ.get("TOWA_INPAINT_MODEL_NAME")
+                or MINDLOGIC_IMAGE_MODEL
+            ),
+        }
+    return {"provider": "nanobanana"}
+
+
+def _inpaint_provider_from_runtime(runtime_context: StageRuntimeContext) -> str:
+    return str(
+        runtime_context.metadata.get("inpaint_provider")
+        or os.environ.get("TOWA_INPAINT_PROVIDER")
+        or "nanobanana"
+    )
 
 
 def _translation_provider_config_from_runtime(

@@ -14,6 +14,8 @@ from PIL import Image
 from model_engine.builtin_models import (
     CRAFT_TEXT_DETECTION_MODEL_ID,
     MANGA_OCR_MODEL_ID,
+    MINDLOGIC_IMAGE_MODEL,
+    MINDLOGIC_INPAINT_MODEL_ID,
     NANOBANANA_INPAINT_MODEL_ID,
     OPENAI_COMPATIBLE_DEFAULT_BASE_URL,
     OPENAI_COMPATIBLE_DEFAULT_MODEL,
@@ -21,6 +23,7 @@ from model_engine.builtin_models import (
     VERTEX_TRANSLATION_MODEL_ID,
     register_craft_text_detection_model,
     register_manga_ocr_model,
+    register_mindlogic_inpaint_model,
     register_nanobanana_inpaint_model,
     register_openai_compatible_translation_model,
     register_vertex_translation_model,
@@ -107,9 +110,20 @@ def main() -> int:
         help="OpenAI-compatible /v1 base URL for local LLM servers or custom proxies.",
     )
     parser.add_argument(
+        "--inpaint-provider",
+        choices=("nanobanana", "mindlogic"),
+        default=runtime_config_value(
+            runtime_config,
+            "TOWA_INPAINT_PROVIDER",
+            aliases=("inpaint_provider", "inpaint.provider"),
+            default="nanobanana",
+        ),
+        help="Inpaint provider adapter used in the pipeline.",
+    )
+    parser.add_argument(
         "--inpaint-api-key-env",
-        default="TOWA_NANOBANANA_API_KEY",
-        help="Environment variable that contains the nanobanana API key.",
+        default=None,
+        help="Environment variable that contains the selected inpaint provider API key.",
     )
     parser.add_argument(
         "--translation-model-name",
@@ -122,8 +136,12 @@ def main() -> int:
     )
     parser.add_argument(
         "--inpaint-model-name",
-        default="gemini-3.1-flash-image-preview",
-        help="Nanobanana image model name.",
+        default=runtime_config_value(
+            runtime_config,
+            "TOWA_INPAINT_MODEL_NAME",
+            aliases=("inpaint_model_name", "inpaint.model_name"),
+        ),
+        help="Inpaint provider image model name. Defaults to provider-specific model if omitted.",
     )
     parser.add_argument(
         "--source-language",
@@ -182,15 +200,16 @@ def main() -> int:
             f"Set the environment variable {args.translation_api_key_env} before running."
         )
 
+    inpaint_api_key_env = args.inpaint_api_key_env or _default_inpaint_api_key_env(args.inpaint_provider)
     inpaint_api_key = runtime_config_value(
         runtime_config,
-        args.inpaint_api_key_env,
-        aliases=("nanobanana_api_key", "inpaint.nanobanana_api_key"),
+        inpaint_api_key_env,
+        aliases=_inpaint_api_key_aliases(args.inpaint_provider),
     )
     if not inpaint_api_key:
         raise RuntimeError(
-            "Missing nanobanana API key. "
-            f"Set the environment variable {args.inpaint_api_key_env} before running."
+            f"Missing {args.inpaint_provider} API key. "
+            f"Set the environment variable {inpaint_api_key_env} before running."
         )
 
     image_path = Path(args.image).resolve()
@@ -225,6 +244,7 @@ def main() -> int:
     register_vertex_translation_model(registry)
     register_openai_compatible_translation_model(registry)
     register_nanobanana_inpaint_model(registry)
+    register_mindlogic_inpaint_model(registry)
 
     translation_stage = _build_translation_stage(
         registry=registry,
@@ -285,10 +305,11 @@ def main() -> int:
             "inpaint",
             stage_kind=StageKind.INPAINT,
             registry=registry,
-            preferred_model_id=NANOBANANA_INPAINT_MODEL_ID,
+            preferred_model_id=_inpaint_model_id(args.inpaint_provider),
             config={
                 "input_artifact_ref": input_artifact.artifact_ref,
-                "model_name": args.inpaint_model_name,
+                "model_name": args.inpaint_model_name or _default_inpaint_model_name(args.inpaint_provider),
+                "provider": args.inpaint_provider,
                 "target_layer_id": "layer_inpainting",
             },
         ),
@@ -307,6 +328,7 @@ def main() -> int:
                 translation_api_key=translation_api_key,
                 openai_compatible_api_key=openai_compatible_api_key,
                 inpaint_api_key=inpaint_api_key,
+                inpaint_provider=args.inpaint_provider,
             ),
         ),
         initial_artifacts={input_artifact.artifact_ref: input_artifact},
@@ -420,13 +442,38 @@ def _session_provider_secrets(
     translation_api_key: Optional[str],
     openai_compatible_api_key: Optional[str],
     inpaint_api_key: str,
+    inpaint_provider: str,
 ) -> dict[str, str]:
-    secrets = {"nanobanana": inpaint_api_key}
+    secrets = {inpaint_provider: inpaint_api_key}
     if translation_backend == "vertex" and translation_api_key:
         secrets["translation_provider"] = translation_api_key
     if translation_backend == "openai_compatible" and openai_compatible_api_key:
         secrets["openai_compatible"] = openai_compatible_api_key
     return secrets
+
+
+def _default_inpaint_api_key_env(provider: str) -> str:
+    if provider == "mindlogic":
+        return "TOWA_MINDLOGIC_API_KEY"
+    return "TOWA_NANOBANANA_API_KEY"
+
+
+def _inpaint_api_key_aliases(provider: str) -> tuple[str, ...]:
+    if provider == "mindlogic":
+        return ("mindlogic_api_key", "inpaint.mindlogic_api_key")
+    return ("nanobanana_api_key", "inpaint.nanobanana_api_key")
+
+
+def _inpaint_model_id(provider: str) -> str:
+    if provider == "mindlogic":
+        return MINDLOGIC_INPAINT_MODEL_ID
+    return NANOBANANA_INPAINT_MODEL_ID
+
+
+def _default_inpaint_model_name(provider: str) -> str:
+    if provider == "mindlogic":
+        return MINDLOGIC_IMAGE_MODEL
+    return "gemini-3.1-flash-image-preview"
 
 
 if __name__ == "__main__":

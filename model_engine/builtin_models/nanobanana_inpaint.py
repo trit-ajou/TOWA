@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import base64
 from datetime import datetime, timezone
 from io import BytesIO
 import json
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
+from urllib import error, request
 from urllib.parse import urlparse
 
 from PIL import Image
@@ -27,6 +29,11 @@ from ..storage import stage_run_slug, stage_transaction_dir
 
 NANOBANANA_INPAINT_MODEL_ID = "builtin.nanobanana.inpaint"
 NANOBANANA_IMAGE_MODEL = "gemini-3.1-flash-image-preview"
+MINDLOGIC_INPAINT_MODEL_ID = "builtin.mindlogic.inpaint"
+MINDLOGIC_IMAGE_MODEL = "imagen-3.0-capability-001"
+MINDLOGIC_IMAGE_EDIT_BASE_URL = "https://factchat-cloud.mindlogic.ai/v1/api/google"
+MINDLOGIC_IMAGE_EDIT_PATH = "/models/edit-image"
+MINDLOGIC_IMAGE_EDIT_MODE = "EDIT_MODE_DEFAULT"
 NANOBANANA_DEFAULT_PROMPT = (
     "Use the provided manga page as the source image. "
     "Remove all visible source text, speech balloon text, and sound effects from the page. "
@@ -65,10 +72,46 @@ def build_nanobanana_inpaint_manifest() -> StageManifest:
     )
 
 
+def build_mindlogic_inpaint_manifest() -> StageManifest:
+    from ..contracts.credentials import BillingMode, CredentialSource
+
+    return StageManifest(
+        model_id=MINDLOGIC_INPAINT_MODEL_ID,
+        adapter_id="adapter.builtin.mindlogic.inpaint",
+        stage_kind=StageKind.INPAINT,
+        required_artifact_kinds=["bitmap", "inpaint_tasks"],
+        produced_artifact_kinds=["bitmap"],
+        supported_modes=[ExecutionMode.LOCAL, ExecutionMode.SAAS],
+        allowed_credential_sources=[
+            CredentialSource.USER_PERSONAL_PERSISTED,
+            CredentialSource.USER_PERSONAL_SESSION,
+            CredentialSource.PLATFORM_MANAGED,
+        ],
+        billing_modes=[BillingMode.USER_DIRECT, BillingMode.PLATFORM_CREDIT],
+        resource_profile=ResourceProfile(
+            cpu_threads=1,
+            memory_mb=1024,
+            gpu_required=False,
+            latency_tier="network",
+        ),
+        custom_model=False,
+        priority=50,
+        display_name="Mindlogic Image Edit Inpaint",
+        tags=["builtin", "mindlogic", "inpaint", "google-edit"],
+    )
+
+
 def build_nanobanana_inpaint_adapter() -> CallableModelAdapter:
     return CallableModelAdapter.from_import_path(
         build_nanobanana_inpaint_manifest(),
         import_path="model_engine.builtin_models.nanobanana_inpaint:nanobanana_inpaint_handler",
+    )
+
+
+def build_mindlogic_inpaint_adapter() -> CallableModelAdapter:
+    return CallableModelAdapter.from_import_path(
+        build_mindlogic_inpaint_manifest(),
+        import_path="model_engine.builtin_models.nanobanana_inpaint:mindlogic_inpaint_handler",
     )
 
 
@@ -77,8 +120,23 @@ def register_nanobanana_inpaint_model(registry: ModelRegistry) -> str:
     return NANOBANANA_INPAINT_MODEL_ID
 
 
+def register_mindlogic_inpaint_model(registry: ModelRegistry) -> str:
+    registry.register(build_mindlogic_inpaint_adapter())
+    return MINDLOGIC_INPAINT_MODEL_ID
+
+
 def nanobanana_inpaint_handler(request: StageRequest) -> StageResponse:
     return run_nanobanana_inpaint(request)
+
+
+def mindlogic_inpaint_handler(request: StageRequest) -> StageResponse:
+    return run_nanobanana_inpaint(
+        request,
+        generate_edit_fn=_generate_with_mindlogic_google_edit,
+        default_model_name=MINDLOGIC_IMAGE_MODEL,
+        provider_name="mindlogic",
+        engine_name="mindlogic_google_edit",
+    )
 
 
 def run_nanobanana_inpaint(
@@ -87,6 +145,9 @@ def run_nanobanana_inpaint(
     generate_edit_fn: Optional[
         Callable[[bytes, str, str, str, str], bytes]
     ] = None,
+    default_model_name: str = NANOBANANA_IMAGE_MODEL,
+    provider_name: str = "nanobanana",
+    engine_name: str = "nanobanana_vertex",
 ) -> StageResponse:
     started_at = datetime.now(timezone.utc)
     tasks_artifact = _resolve_inpaint_tasks_artifact(request)
@@ -113,7 +174,7 @@ def run_nanobanana_inpaint(
         raise RuntimeError("Nanobanana inpaint requires an API key")
 
     prompt_override = request.stage_config.get("prompt")
-    model_name = str(request.stage_config.get("model_name", NANOBANANA_IMAGE_MODEL))
+    model_name = str(request.stage_config.get("model_name", default_model_name))
     prompt = str(prompt_override or NANOBANANA_DEFAULT_PROMPT)
     warnings: list[str] = []
 
@@ -134,7 +195,11 @@ def run_nanobanana_inpaint(
         generated_page, resize_warning = _normalize_generated_page_size(generated_page, base_image.size)
         if resize_warning is not None:
             warnings.append(resize_warning)
-        provider_output_artifact = _write_provider_output_bitmap(request, generated_page)
+        provider_output_artifact = _write_provider_output_bitmap(
+            request,
+            generated_page,
+            provider_name,
+        )
         composite_mask = _build_composite_mask(request, tasks_payload, base_image.size)
         edited_image.paste(generated_page, (0, 0), composite_mask)
     except Exception as exc:
@@ -144,11 +209,17 @@ def run_nanobanana_inpaint(
             edited_image=edited_image,
             tasks_payload=tasks_payload,
             model_name=model_name,
+            provider_name=provider_name,
             error=exc,
         )
 
     output_artifact = _write_inpainted_bitmap(request, edited_image, target_layer_id)
-    patches = _patches_for_inpainting_layer(request, output_artifact.artifact_ref, target_layer_id)
+    patches = _patches_for_inpainting_layer(
+        request,
+        output_artifact.artifact_ref,
+        target_layer_id,
+        engine_name,
+    )
     finished_at = datetime.now(timezone.utc)
     report = StageReport(
         stage_name=request.stage_name,
@@ -158,7 +229,7 @@ def run_nanobanana_inpaint(
         output_refs=[provider_output_artifact.artifact_ref, output_artifact.artifact_ref],
         warnings=warnings,
         metrics={
-            "provider": "nanobanana",
+            "provider": provider_name,
             "model_name": model_name,
             "task_count": len(tasks_payload.tasks),
             "target_layer_id": target_layer_id,
@@ -277,6 +348,97 @@ def _image_part_to_png_bytes(part: object) -> bytes:
     raise RuntimeError("Nanobanana image part could not be converted into PNG bytes")
 
 
+def _generate_with_mindlogic_google_edit(
+    source_image_bytes: bytes,
+    source_mime_type: str,
+    prompt: str,
+    model_name: str,
+    api_key: str,
+) -> bytes:
+    payload = {
+        "model": model_name,
+        "prompt": prompt,
+        "reference_images": [
+            {
+                "reference_id": 1,
+                "reference_type": "REFERENCE_TYPE_RAW",
+                "reference_image": {
+                    "image_bytes": base64.b64encode(source_image_bytes).decode("ascii"),
+                    "mime_type": source_mime_type,
+                },
+            }
+        ],
+        "config": {
+            "edit_mode": MINDLOGIC_IMAGE_EDIT_MODE,
+            "number_of_images": 1,
+            "output_mime_type": "image/png",
+        },
+    }
+    endpoint = MINDLOGIC_IMAGE_EDIT_BASE_URL.rstrip("/") + MINDLOGIC_IMAGE_EDIT_PATH
+    body = json.dumps(payload).encode("utf-8")
+    req = request.Request(endpoint, data=body, method="POST")
+    req.add_header("Authorization", f"Bearer {api_key}")
+    req.add_header("Accept", "application/json")
+    req.add_header("Content-Type", "application/json")
+    req.add_header("User-Agent", "curl/8.7.1")
+    try:
+        with request.urlopen(req, timeout=180.0) as resp:
+            response_payload = json.loads(resp.read().decode("utf-8"))
+    except error.HTTPError as exc:
+        raw = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"Mindlogic image edit failed: HTTP {exc.code}: {raw}") from exc
+
+    image_bytes = _extract_mindlogic_image_bytes(response_payload)
+    if image_bytes is None:
+        keys = sorted(response_payload.keys()) if isinstance(response_payload, dict) else []
+        raise RuntimeError(f"Mindlogic image edit response did not include an image: keys={keys}")
+    return image_bytes
+
+
+def _extract_mindlogic_image_bytes(payload: Any) -> Optional[bytes]:
+    if isinstance(payload, str):
+        return _decode_mindlogic_image_value(payload)
+    if isinstance(payload, list):
+        for item in payload:
+            image_bytes = _extract_mindlogic_image_bytes(item)
+            if image_bytes is not None:
+                return image_bytes
+        return None
+    if not isinstance(payload, dict):
+        return None
+
+    for key in (
+        "generated_images",
+        "data",
+        "images",
+        "output",
+        "image",
+        "image_bytes",
+        "url",
+        "b64_json",
+        "base64",
+        "image_url",
+    ):
+        value = payload.get(key)
+        image_bytes = _extract_mindlogic_image_bytes(value)
+        if image_bytes is not None:
+            return image_bytes
+    return None
+
+
+def _decode_mindlogic_image_value(value: str) -> Optional[bytes]:
+    if value.startswith("data:image/"):
+        _, encoded = value.split(",", 1)
+        return base64.b64decode(encoded)
+    if value.startswith("http://") or value.startswith("https://"):
+        with request.urlopen(value, timeout=180.0) as resp:
+            return resp.read()
+    try:
+        return base64.b64decode(value, validate=True)
+    except Exception:
+        return None
+
+
 def _build_composite_mask(
     request: StageRequest,
     tasks_payload: object,
@@ -359,6 +521,7 @@ def _write_inpainted_bitmap(
 def _write_provider_output_bitmap(
     request: StageRequest,
     image: Image.Image,
+    provider_name: str = "nanobanana",
 ) -> ArtifactDescriptor:
     stage_dir = stage_transaction_dir(request)
     run_slug = stage_run_slug(request.stage_run_id)
@@ -377,7 +540,7 @@ def _write_provider_output_bitmap(
         height=image.height,
         byte_size=output_path.stat().st_size,
         producer_stage=request.stage_name,
-        metadata={"role": "provider_output_bitmap", "provider": "nanobanana"},
+        metadata={"role": "provider_output_bitmap", "provider": provider_name},
     )
 
 
@@ -385,6 +548,7 @@ def _patches_for_inpainting_layer(
     request: StageRequest,
     artifact_ref: str,
     target_layer_id: str,
+    engine_name: str,
 ) -> list[PatchOperation]:
     existing_layer = request.document.get_layer(target_layer_id)
     if existing_layer is None:
@@ -412,7 +576,7 @@ def _patches_for_inpainting_layer(
                 payload={
                     "key": "inpaint",
                     "value": {
-                        "engine": "nanobanana_vertex",
+                        "engine": engine_name,
                         "target_layer_id": target_layer_id,
                         "artifact_ref": artifact_ref,
                         "provider_output_role": "provider_output_bitmap",
@@ -431,7 +595,7 @@ def _patches_for_inpainting_layer(
             payload={
                 "key": "inpaint",
                 "value": {
-                    "engine": "nanobanana_vertex",
+                    "engine": engine_name,
                     "target_layer_id": target_layer_id,
                     "artifact_ref": artifact_ref,
                     "provider_output_role": "provider_output_bitmap",
@@ -446,6 +610,7 @@ def _failed_response(
     edited_image: Image.Image,
     tasks_payload: object,
     model_name: str,
+    provider_name: str,
     error: Exception,
 ) -> StageResponse:
     snapshot_artifacts = _write_failure_snapshot(
@@ -463,7 +628,7 @@ def _failed_response(
         output_refs=sorted(snapshot_artifacts.keys()),
         warnings=[],
         metrics={
-            "provider": "nanobanana",
+            "provider": provider_name,
             "model_name": model_name,
             "task_count": len(getattr(tasks_payload, "tasks", []) or []),
             "snapshot_retained": "yes",

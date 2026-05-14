@@ -61,6 +61,9 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - job 생성/시작/완료, background executor 예외, billing finalization 실패, stage 시작/종료/실패를 structured app log로 남기도록 보강
 - 로그 payload는 `job_id`, `pipeline_id`, `operation_kind`, `request_ref`, `stage_name`, `stage_run_id`, `status`, `error_code` 중심으로 남기고 credential/session/token 계열 값은 redaction
 - Mindlogic image 연동 전 실 API shape를 확인하기 위한 `scripts/probe_mindlogic_image_edit.py` probe 스크립트 추가. `/v1/gateway/images/generate/`와 legacy `/v1/api/google/models/edit-image` payload를 모두 확인할 수 있게 구성
+- built-in `inpaint=mindlogic` adapter 추가. 기존 나노바나나 인페인트와 동일한 `NANOBANANA_DEFAULT_PROMPT`, full-page provider call, local mask composite 계약을 유지하고 provider 호출부만 Mindlogic Google edit endpoint로 분리
+- API job inpaint 경로는 `TOWA_INPAINT_PROVIDER=mindlogic` 또는 runtime metadata `inpaint_provider=mindlogic`일 때 `builtin.mindlogic.inpaint`를 선택한다. SaaS/platform key env는 `TOWA_PLATFORM_PROVIDER_MINDLOGIC_API_KEY`
+- Docker inference sample에서 `CRAFT -> mask_or_erase_planning -> Mindlogic inpaint` 추론 성공 확인. 결과 artifact는 `model_engine/.runtime/mindlogic_inpaint_docker/transactions/pipe_inpaint_sample/inpaint/pipe_inpaint_sample_inpaint_3/`
 
 ## 2026-05-12 세션 handoff
 
