@@ -61,6 +61,7 @@ services:
         condition: service_healthy
     volumes:
       - ./model_engine/.runtime:/app/model_engine/.runtime
+      - ./model_engine/.cache/models:/cache/models
     ports:
       - "${MODEL_ENGINE_PORT:-8100}:8100"
     healthcheck:
