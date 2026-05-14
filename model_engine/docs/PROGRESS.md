@@ -67,6 +67,82 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - Docker `model-engine`은 `model_engine/.runtime`을 `/app/model_engine/.runtime`로 마운트해 API 서버도 `runtime_config.json`을 읽는다. `TOWA_INPAINT_PROVIDER`, `TOWA_INPAINT_MODEL_NAME`, provider API key는 env 우선, runtime config fallback 순서로 해석한다
 - Docker `model-engine`은 `model_engine/.cache/models`도 `/cache/models`로 마운트한다. UI에서 첫 inpaint job을 테스트할 때 CRAFT detector/refiner 가중치를 컨테이너 재생성마다 다시 다운로드하지 않도록 하여 polling timeout 가능성을 줄인다
 
+## 2026-05-14 세션 handoff
+
+현재 작업 브랜치와 PR 상태:
+
+- branch: `model_engine`
+- latest pushed commit: `88383a6` (origin/model_engine)
+- 로컬 미푸시 커밋 4개 (아래 참고)
+- PR: `https://github.com/trit-ajou/TOWA/pull/8`
+- PR 상태: draft
+
+이번 세션에서 수행한 작업:
+
+### 1. 번역 설정 runtime_config.json fallback 추가
+
+커밋: `c096a83`, `c91b3fe`, `23ab9d4`
+
+수정 파일:
+
+- `model_engine/api/jobs.py`
+- `model_engine/builtin_models/openai_compatible_translation.py`
+
+문제:
+
+- UI에서 번역 요청 시 `runtime_context.metadata`에 `openai_compatible_base_url`, `translation_model_name`을 보내지 않았다
+- `_translation_provider_config_from_runtime`은 `runtime_config.json`을 읽지 않고 metadata만 확인했다
+- Docker 컨테이너 내에서 폴백 디폴트 `http://127.0.0.1:1234/v1`은 호스트에 접근 불가 → `Connection refused`
+- API key도 credential 시스템에서만 가져왔는데, local 모드에서는 provider secrets가 없어서 None → `401 API key required`
+
+반영한 변경:
+
+- `_translation_model_id_from_runtime`과 `_translation_provider_config_from_runtime`에서 `metadata → runtime_config.json → 하드코딩 디폴트` 순서 fallback 체인 추가
+- `TOWA_OPENAI_COMPATIBLE_BASE_URL`, `TOWA_TRANSLATION_MODEL_NAME`, `TOWA_TRANSLATION_BACKEND` 키를 중간 폴백으로 읽는다
+- `TOWA_OPENAI_COMPATIBLE_API_KEY`를 stage config의 `api_key`로 주입한다
+- `run_openai_compatible_translation`에서 credential 시스템에 API key가 없으면 stage config의 `api_key`를 폴백으로 사용한다
+- 인페인트 설정(`_inpaint_provider_config_from_runtime`)과 동일한 패턴으로 통일했다
+
+### 2. 인페인트 파이프라인 단순화
+
+커밋: `d088d7a`
+
+수정 파일:
+
+- `model_engine/api/jobs.py`
+- `model_engine/builtin_models/nanobanana_inpaint.py`
+
+변경 전:
+
+- `inpaint` 요청 시 `text_detection(CRAFT) → mask_or_erase_planning → inpaint` 3단계 실행
+- CRAFT 텍스트 검출 후 마스크를 만들고, provider 결과에서 마스크 영역만 합성
+
+변경 후:
+
+- `inpaint` 요청 시 `inpaint` 1단계만 실행
+- 프롬프트가 이미 "모든 텍스트를 찾아서 지워라"고 지시하므로 CRAFT 검출이 불필요
+- provider에 원본 이미지 전체를 보내고, provider 결과를 그대로 `layer_inpainting`으로 사용
+- `inpaint_tasks` artifact가 있으면(기존 마스크 기반 경로) 여전히 마스크 합성 fallback으로 동작
+
+효과:
+
+- CRAFT 모델 로딩/추론 시간 생략 → 인페인트 속도 개선
+- 파이프라인 단계 감소로 실패 지점 감소
+
+### 3. 임시 변경 (커밋 미포함)
+
+- `ui_engine/towa-app/src/components/editor/AiToolbar.vue`의 `pollUntilTerminal` 타임아웃을 30초(60×500ms) → 5분(300×1000ms)으로 임시 확장
+- 이 변경은 커밋에 포함하지 않았으며, UI 개발자에게 정식 수정을 요청해야 한다
+- 로컬 LLM(gemma-4-e4b 등)이 느려서 UI 폴링이 먼저 타임아웃되는 문제 대응용
+
+다음 세션에서 확인/진행할 항목:
+
+- `git push`로 로컬 커밋 4개를 origin에 반영
+- Docker 재빌드 후 번역/인페인트 end-to-end 테스트
+- `c91b3fe` 커밋의 timeout 120→300 변경은 model engine 쪽인데, 현재 revert되어 120으로 돌아가 있다. 필요 시 다시 올릴 것
+- UI 개발자에게 폴링 타임아웃 확장 요청 (최소 2~3분)
+- `replace_source_ref` patch 처리 시 UI가 기존 레이어를 교체하지 않고 새 레이어를 추가하는 문제 확인
+
 ## 2026-05-12 세션 handoff
 
 현재 작업 브랜치와 PR 상태:
