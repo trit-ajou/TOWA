@@ -89,6 +89,10 @@ def run_openai_compatible_translation(
     source_language = str(stage_config.get("source_language", "Japanese"))
     target_language = str(stage_config.get("target_language", "Korean"))
     api_key = _optional_api_key(request)
+    if not api_key:
+        config_api_key = stage_config.get("api_key")
+        if config_api_key:
+            api_key = str(config_api_key)
 
     translate_blocks_fn = translate_blocks_fn or _translate_blocks_with_openai_compatible
     try:
@@ -208,7 +212,11 @@ def _post_chat_completions(
 ) -> object:
     endpoint = _chat_completions_url(base_url)
     payload = json.dumps(body, ensure_ascii=False).encode("utf-8")
-    headers = {"Content-Type": "application/json"}
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "User-Agent": "curl/8.7.1",
+    }
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
     request = urlrequest.Request(endpoint, data=payload, headers=headers, method="POST")

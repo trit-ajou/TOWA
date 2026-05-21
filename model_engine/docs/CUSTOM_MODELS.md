@@ -468,6 +468,35 @@ Compose 파일은 OCR 실행 시 아래 cache를 재사용한다.
 }
 ```
 
+Mindlogic API Gateway로 번역과 인페인트를 모두 테스트할 때는 같은 API key를 아래처럼 연결한다.
+실제 key는 `model_engine/.runtime/runtime_config.json` 또는 환경변수에만 두고 Git에 커밋하지 않는다.
+
+```json
+{
+  "TOWA_TRANSLATION_BACKEND": "openai_compatible",
+  "TOWA_TRANSLATION_MODEL_NAME": "gemini-3.1-flash-lite-preview",
+  "TOWA_OPENAI_COMPATIBLE_BASE_URL": "https://factchat-cloud.mindlogic.ai/v1/gateway",
+  "TOWA_OPENAI_COMPATIBLE_API_KEY": "YOUR_MINDLOGIC_API_KEY",
+  "TOWA_INPAINT_PROVIDER": "mindlogic",
+  "TOWA_MINDLOGIC_API_KEY": "YOUR_MINDLOGIC_API_KEY",
+  "inpaint": {
+    "provider": "mindlogic",
+    "mindlogic_api_key": "YOUR_MINDLOGIC_API_KEY"
+  }
+}
+```
+
+동일 설정을 환경변수로 넣을 때는 아래 키를 사용한다.
+
+```bash
+export TOWA_TRANSLATION_BACKEND=openai_compatible
+export TOWA_TRANSLATION_MODEL_NAME=gemini-3.1-flash-lite-preview
+export TOWA_OPENAI_COMPATIBLE_BASE_URL=https://factchat-cloud.mindlogic.ai/v1/gateway
+export TOWA_OPENAI_COMPATIBLE_API_KEY=YOUR_MINDLOGIC_API_KEY
+export TOWA_INPAINT_PROVIDER=mindlogic
+export TOWA_PLATFORM_PROVIDER_MINDLOGIC_API_KEY=YOUR_MINDLOGIC_API_KEY
+```
+
 ```bash
 python3 model_engine/scripts/run_translation_sample.py \
   --image model_engine/samples/dlsite/sample.jpg \
@@ -480,6 +509,7 @@ python3 model_engine/scripts/run_translation_sample.py \
 - canonical translation artifact는 `translated_text_blocks` JSON이다.
 - 기본 샘플은 OpenAI-compatible `/v1/chat/completions`를 사용한다.
 - Docker Compose에서는 호스트 LM Studio/Ollama/custom proxy 접근을 위해 기본 base URL을 `http://host.docker.internal:1234/v1`로 둔다.
+- Mindlogic API Gateway를 쓰는 경우 base URL은 `https://factchat-cloud.mindlogic.ai/v1/gateway`까지만 넣는다. adapter가 `/chat/completions`를 붙인다.
 - Vertex를 쓰려면 `TOWA_TRANSLATION_BACKEND=vertex`와 `TOWA_TRANSLATION_PROVIDER_API_KEY`를 함께 설정한다.
 
 Compose로 실행하면 더 단순하다.

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 import json
+import logging
 from typing import Annotated, Any
 
 from fastapi import FastAPI, Header, Request, UploadFile, status
@@ -16,6 +17,7 @@ from .jobs import (
     submission_from_api_payload,
     submission_from_multipart_payload,
 )
+from ..logging_utils import log_event
 from .schemas import (
     ModelJobCreateRequest,
     UsageJobCaptureRequest,
@@ -28,6 +30,8 @@ from .service_bridge import (
     ServiceEngineUnavailableError,
 )
 from .settings import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 def create_app(
@@ -62,6 +66,13 @@ def create_app(
             )
             return JSONResponse(status_code=status_code, content=response)
         except ModelJobError as exc:
+            _log_api_error(
+                "model_job_create_rejected",
+                status_code=exc.status_code,
+                code=exc.code,
+                retryable=exc.retryable,
+                details=exc.details,
+            )
             return _error_response(
                 status_code=exc.status_code,
                 code=exc.code,
@@ -70,8 +81,18 @@ def create_app(
                 details=exc.details,
             )
         except ServiceEngineHTTPError as exc:
+            _log_api_error(
+                "model_job_create_service_error",
+                status_code=exc.status_code,
+                code=_error_code_from_payload(exc.payload),
+            )
             return JSONResponse(status_code=exc.status_code, content=exc.payload)
         except ServiceEngineUnavailableError as exc:
+            _log_api_error(
+                "model_job_create_service_unavailable",
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                code="service_engine_unreachable",
+            )
             return _error_response(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 code="service_engine_unreachable",
@@ -79,6 +100,12 @@ def create_app(
                 retryable=True,
             )
         except (KeyError, TypeError, ValueError) as exc:
+            _log_api_error(
+                "model_job_create_validation_error",
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                code="model_validation_error",
+                message=str(exc),
+            )
             return _error_response(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 code="model_validation_error",
@@ -219,8 +246,18 @@ def _bridge_response(call: Callable[[], dict[str, Any]]) -> Any:
     try:
         return call()
     except ServiceEngineHTTPError as exc:
+        _log_api_error(
+            "model_bridge_service_error",
+            status_code=exc.status_code,
+            code=_error_code_from_payload(exc.payload),
+        )
         return JSONResponse(status_code=exc.status_code, content=exc.payload)
     except ServiceEngineUnavailableError as exc:
+        _log_api_error(
+            "model_bridge_service_unavailable",
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            code="service_engine_unreachable",
+        )
         return JSONResponse(
             status_code=status.HTTP_502_BAD_GATEWAY,
             content={
@@ -253,6 +290,18 @@ def _error_response(
             }
         },
     )
+
+
+def _log_api_error(event: str, **fields: Any) -> None:
+    log_event(logger, logging.WARNING, event, **fields)
+
+
+def _error_code_from_payload(payload: dict[str, Any]) -> str | None:
+    error = payload.get("error")
+    if isinstance(error, dict):
+        code = error.get("code")
+        return str(code) if code is not None else None
+    return None
 
 
 async def _submission_from_http_request(request: Request):

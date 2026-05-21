@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from enum import Enum
 import hashlib
 import json
+import logging
 import os
 from pathlib import Path
 from threading import Lock, Thread
@@ -22,9 +23,12 @@ from .artifact_io import (
     artifact_descriptors_from_api_payload,
     file_artifact_path,
 )
+from ..config.runtime_config import load_runtime_config, runtime_config_value
 from ..builtin_models import (
     CRAFT_TEXT_DETECTION_MODEL_ID,
     MANGA_OCR_MODEL_ID,
+    MINDLOGIC_IMAGE_MODEL,
+    MINDLOGIC_INPAINT_MODEL_ID,
     NANOBANANA_INPAINT_MODEL_ID,
     OPENAI_COMPATIBLE_DEFAULT_BASE_URL,
     OPENAI_COMPATIBLE_DEFAULT_MODEL,
@@ -32,6 +36,7 @@ from ..builtin_models import (
     VERTEX_TRANSLATION_MODEL_ID,
     register_craft_text_detection_model,
     register_manga_ocr_model,
+    register_mindlogic_inpaint_model,
     register_nanobanana_inpaint_model,
     register_openai_compatible_translation_model,
     register_vertex_translation_model,
@@ -42,6 +47,7 @@ from ..contracts.models import StageKind
 from ..contracts.patches import PatchOperation
 from ..contracts.stages import ExecutionMode, StageReport, StageRuntimeContext, StageStatus
 from ..ipc.serde import document_from_data, document_to_data, patch_to_data, stage_report_to_data
+from ..logging_utils import log_event, log_exception
 from ..models import ModelRegistry
 from ..orchestrator import PipelineOrchestrator
 from ..stages import AdapterBackedStage, Stage, run_mask_or_erase_planning
@@ -54,6 +60,9 @@ from .service_bridge import (
 
 if TYPE_CHECKING:
     from .schemas import ModelJobCreateRequest
+
+logger = logging.getLogger(__name__)
+RUNTIME_CONFIG = load_runtime_config()
 
 
 class ModelJobStatus(str, Enum):
@@ -278,6 +287,17 @@ class ModelJobManager:
                 existing = self._jobs_by_id[existing_id]
                 self._assert_matching_idempotent_replay(existing, submission)
                 status_code = 200 if existing.status in TERMINAL_JOB_STATUSES else 202
+                log_event(
+                    logger,
+                    logging.INFO,
+                    "model_job_idempotent_replay",
+                    job_id=existing.job_id,
+                    pipeline_id=existing.pipeline_id,
+                    status=existing.status.value,
+                    operation_kind=existing.operation_kind,
+                    request_ref=existing.request_ref,
+                    status_code=status_code,
+                )
                 return status_code, self._create_response(existing)
 
         usage_job_id = self._authorize_usage_hold(submission)
@@ -302,11 +322,33 @@ class ModelJobManager:
                 existing = self._jobs_by_id[existing_id]
                 self._assert_matching_idempotent_replay(existing, submission)
                 status_code = 200 if existing.status in TERMINAL_JOB_STATUSES else 202
+                log_event(
+                    logger,
+                    logging.INFO,
+                    "model_job_idempotent_replay",
+                    job_id=existing.job_id,
+                    pipeline_id=existing.pipeline_id,
+                    status=existing.status.value,
+                    operation_kind=existing.operation_kind,
+                    request_ref=existing.request_ref,
+                    status_code=status_code,
+                )
                 return status_code, self._create_response(existing)
             self._jobs_by_id[record.job_id] = record
             self._job_ids_by_idempotency[idempotency_scope] = record.job_id
             create_response = self._create_response(record)
 
+        log_event(
+            logger,
+            logging.INFO,
+            "model_job_accepted",
+            job_id=record.job_id,
+            pipeline_id=record.pipeline_id,
+            operation_kind=record.operation_kind,
+            request_ref=record.request_ref,
+            mode=record.runtime_context.mode.value,
+            usage_job_id=record.usage_job_id,
+        )
         Thread(
             target=self._run_job,
             args=(record.job_id,),
@@ -374,6 +416,17 @@ class ModelJobManager:
             record = self._jobs_by_id[job_id]
             record.status = ModelJobStatus.RUNNING
 
+        log_event(
+            logger,
+            logging.INFO,
+            "model_job_started",
+            job_id=record.job_id,
+            pipeline_id=record.pipeline_id,
+            operation_kind=record.operation_kind,
+            request_ref=record.request_ref,
+            mode=record.runtime_context.mode.value,
+            usage_job_id=record.usage_job_id,
+        )
         request = JobExecutionRequest(
             job_id=record.job_id,
             pipeline_id=record.pipeline_id,
@@ -388,6 +441,15 @@ class ModelJobManager:
         try:
             result = self._executor.execute(request)
         except Exception as exc:  # pragma: no cover - defensive path exercised in tests via custom executor
+            log_exception(
+                logger,
+                "model_job_exception",
+                job_id=record.job_id,
+                pipeline_id=record.pipeline_id,
+                operation_kind=record.operation_kind,
+                request_ref=record.request_ref,
+                exception_type=type(exc).__name__,
+            )
             result = JobExecutionResult(
                 status=ModelJobStatus.FAILED,
                 document=record.document.clone(),
@@ -405,6 +467,16 @@ class ModelJobManager:
             result=result,
         )
         if billing_error is not None:
+            log_event(
+                logger,
+                logging.ERROR,
+                "model_job_billing_finalization_failed",
+                job_id=record.job_id,
+                pipeline_id=record.pipeline_id,
+                operation_kind=record.operation_kind,
+                request_ref=record.request_ref,
+                error=billing_error,
+            )
             result.error = _merge_error_payload(result.error, billing_error)
             if result.status is ModelJobStatus.SUCCEEDED:
                 result.status = ModelJobStatus.PARTIAL
@@ -417,6 +489,21 @@ class ModelJobManager:
             stored.document_patch = result.document_patch
             stored.stage_reports = result.stage_reports
             stored.error = result.error
+
+        log_event(
+            logger,
+            logging.INFO if result.status is ModelJobStatus.SUCCEEDED else logging.ERROR,
+            "model_job_finished",
+            job_id=record.job_id,
+            pipeline_id=record.pipeline_id,
+            operation_kind=record.operation_kind,
+            request_ref=record.request_ref,
+            status=result.status.value,
+            stage_count=len(result.stage_reports),
+            patch_count=len(result.document_patch),
+            artifact_count=len(result.artifacts),
+            error=result.error,
+        )
 
     def _finalize_billing(
         self,
@@ -573,6 +660,14 @@ class ModelJobManager:
                 "estimated_units": USAGE_ESTIMATE_UNITS[submission.operation_kind],
             },
             authorization=authorization,
+        )
+        log_event(
+            logger,
+            logging.INFO,
+            "model_job_usage_hold_authorized",
+            operation_kind=submission.operation_kind,
+            request_ref=submission.request_ref,
+            usage_job_id=str(payload["job_id"]),
         )
         return str(payload["job_id"])
 
@@ -814,6 +909,7 @@ def _build_builtin_registry() -> ModelRegistry:
     register_craft_text_detection_model(registry)
     register_manga_ocr_model(registry)
     register_nanobanana_inpaint_model(registry)
+    register_mindlogic_inpaint_model(registry)
     register_openai_compatible_translation_model(registry)
     register_vertex_translation_model(registry)
     return registry
@@ -839,7 +935,10 @@ def _build_operation_stages(
                 stage_kind=StageKind.TEXT_DETECTION,
                 registry=registry,
                 preferred_model_id=CRAFT_TEXT_DETECTION_MODEL_ID,
-                config=common_detection_config,
+                config={
+                    **common_detection_config,
+                    "emit_text_blocks": True,
+                },
             )
         ]
 
@@ -890,29 +989,14 @@ def _build_operation_stages(
     if request.operation_kind == "inpaint":
         return [
             AdapterBackedStage(
-                "text_detection",
-                stage_kind=StageKind.TEXT_DETECTION,
-                registry=registry,
-                preferred_model_id=CRAFT_TEXT_DETECTION_MODEL_ID,
-                config=common_detection_config,
-            ),
-            _FunctionStage(
-                "mask_or_erase_planning",
-                run_mask_or_erase_planning,
-                config={
-                    "input_artifact_ref": input_artifact_ref,
-                    "padding": 12,
-                    "target_layer_id": "layer_inpainting",
-                },
-            ),
-            AdapterBackedStage(
                 "inpaint",
                 stage_kind=StageKind.INPAINT,
                 registry=registry,
-                preferred_model_id=NANOBANANA_INPAINT_MODEL_ID,
+                preferred_model_id=_inpaint_model_id_from_runtime(request.runtime_context),
                 config={
                     "input_artifact_ref": input_artifact_ref,
                     "target_layer_id": "layer_inpainting",
+                    **_inpaint_provider_config_from_runtime(request.runtime_context),
                 },
             ),
         ]
@@ -928,41 +1012,90 @@ def _resolve_primary_bitmap_artifact_ref(artifacts: dict[str, ArtifactDescriptor
 
 
 def _translation_model_id_from_runtime(runtime_context: StageRuntimeContext) -> str:
-    backend = runtime_context.metadata.get("translation_backend")
+    backend = (
+        runtime_context.metadata.get("translation_backend")
+        or runtime_config_value(RUNTIME_CONFIG, "TOWA_TRANSLATION_BACKEND")
+    )
     if backend == "vertex":
         return VERTEX_TRANSLATION_MODEL_ID
     return OPENAI_COMPATIBLE_TRANSLATION_MODEL_ID
 
 
+def _inpaint_model_id_from_runtime(runtime_context: StageRuntimeContext) -> str:
+    provider = _inpaint_provider_from_runtime(runtime_context)
+    if provider == "mindlogic":
+        return MINDLOGIC_INPAINT_MODEL_ID
+    return NANOBANANA_INPAINT_MODEL_ID
+
+
+def _inpaint_provider_config_from_runtime(
+    runtime_context: StageRuntimeContext,
+) -> dict[str, object]:
+    provider = _inpaint_provider_from_runtime(runtime_context)
+    if provider == "mindlogic":
+        return {
+            "provider": "mindlogic",
+            "model_name": str(
+                runtime_context.metadata.get("inpaint_model_name")
+                or runtime_config_value(RUNTIME_CONFIG, "TOWA_INPAINT_MODEL_NAME")
+                or MINDLOGIC_IMAGE_MODEL
+            ),
+        }
+    return {"provider": "nanobanana"}
+
+
+def _inpaint_provider_from_runtime(runtime_context: StageRuntimeContext) -> str:
+    return str(
+        runtime_context.metadata.get("inpaint_provider")
+        or runtime_config_value(
+            RUNTIME_CONFIG,
+            "TOWA_INPAINT_PROVIDER",
+            aliases=("inpaint_provider", "inpaint.provider"),
+        )
+        or "nanobanana"
+    )
+
+
 def _translation_provider_config_from_runtime(
     runtime_context: StageRuntimeContext,
 ) -> dict[str, object]:
-    backend = runtime_context.metadata.get("translation_backend")
+    backend = (
+        runtime_context.metadata.get("translation_backend")
+        or runtime_config_value(RUNTIME_CONFIG, "TOWA_TRANSLATION_BACKEND")
+    )
     if backend == "vertex":
         return {
             "provider": "translation_provider",
             "model_name": str(
-                runtime_context.metadata.get(
-                    "translation_model_name",
-                    "gemini-3.1-flash-lite-preview",
-                )
+                runtime_context.metadata.get("translation_model_name")
+                or runtime_config_value(RUNTIME_CONFIG, "TOWA_TRANSLATION_MODEL_NAME")
+                or "gemini-3.1-flash-lite-preview"
             ),
         }
 
+    api_key = str(
+        runtime_context.metadata.get("openai_compatible_api_key")
+        or runtime_config_value(
+            RUNTIME_CONFIG,
+            "TOWA_OPENAI_COMPATIBLE_API_KEY",
+            aliases=("openai_compatible_api_key", "translation.openai_compatible_api_key"),
+        )
+        or ""
+    )
     config: dict[str, object] = {
         "base_url": str(
-            runtime_context.metadata.get(
-                "openai_compatible_base_url",
-                OPENAI_COMPATIBLE_DEFAULT_BASE_URL,
-            )
+            runtime_context.metadata.get("openai_compatible_base_url")
+            or runtime_config_value(RUNTIME_CONFIG, "TOWA_OPENAI_COMPATIBLE_BASE_URL")
+            or OPENAI_COMPATIBLE_DEFAULT_BASE_URL
         ),
         "model_name": str(
-            runtime_context.metadata.get(
-                "translation_model_name",
-                OPENAI_COMPATIBLE_DEFAULT_MODEL,
-            )
+            runtime_context.metadata.get("translation_model_name")
+            or runtime_config_value(RUNTIME_CONFIG, "TOWA_TRANSLATION_MODEL_NAME")
+            or OPENAI_COMPATIBLE_DEFAULT_MODEL
         ),
     }
+    if api_key:
+        config["api_key"] = api_key
     if "openai_compatible" in runtime_context.session_provider_secrets:
         config["provider"] = "openai_compatible"
     else:
