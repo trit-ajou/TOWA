@@ -23,7 +23,7 @@ const statusColors: Record<string, string> = {
 
 <template>
   <aside
-    class="bg-towa-surface border-r border-towa-border flex flex-col shrink-0 transition-all overflow-hidden"
+    class="bg-towa-surface border-r border-towa-border flex flex-col shrink-0 h-full transition-all overflow-hidden"
     :class="collapsed ? 'w-10' : 'w-40'"
   >
     <!-- Toggle button -->
