@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+from datetime import datetime, timezone
 from pathlib import Path
 import tempfile
 import time
@@ -25,10 +26,45 @@ from model_engine.api.jobs import (
 )
 from model_engine.contracts.artifacts import ArtifactDescriptor
 from model_engine.contracts.document_ir import DocumentIR
-from model_engine.contracts.stages import ExecutionMode, StageRuntimeContext
+from model_engine.contracts.stages import (
+    ExecutionMode,
+    StageReport,
+    StageRequest,
+    StageResponse,
+    StageRuntimeContext,
+    StageStatus,
+)
+from model_engine.stages.base import Stage
 
 
 class OrchestratedJobExecutorTests(unittest.TestCase):
+    def test_reused_executor_uses_fresh_primary_bitmap_artifact_for_each_job(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir)
+            first_image = _write_sample_image(workspace / "first.png")
+            second_image = _write_sample_image(workspace / "second.png")
+            executor = OrchestratedJobExecutor()
+
+            with patch(
+                "model_engine.api.jobs._build_operation_stages",
+                return_value=[_RecordingInputArtifactStage()],
+            ):
+                first = executor.execute(
+                    _inpaint_job_request(workspace, job_id="job_first", image_path=first_image)
+                )
+                second = executor.execute(
+                    _inpaint_job_request(workspace, job_id="job_second", image_path=second_image)
+                )
+
+            self.assertEqual(ModelJobStatus.SUCCEEDED, first.status)
+            self.assertEqual(ModelJobStatus.SUCCEEDED, second.status)
+            self.assertEqual(first_image.resolve().as_uri(), first.stage_reports[0].metrics["input_uri"])
+            self.assertEqual(second_image.resolve().as_uri(), second.stage_reports[0].metrics["input_uri"])
+            self.assertNotEqual(
+                first.stage_reports[0].metrics["input_uri"],
+                second.stage_reports[0].metrics["input_uri"],
+            )
+
     def test_detect_job_runs_real_text_detection_stage(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             request = _job_request(Path(tmpdir), operation_kind="detect")
@@ -231,6 +267,38 @@ class OrchestratedJobExecutorTests(unittest.TestCase):
             jobs_module.RUNTIME_CONFIG = original_config
 
 
+def _inpaint_job_request(
+    workspace_dir: Path,
+    *,
+    job_id: str,
+    image_path: Path,
+) -> JobExecutionRequest:
+    document = DocumentIR(id=f"doc_{job_id}", name="page.png", width=48, height=32)
+    artifact = ArtifactDescriptor(
+        artifact_ref="artifact://input/primary_bitmap",
+        kind="bitmap",
+        media_type="image/png",
+        uri=image_path.resolve().as_uri(),
+        width=48,
+        height=32,
+        metadata={"role": "input_page"},
+    )
+    return JobExecutionRequest(
+        job_id=job_id,
+        pipeline_id=f"pipe_{job_id}",
+        schema_version="v1",
+        operation_kind="inpaint",
+        request_ref=f"req_{job_id}",
+        document=document,
+        artifacts={artifact.artifact_ref: artifact},
+        runtime_context=StageRuntimeContext(
+            mode=ExecutionMode.LOCAL,
+            workspace_uri=workspace_dir.resolve().as_uri(),
+            requested_by="test_job_executor",
+        ),
+    )
+
+
 def _job_request(workspace_dir: Path, *, operation_kind: str) -> JobExecutionRequest:
     image_path = _write_sample_image(workspace_dir / "page.png")
     document = DocumentIR(id=f"doc_{operation_kind}", name="page.png", width=48, height=32)
@@ -290,6 +358,41 @@ def _fake_translate_blocks(blocks, config: dict[str, object], api_key: str) -> l
     _ = config
     _ = api_key
     return [{"block_id": block.block_id, "translated_text": "세로쓰기 텍스트"} for block in blocks]
+
+
+class _RecordingInputArtifactStage(Stage):
+    @property
+    def stage_name(self) -> str:
+        return "artifact_registry_probe"
+
+    def run(self, request: StageRequest) -> StageResponse:
+        input_ref = "artifact://input/primary_bitmap"
+        input_uri = request.artifacts[input_ref].uri
+        now = datetime.now(timezone.utc)
+        report = StageReport(
+            stage_name=request.stage_name,
+            stage_run_id=request.stage_run_id,
+            status=StageStatus.SUCCEEDED,
+            input_refs=sorted(request.artifacts.keys()),
+            output_refs=[],
+            warnings=[],
+            metrics={
+                "input_ref": input_ref,
+                "input_uri": input_uri,
+            },
+            provider=request.credential_bindings.get("primary_provider"),
+            started_at=now,
+            finished_at=now,
+        )
+        return StageResponse(
+            schema_version=request.schema_version,
+            stage_name=request.stage_name,
+            stage_run_id=request.stage_run_id,
+            status=StageStatus.SUCCEEDED,
+            patches=[],
+            artifacts={},
+            stage_report=report,
+        )
 
 
 class _RecordingServiceClient:

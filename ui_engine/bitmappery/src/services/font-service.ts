@@ -43,28 +43,53 @@ export const rejectFonts = (): void => {
  * or false when it has just been loaded (and added to the cache)
  */
 export const loadGoogleFont = ( fontName: string ): Promise<boolean> => {
+    return loadGoogleFontDetailed( fontName ).then( r => r.loaded && !r.freshlyLoaded );
+};
+
+/**
+ * loadGoogleFont의 확장. 호출자가 폰트가 이번 호출로 처음 로드됐는지 알 수 있도록
+ * { loaded, freshlyLoaded } 반환. freshlyLoaded=true이면 호출자는 측정 정확한 상태로
+ * 한 번 더 렌더링을 트리거해야 한다 (첫 렌더는 fallback 폰트로 측정된 가능성).
+ *
+ * 내부는 document.fonts.load API로 실제 폰트 로드 완료를 기다린다. CSS @font-face 요청이
+ * onload 됐다고 해서 폰트가 OS에 실제 등록된 것은 아니기 때문 (기존 250ms setTimeout은
+ * 보장이 약함).
+ */
+export const loadGoogleFontDetailed = (
+    fontName: string,
+): Promise<{ loaded: boolean; freshlyLoaded: boolean }> => {
     return new Promise(( resolve, reject ) => {
         if ( !fontsConsented() ) {
             reject();
             return;
         }
         if ( loadedFonts.has( fontName )) {
-            resolve( true );
+            resolve({ loaded: true, freshlyLoaded: false });
             return;
         }
         const css = document.createElement( "link" );
         css.setAttribute( "rel", "stylesheet" );
         css.setAttribute( "type", "text/css" );
-        css.onload = (): void => {
-            loadedFonts.add( fontName );
-            // CSS file has loaded, but font hasn't, create first request for font render
-            const { ctx } = createCanvas();
-            ctx.font = `16px ${fontName}`;
-            ctx.fillText( "foo", 0, 0 );
-            // the above will have requested the font file, resolve Promise after slight delay
-            window.setTimeout(() => {
-                resolve( false );
-            }, 250 );
+        css.onload = async (): Promise<void> => {
+            // CSS file이 로드됨. 그러나 실제 글리프 파일은 아직 로드되지 않았을 수 있음.
+            // document.fonts.load로 실제 폰트 로드 보장.
+            try {
+                if ( document.fonts && typeof document.fonts.load === "function" ) {
+                    await document.fonts.load( `16px "${fontName}"` );
+                } else {
+                    // fallback: 옛 ctx.measureText 트리거 + 250ms 대기 (기존 동작)
+                    const { ctx } = createCanvas();
+                    ctx.font = `16px ${fontName}`;
+                    ctx.fillText( "foo", 0, 0 );
+                    await new Promise( r => window.setTimeout( r, 250 ));
+                }
+                loadedFonts.add( fontName );
+                resolve({ loaded: true, freshlyLoaded: true });
+            } catch ( e ) {
+                console.warn( `document.fonts.load failed for ${fontName}`, e );
+                loadedFonts.add( fontName ); // 그래도 캐시에 박아 추가 시도 방지
+                resolve({ loaded: false, freshlyLoaded: false });
+            }
         };
         css.onerror = ( e: Event ): void => {
             console.error( `Could not load font ${fontName}`, e );

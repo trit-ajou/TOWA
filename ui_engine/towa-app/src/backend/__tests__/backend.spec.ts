@@ -411,19 +411,6 @@ function makeSnapshot(overrides: {
         projectId: overrides.projectId ?? TEST_PROJECT_ID,
         index: overrides.index ?? 1,
         status: overrides.status ?? 'waiting',
-        textBlocks: [
-          {
-            id: 'tb-1',
-            pageId: overrides.pageId ?? TEST_PAGE_ID_1,
-            bbox: { x: 10, y: 20, width: 100, height: 50 },
-            original: 'hello',
-            translated: '안녕',
-            font: 'Noto Sans KR',
-            fontSize: 14,
-            color: '#000',
-            status: 'translated',
-          },
-        ],
       },
     },
     originalImage: new Blob(['img'], { type: 'image/png' }),
@@ -467,7 +454,6 @@ describe('emulated FilesBackend', () => {
     // Get page snapshot
     const loaded = await files.getPageSnapshot(TEST_PAGE_ID_1, opts)
     expect(loaded.metadata.page.status).toBe('in-progress')
-    expect(loaded.metadata.page.textBlocks).toHaveLength(1)
 
     // Delete page 1 → page 2 should become index 1
     await files.deletePage(TEST_PAGE_ID_1, opts)
@@ -594,19 +580,7 @@ describe('real FilesBackend', () => {
         project_id: TEST_PROJECT_ID,
         index: 1,
         status: 'waiting',
-        text_blocks: [
-          {
-            id: 'tb-1',
-            page_id: TEST_PAGE_ID_1,
-            bbox: { x: 10, y: 20, width: 100, height: 50 },
-            original: 'hello',
-            translated: '안녕',
-            font: 'Noto Sans KR',
-            font_size: 14,
-            color: '#000',
-            status: 'translated',
-          },
-        ],
+        text_blocks: [],
       },
     })
 
@@ -643,9 +617,6 @@ describe('real FilesBackend', () => {
 
     expect(payload.metadata.page.id).toBe(TEST_PAGE_ID_1)
     expect(payload.metadata.page.projectId).toBe(TEST_PROJECT_ID)
-    expect(payload.metadata.page.textBlocks).toHaveLength(1)
-    expect(payload.metadata.page.textBlocks[0].fontSize).toBe(14)
-    expect(payload.metadata.page.textBlocks[0].pageId).toBe(TEST_PAGE_ID_1)
 
     const imgText = await payload.originalImage.text()
     expect(imgText).toBe('IMGDATA')

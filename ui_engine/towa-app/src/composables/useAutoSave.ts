@@ -21,9 +21,9 @@ export function useAutoSave() {
     return store.getters['editor/selectedPageId'] ?? null
   }
 
-  // bitmappery history 변화 감지
+  // bitmappery history 변화 감지. bmp/history 모듈의 실제 필드명은 historyIndex.
   const stopWatch = watch(
-    () => store.state.bmp?.history?.index,
+    () => store.state.bmp?.history?.historyIndex,
     () => {
       dirty.value = true
       if (saveTimer) clearTimeout(saveTimer)
@@ -33,9 +33,11 @@ export function useAutoSave() {
     },
   )
 
-  async function doSave(): Promise<void> {
+  async function doSave(explicitPageId?: string): Promise<void> {
     if (!dirty.value) return
-    const pageId = getCurrentPageId()
+    // 페이지 전환 직전 호출 시 selectedPageId는 이미 새 페이지로 바뀐 상태이므로
+    // 호출자가 명시적으로 떠나는 페이지 ID를 넘긴다.
+    const pageId = explicitPageId ?? getCurrentPageId()
     if (!pageId) return
     try {
       await savePage(pageId)
@@ -45,12 +47,12 @@ export function useAutoSave() {
     }
   }
 
-  async function saveImmediately(): Promise<void> {
+  async function saveImmediately(explicitPageId?: string): Promise<void> {
     if (saveTimer) {
       clearTimeout(saveTimer)
       saveTimer = null
     }
-    await doSave()
+    await doSave(explicitPageId)
   }
 
   // 브라우저 닫기 전 저장 시도

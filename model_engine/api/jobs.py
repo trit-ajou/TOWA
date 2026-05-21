@@ -235,11 +235,12 @@ class OrchestratedJobExecutor(JobExecutor):
         orchestrator: PipelineOrchestrator | None = None,
     ) -> None:
         self._registry = registry or _build_builtin_registry()
-        self._orchestrator = orchestrator or PipelineOrchestrator()
+        self._orchestrator = orchestrator
 
     def execute(self, request: JobExecutionRequest) -> JobExecutionResult:
         stages = _build_operation_stages(request, registry=self._registry)
-        result = self._orchestrator.run(
+        orchestrator = self._orchestrator or PipelineOrchestrator()
+        result = orchestrator.run(
             document=request.document,
             stages=stages,
             runtime_context=request.runtime_context,

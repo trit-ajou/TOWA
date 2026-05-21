@@ -12,7 +12,7 @@ defineOptions({ name: 'DetailEditorTab' })
 const store = useStore()
 const route = useRoute()
 const { switchPage } = usePageLoader()
-useAutoSave()
+const { saveImmediately } = useAutoSave()
 
 const projectId = computed(() => route.params.id as string)
 const pages = computed(() => store.getters['pages/forProject'](projectId.value))
@@ -36,6 +36,7 @@ watch(selectedPageId, async (newId, oldId) => {
   if (!newId || newId === oldId || switching.value) return
   switching.value = true
   try {
+    if (oldId) await saveImmediately(oldId)
     await switchPage(oldId ?? null, newId)
   } finally {
     switching.value = false
