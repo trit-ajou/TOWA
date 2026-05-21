@@ -1,5 +1,4 @@
 import type { Module } from 'vuex'
-import type { TextBlock } from '@/types/text-block'
 
 export type ProjectTab = 'home' | 'edit' | 'detail'
 export type ProjectHomeLayout = 'vertical' | 'horizontal'
@@ -15,7 +14,7 @@ interface EditorState {
   pagePanelCollapsed: boolean
   canvasViewMode: 'single-split' | 'spread'
   theme: 'dark' | 'light'
-  selectedTextBlockId: string | null
+  selectedLayerId: string | null
   layerVisibility: Record<string, boolean>
   zoomLevel: number
 }
@@ -33,7 +32,7 @@ const editor: Module<EditorState, unknown> = {
     pagePanelCollapsed: false,
     canvasViewMode: 'single-split',
     theme: 'dark',
-    selectedTextBlockId: null,
+    selectedLayerId: null,
     layerVisibility: {},
     zoomLevel: 100,
   }),
@@ -48,7 +47,7 @@ const editor: Module<EditorState, unknown> = {
     pagePanelCollapsed: (state) => state.pagePanelCollapsed,
     canvasViewMode: (state) => state.canvasViewMode,
     theme: (state) => state.theme,
-    selectedTextBlockId: (state) => state.selectedTextBlockId,
+    selectedLayerId: (state) => state.selectedLayerId,
     isLayerVisible: (state) => (layerId: string) => state.layerVisibility[layerId] ?? true,
     zoomLevel: (state) => state.zoomLevel,
   },
@@ -82,8 +81,8 @@ const editor: Module<EditorState, unknown> = {
       state.theme = theme
       document.documentElement.className = theme
     },
-    SELECT_TEXT_BLOCK(state, blockId: string | null) {
-      state.selectedTextBlockId = blockId
+    SELECT_LAYER(state, layerId: string | null) {
+      state.selectedLayerId = layerId
     },
     TOGGLE_LAYER(state, layerId: string) {
       const current = state.layerVisibility[layerId] ?? true
@@ -94,9 +93,6 @@ const editor: Module<EditorState, unknown> = {
     },
     SET_ZOOM(state, level: number) {
       state.zoomLevel = Math.max(25, Math.min(400, level))
-    },
-    UPDATE_TEXT_BLOCK_TRANSLATION(_state, _payload: { block: TextBlock; translation: string }) {
-      // placeholder
     },
   },
 }

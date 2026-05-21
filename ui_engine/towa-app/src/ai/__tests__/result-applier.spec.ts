@@ -11,9 +11,10 @@ vi.mock('@bitmappery/utils/canvas-util', () => ({
 }))
 
 describe('applyAiJobSnapshotToCurrentPage', () => {
-  it('replaces page textBlocks and creates new text layers for succeeded jobs', async () => {
+  it('replaces existing text layers and creates new ones for succeeded jobs', async () => {
     const page = makePage()
-    const store = makeStore(page)
+    const existingTextLayer = { id: 'layer_99', type: 'text' }
+    const store = makeStore(page, { layers: [existingTextLayer] })
     const savePage = vi.fn().mockResolvedValue(undefined)
     const snapshot = makeSnapshot({
       operationKind: 'translate',
@@ -47,21 +48,9 @@ describe('applyAiJobSnapshotToCurrentPage', () => {
     })
 
     expect(result).toMatchObject({ applied: true, textLayerCount: 1, graphicLayerCount: 0 })
-    expect(store.commit).toHaveBeenCalledWith(
-      'pages/UPDATE_PAGE',
-      expect.objectContaining({
-        status: 'in-progress',
-        textBlocks: [
-          expect.objectContaining({
-            id: 'tb-new',
-            translated: '안녕',
-            font: 'Noto Sans KR',
-            fontSize: 24,
-            color: '#000000',
-          }),
-        ],
-      }),
-    )
+    // 기존 텍스트 layer 제거 호출
+    expect(store.commit).toHaveBeenCalledWith('bmp/removeLayer', 0)
+    // 새 텍스트 layer 추가 — meta 포함. bbox는 left/top으로, width/height는 document 전체.
     expect(store.commit).toHaveBeenCalledWith(
       'bmp/addLayer',
       expect.objectContaining({
@@ -69,14 +58,26 @@ describe('applyAiJobSnapshotToCurrentPage', () => {
         type: 'text',
         left: 10,
         top: 20,
-        width: 100,
-        height: 50,
         text: expect.objectContaining({
           value: '안녕',
           font: 'Noto Sans KR',
           size: 24,
           color: '#000000',
         }),
+        meta: expect.objectContaining({
+          blockId: 'tb-new',
+          original: 'hello',
+          status: 'translated',
+          boxMode: 'fixed',
+        }),
+      }),
+    )
+    // page status만 갱신, textBlocks 필드는 더 이상 없음
+    expect(store.commit).toHaveBeenCalledWith(
+      'pages/UPDATE_PAGE',
+      expect.objectContaining({
+        id: page.id,
+        status: 'in-progress',
       }),
     )
     expect(savePage).toHaveBeenCalledWith(page.id)
@@ -140,7 +141,7 @@ describe('applyAiJobSnapshotToCurrentPage', () => {
         height: 1200,
       }),
     )
-    expect(store.commit).not.toHaveBeenCalledWith('bmp/updateLayer', expect.anything())
+    expect(store.commit).not.toHaveBeenCalledWith('bmp/removeLayer', expect.anything())
   })
 
   it('does not apply partial jobs automatically', async () => {
@@ -173,12 +174,13 @@ describe('applyAiJobSnapshotToCurrentPage', () => {
   })
 })
 
-function makeStore(page: Page): Store<unknown> {
+function makeStore(page: Page, activeDocument: { layers?: unknown[] } = {}): Store<unknown> {
   return {
     getters: {
       'pages/byId': (projectId: string, pageId: string) => (
         projectId === page.projectId && pageId === page.id ? page : undefined
       ),
+      'bmp/activeDocument': activeDocument,
     },
     commit: vi.fn(),
   } as unknown as Store<unknown>
@@ -190,19 +192,6 @@ function makePage(): Page {
     projectId: 'proj-1',
     index: 1,
     status: 'waiting',
-    textBlocks: [
-      {
-        id: 'tb-old',
-        pageId: 'page-1',
-        bbox: { x: 1, y: 2, width: 3, height: 4 },
-        original: 'old',
-        translated: '',
-        font: 'Noto Sans KR',
-        fontSize: 24,
-        color: '#000000',
-        status: 'detected',
-      },
-    ],
   }
 }
 

@@ -4,6 +4,59 @@
 
 ---
 
+## 2026-05-14
+
+### 10:27 — 페이지 전환 시 캔버스 가로 비율 깨짐 fix
+- 증상: 첫 진입 후 페이지 전환하면 canvas dimension이 fit-to-window 비율을 잃고 가로로 늘어남 (예: 583×875 → 1010×875). 페이지 placeholder가 화면 중앙에 작게 보이고 나머지가 빈 공간
+- 원인: `usePageLoader.loadPage`가 `store.commit('bmp/addNewDocument')` 직후 `window.dispatchEvent(new Event('resize'))`를 호출 → `bitmappery.vue` handleResize 트리거 → `setToolOptionValue(ZOOM, level=1)`으로 zoom 강제 reset → activeDocument watcher의 `calcIdealDimensions(true)`가 fit-to-window 값으로 재설정하기 직전에 캔버스가 비율 깨진 상태로 commit됨
+- `composables/usePageLoader.ts`: dispatchEvent 한 줄 제거. v-show false→true 토글 시점의 layout 재계산은 `views/ProjectView.vue:40-44`의 별도 watcher가 이미 같은 dispatchEvent를 호출하므로 잉여
+- 검증: Playwright로 5회 연속 페이지 전환 (2p→4p→6p→1p→7p) 시 canvas attr 583×875 유지 확인
+
+### 09:47 — 페이지 전환 시 캔버스 깜빡임 제거
+- 증상: 페이지 전환 시 1~2 프레임 동안 캔버스가 cleared 상태로 노출되어 CSS transparency 체커보드(흑백 격자)가 비치는 깜빡임
+- 진짜 원인 (Playwright element.width setter trap으로 확정): zCanvas의 `Canvas.setViewport`가 내부 `updateCanvasSize`에서 `element.width`를 재할당 → Canvas API spec상 ctx 자동 reset. `scaleCanvas`는 `zCanvas.setViewport(...)`를 먼저 호출하고 그 다음 `setDocumentScale → setDimensions`를 호출하므로 setViewport에서 이미 ctx가 cleared된 후 setDimensions wrap이 호출되면 backup이 비어있는 element를 복사하는 흐름
+- `bitmappery/src/rendering/actors/zoomable-canvas.ts`:
+  - `setViewport`와 `setDimensions`를 `_snapshotAndCall` 헬퍼로 wrap. element.width 변경 직전 픽셀을 임시 canvas에 백업 → super 호출 → identity transform으로 새 ctx에 복원. **setViewport도 wrap한 게 결정타**
+  - `render()` 가드: children 중 LayerRenderer(`.layer` 속성으로 식별)의 `_bitmap=null` 또는 `_bitmapReady=false`인 게 있으면 render skip. cacheEffects→setBitmap 비동기 파이프라인 동안 이전 frame 유지. GuideRenderer/InteractionPane 등은 가드에서 제외
+- `bitmappery/src/components/document-canvas/document-canvas.vue`:
+  - activeDocument watcher: 새 document swap 시 `flushRendererCache/flushBitmapCache/flushBlendedLayerCache/layerPool.clear` 4줄 제거. `createLayerRenderers`(line 498-507)가 이미 layer별 diff 처리를 갖춰 무차별 청소가 오히려 atomic swap을 깸. `renderState.reset()`만 유지
+  - `createLayerRenderers`: orphan layer cleanup을 `requestAnimationFrame×3` 뒤로 미룸. `renderer.dispose()` 호출 → `Sprite.dispose` → 부모 zCanvas의 `removeChild` 자동
+- towa-app 통합 레이어 (cloud 모드 큰 이미지 load 100ms+ 케이스 안전망):
+  - `components/common/PageTransitionOverlay.vue` 신규: Teleport + 100ms delay + lucide Loader2 spinner
+  - `composables/usePageLoader.ts`: 모듈 수준 `isPageSwitching` ref + `switchPage` try/finally + `loadPage` 직후 `nextTick + rAF×2` yield
+  - `views/ProjectView.vue`: overlay mount
+- 검증: Playwright로 5회 연속 페이지 전환 (3p→7p→1p→5p→2p) 시 canvas center pixel alpha 변화 0건, cleared frame 0개. `npx vue-tsc --noEmit` 통과
+
+### 09:21 — F5 후속 1단계: 텍스트 박스 보존 + 폰트 fresh 재렌더 + CJK 위 잘림 fix
+- bitmappery `Layer.meta.boxMode='fixed'` 분기 도입(`render-service.ts`). fixed 모드면 `replaceLayerSource` 우회 → `layer.left/top/width/height` 보존. native bitmappery 동작은 boxMode 미지정 시 그대로.
+- `font-service.loadGoogleFontDetailed` 신규: `document.fonts.load` API로 실제 폰트 로드 완료 보장 + `freshlyLoaded` flag 반환. 기존 `loadGoogleFont`는 호환 시그니처(`Promise<boolean>`) 유지.
+- `render-service.renderText` 반환을 `{ bitmap, fontFreshlyLoaded }`로 확장. `freshlyLoaded=true`이면 텍스트 캐시 무효화 + `requestAnimationFrame`으로 `cacheEffects` 한 번 더 트리거 → fallback 폰트 measure로 인한 잘림 회피.
+- `rendering/operations/text.ts:measureLines`에 위 안전 패딩(font size × 0.2) 추가. 한국어/일본어/이모지 글리프가 `actualBoundingBoxAscent`를 초과해 canvas top으로 잘리는 문제 fix. `lineHeight`는 그대로 두고 `topOffset`과 `height`에만 패딩 반영.
+- TOWA: `types/text-block.ts`에 `TextBoxMode` 타입 + `LayerTextMeta.boxMode`. `result-applier`/`dummy`/`EditorTab.addEmptyTextLayer` 모두 `boxMode: 'fixed'`. spec에 `meta.boxMode === 'fixed'` 검증.
+- 검증: `npx vue-tsc --noEmit` 통과, `npm test` 25 tests pass, 사용자 Chrome에서 박스 보존·CJK 위 잘림 해소 확인.
+- 후속: 텍스트박스 UX 개편(box-content 분리, 가로/세로 정렬, text-tool 통합 drag-resize·이동)은 별도 plan으로. 본 작업을 ui_engine으로 통합한 뒤 거기 베이스로 새 worktree에서 진행 예정.
+
+### 01:34 — TranslationPanel ↔ bitmappery 텍스트 layer 통합 (F5)
+- 데이터 중복 해소: bitmappery 텍스트 layer를 단일 source로. TOWA 측 TextBlock 메타 객체 제거.
+- bitmappery 코어 최소 침습:
+  - `Layer.meta?: Record<string, unknown>` 자유 metadata 필드 추가
+  - `LayerFactory.create`의 외부 `id` 주입 허용 + `serialize/deserialize`의 `id`·`meta` 포함 (id 영속화)
+  - `tool-options-text.vue`의 mutation commit을 namespace 자동 감지(`${ns}updateLayer`)로 변경 — standalone bitmappery와 towa-app embed 양쪽 지원. 미수정 시 embed 환경에서 unknown mutation 에러로 캔버스→panel sync 실패.
+- TOWA 측: `types/text-block.ts`를 `LayerTextMeta` 인터페이스로 대체(`blockId/original/status`). `Page.textBlocks` 필드 제거. `utils/text-layer.ts` 신규 (helper: `isTextLayer`, `getTextMeta`, `mergeTextMeta`).
+- UI: TranslationPanel/TextBlockItem이 layer를 직접 reactive 렌더링. Vue reactivity로 panel↔canvas 동기화 자동. 무한 루프 가드/source 플래그 불필요. `+` 버튼/휴지통 버튼으로 추가·삭제. EditorTab.selectLayer는 `bmp/setActiveLayerIndex` + 텍스트 layer일 때 `bmp/setActiveTool TEXT`까지 commit → tool-options-text 자동 활성화.
+- AI 적용: result-applier가 textBlock 객체를 만들지 않고 layer 직접 생성, `meta: { blockId, original, status }` 채움. replace_text_blocks 시 기존 텍스트 layer 인덱스 역순 제거. text layer width/height는 document 전체로 지정 (텍스트 잘림 회피 시도).
+- 백엔드 호환: service_engine `text_blocks: list[dict[str, Any]]` 자유 dict이므로 contract 코드 변경 없음. `towa-app/backend/real.ts`에서 textBlocks 직렬화 제거, `[]` 전송으로 호환.
+- 더미 데이터: text layer를 document에 함께 시드, width/height = doc 크기, layer name `텍스트 #NN` (prefix 잔재 제거).
+- 기존 저장 페이지 마이그레이션 없음 (프로토타이핑 단계).
+- 검증: `npx vue-tsc --noEmit` 통과, `npm test` 25 tests pass, `npm run build` 성공, Playwright로 panel↔canvas 텍스트 양방향 sync + 추가/삭제 + 활성화 동작 확인.
+- 한계: bitmappery 텍스트 layer 자체가 `replaceLayerSource`로 텍스트 bbox 크기로 layer 영역을 줄이고 left/top을 중앙 보정하는 모델이라, AI 검출 bbox 좌표가 렌더 후 무시되고 layer가 캔버스 중앙으로 이동함. 또한 텍스트가 측정 bbox보다 클 때 잘림 가능 (fallback 폰트 측정 등). F5 양방향 sync 본질 외 작업으로 별도 분리 필요.
+
+### 00:37 — bitmappery 키보드 단축키 가드 2종 (U6/B1, B2)
+- **U6/B1**: `towa-app/src/router/index.ts`에 `beforeEach` 가드 추가. `editor`·`detail-editor` 외 라우트 진입 시 `KeyboardService.setSuspended(true)` 호출해 캔버스가 안 보이는 라우트에서 C/V/Z 등 단축키 발사 차단
+- **B2**: `bitmappery/src/services/keyboard-service.ts` `handleKeyDown` 진입부에 `INPUT/TEXTAREA/SELECT/contentEditable` target 가드 블록 추가. 입력란에서 타이핑 시 단축키로 발사되던 버그 수정
+
+---
+
 ## 2026-05-07
 
 ### 15:52 — Landing/Login 풀페이지 + 라우터 가드 (manga panel 디자인)
