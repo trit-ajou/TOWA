@@ -12,7 +12,6 @@ from unittest.mock import patch
 from PIL import Image
 
 import model_engine.api.jobs as jobs_module
-from model_engine.adapters.base import ModelAdapter
 from model_engine.api.jobs import (
     JobExecutionRequest,
     JobExecutionResult,
@@ -26,9 +25,7 @@ from model_engine.api.jobs import (
     submission_from_multipart_payload,
 )
 from model_engine.contracts.artifacts import ArtifactDescriptor
-from model_engine.contracts.credentials import CredentialSource
 from model_engine.contracts.document_ir import DocumentIR
-from model_engine.contracts.models import ResourceProfile, StageKind, StageManifest
 from model_engine.contracts.stages import (
     ExecutionMode,
     StageReport,
@@ -37,7 +34,7 @@ from model_engine.contracts.stages import (
     StageRuntimeContext,
     StageStatus,
 )
-from model_engine.models.registry import ModelRegistry
+from model_engine.stages.base import Stage
 
 
 class OrchestratedJobExecutorTests(unittest.TestCase):
@@ -46,16 +43,18 @@ class OrchestratedJobExecutorTests(unittest.TestCase):
             workspace = Path(tmpdir)
             first_image = _write_sample_image(workspace / "first.png")
             second_image = _write_sample_image(workspace / "second.png")
-            registry = ModelRegistry()
-            registry.register(_RecordingInpaintAdapter())
-            executor = OrchestratedJobExecutor(registry=registry)
+            executor = OrchestratedJobExecutor()
 
-            first = executor.execute(
-                _inpaint_job_request(workspace, job_id="job_first", image_path=first_image)
-            )
-            second = executor.execute(
-                _inpaint_job_request(workspace, job_id="job_second", image_path=second_image)
-            )
+            with patch(
+                "model_engine.api.jobs._build_operation_stages",
+                return_value=[_RecordingInputArtifactStage()],
+            ):
+                first = executor.execute(
+                    _inpaint_job_request(workspace, job_id="job_first", image_path=first_image)
+                )
+                second = executor.execute(
+                    _inpaint_job_request(workspace, job_id="job_second", image_path=second_image)
+                )
 
             self.assertEqual(ModelJobStatus.SUCCEEDED, first.status)
             self.assertEqual(ModelJobStatus.SUCCEEDED, second.status)
@@ -268,7 +267,12 @@ class OrchestratedJobExecutorTests(unittest.TestCase):
             jobs_module.RUNTIME_CONFIG = original_config
 
 
-def _inpaint_job_request(workspace_dir: Path, *, job_id: str, image_path: Path) -> JobExecutionRequest:
+def _inpaint_job_request(
+    workspace_dir: Path,
+    *,
+    job_id: str,
+    image_path: Path,
+) -> JobExecutionRequest:
     document = DocumentIR(id=f"doc_{job_id}", name="page.png", width=48, height=32)
     artifact = ArtifactDescriptor(
         artifact_ref="artifact://input/primary_bitmap",
@@ -291,7 +295,6 @@ def _inpaint_job_request(workspace_dir: Path, *, job_id: str, image_path: Path) 
             mode=ExecutionMode.LOCAL,
             workspace_uri=workspace_dir.resolve().as_uri(),
             requested_by="test_job_executor",
-            session_provider_secrets={"nanobanana": "test-nanobanana-key"},
         ),
     )
 
@@ -357,22 +360,13 @@ def _fake_translate_blocks(blocks, config: dict[str, object], api_key: str) -> l
     return [{"block_id": block.block_id, "translated_text": "세로쓰기 텍스트"} for block in blocks]
 
 
-class _RecordingInpaintAdapter(ModelAdapter):
+class _RecordingInputArtifactStage(Stage):
     @property
-    def manifest(self) -> StageManifest:
-        return StageManifest(
-            model_id="builtin.nanobanana.inpaint",
-            adapter_id="adapter.test.recording_inpaint",
-            stage_kind=StageKind.INPAINT,
-            required_artifact_kinds=["bitmap"],
-            produced_artifact_kinds=[],
-            supported_modes=[ExecutionMode.LOCAL],
-            allowed_credential_sources=[CredentialSource.USER_PERSONAL_SESSION],
-            resource_profile=ResourceProfile(latency_tier="test"),
-        )
+    def stage_name(self) -> str:
+        return "artifact_registry_probe"
 
     def run(self, request: StageRequest) -> StageResponse:
-        input_ref = str(request.stage_config["input_artifact_ref"])
+        input_ref = "artifact://input/primary_bitmap"
         input_uri = request.artifacts[input_ref].uri
         now = datetime.now(timezone.utc)
         report = StageReport(
@@ -382,7 +376,10 @@ class _RecordingInpaintAdapter(ModelAdapter):
             input_refs=sorted(request.artifacts.keys()),
             output_refs=[],
             warnings=[],
-            metrics={"input_ref": input_ref, "input_uri": input_uri},
+            metrics={
+                "input_ref": input_ref,
+                "input_uri": input_uri,
+            },
             provider=request.credential_bindings.get("primary_provider"),
             started_at=now,
             finished_at=now,
