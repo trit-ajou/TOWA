@@ -136,6 +136,83 @@ class OrchestratorTests(unittest.TestCase):
             self.assertIn('"error_code":"provider_timeout"', logs)
             self.assertNotIn("local-secret", logs)
 
+    def test_stage_artifact_dump_writes_redacted_stage_boundary_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir)
+            input_path = workspace / "input.png"
+            output_path = workspace / "output.png"
+            input_path.write_bytes(b"input-image")
+            output_path.write_bytes(b"output-image")
+            input_ref = "artifact://input/primary_bitmap"
+            output_ref = "artifact://output/text_regions"
+            orchestrator = PipelineOrchestrator(
+                credential_resolver=DefaultCredentialResolver(environ={})
+            )
+            document = DocumentIR(id="doc_dump", name="page", width=10, height=10)
+            runtime_context = StageRuntimeContext(
+                mode=ExecutionMode.LOCAL,
+                workspace_uri=workspace.resolve().as_uri(),
+                session_provider_secrets={"nanobanana": "runtime-secret"},
+                metadata={"stage_artifact_dump": True},
+            )
+            stage = StaticStage(
+                "text_detection",
+                artifacts={
+                    output_ref: ArtifactDescriptor(
+                        artifact_ref=output_ref,
+                        kind="text_regions",
+                        media_type="application/json",
+                        uri=output_path.resolve().as_uri(),
+                        producer_stage="text_detection",
+                    )
+                },
+                config={"api_key": "stage-secret"},
+            )
+
+            result = orchestrator.run(
+                document=document,
+                stages=[stage],
+                runtime_context=runtime_context,
+                initial_artifacts={
+                    input_ref: ArtifactDescriptor(
+                        artifact_ref=input_ref,
+                        kind="bitmap",
+                        media_type="image/png",
+                        uri=input_path.resolve().as_uri(),
+                    )
+                },
+                job_id="job_dump",
+                pipeline_id="pipe_dump",
+            )
+
+            self.assertEqual(StageStatus.SUCCEEDED, result.status)
+            dump_dir = (
+                workspace
+                / "transactions"
+                / "pipe_dump"
+                / "text_detection"
+                / "pipe_dump_text_detection_1"
+                / "stage_artifact_dump"
+            )
+            self.assertTrue((dump_dir / "stage_request.json").is_file())
+            self.assertTrue((dump_dir / "stage_response.json").is_file())
+            self.assertTrue((dump_dir / "artifacts_before.json").is_file())
+            self.assertTrue((dump_dir / "artifacts_after.json").is_file())
+            self.assertTrue((dump_dir / "document_after.json").is_file())
+
+            request_dump = (dump_dir / "stage_request.json").read_text(encoding="utf-8")
+            self.assertNotIn("runtime-secret", request_dump)
+            self.assertNotIn("stage-secret", request_dump)
+            self.assertIn("[redacted]", request_dump)
+
+            artifacts_after = json.loads((dump_dir / "artifacts_after.json").read_text(encoding="utf-8"))
+            self.assertIn(input_ref, artifacts_after)
+            self.assertIn(output_ref, artifacts_after)
+            copied_input = json.loads((dump_dir / "copied_input_files.json").read_text(encoding="utf-8"))
+            copied_output = json.loads((dump_dir / "copied_output_files.json").read_text(encoding="utf-8"))
+            self.assertTrue(Path(copied_input[0]["dump_path"]).is_file())
+            self.assertTrue(Path(copied_output[0]["dump_path"]).is_file())
+
 
 def _write_local_credentials(tmpdir: str, *, provider: str, api_key: str) -> str:
     path = Path(tmpdir) / "credentials.json"

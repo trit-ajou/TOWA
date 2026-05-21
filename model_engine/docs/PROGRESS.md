@@ -66,6 +66,7 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - Docker inference sample에서 `CRAFT -> mask_or_erase_planning -> Mindlogic inpaint` 추론 성공 확인. 결과 artifact는 `model_engine/.runtime/mindlogic_inpaint_docker/transactions/pipe_inpaint_sample/inpaint/pipe_inpaint_sample_inpaint_3/`
 - Docker `model-engine`은 `model_engine/.runtime`을 `/app/model_engine/.runtime`로 마운트해 API 서버도 `runtime_config.json`을 읽는다. `TOWA_INPAINT_PROVIDER`, `TOWA_INPAINT_MODEL_NAME`, provider API key는 env 우선, runtime config fallback 순서로 해석한다
 - Docker `model-engine`은 `model_engine/.cache/models`도 `/cache/models`로 마운트한다. UI에서 첫 inpaint job을 테스트할 때 CRAFT detector/refiner 가중치를 컨테이너 재생성마다 다시 다운로드하지 않도록 하여 polling timeout 가능성을 줄인다
+- 공통 stage artifact dump 기능 추가. `TOWA_MODEL_ENGINE_STAGE_DUMP=1` 또는 `runtime_context.metadata.stage_artifact_dump=true`일 때 각 stage transaction 아래 `stage_artifact_dump/`를 만들고 `stage_request.json`, `stage_response.json`, `artifacts_before.json`, `artifacts_after.json`, `document_after.json`을 저장한다. 기본값으로 `file://` artifact는 `files/input`, `files/output` 아래 hardlink/copy하며, `TOWA_MODEL_ENGINE_STAGE_DUMP_COPY_FILES=0` 또는 metadata `stage_artifact_dump_copy_files=false`로 바이너리 복사를 끌 수 있다. dump JSON은 credential/session/token 계열 값을 redaction한다.
 
 ## 2026-05-14 세션 handoff
 

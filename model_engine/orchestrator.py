@@ -15,6 +15,7 @@ from .contracts.stages import StageReport, StageRequest, StageResponse, StageRun
 from .credentials import CredentialResolver, DefaultCredentialResolver
 from .logging_utils import log_event, log_exception
 from .service_engine import ServiceEngineClient, UsageJobCreatePayload, UsageJobPayload
+from .stage_artifact_dumps import StageArtifactDumper
 from .stages.base import Stage
 
 logger = logging.getLogger(__name__)
@@ -73,10 +74,13 @@ class PipelineOrchestrator:
                 self.artifact_registry.register_artifact(descriptor)
 
         final_status = StageStatus.SUCCEEDED
+        stage_artifact_dumper = StageArtifactDumper.from_runtime_context(runtime_context)
 
         for index, stage in enumerate(stages, start=1):
             stage_run_id = f"{pipeline_id}:{stage.stage_name}:{index}"
             stage_config = stage.stage_config()
+            request: StageRequest | None = None
+            dump_dir = None
             log_event(
                 logger,
                 logging.INFO,
@@ -109,6 +113,7 @@ class PipelineOrchestrator:
                     resolved_credentials=resolved_credentials,
                     runtime_context=runtime_context,
                 )
+                dump_dir = stage_artifact_dumper.dump_input(request)
                 response = stage.run(request)
 
                 for descriptor in response.artifacts.values():
@@ -121,7 +126,18 @@ class PipelineOrchestrator:
                 apply_patches(active_document, response.patches)
                 applied_patches.extend(response.patches)
                 stage_reports.append(response.stage_report)
-            except Exception:
+                dump_dir = stage_artifact_dumper.dump_output(
+                    request=request,
+                    response=response,
+                    artifacts_after=self.artifact_registry.snapshot(),
+                    document_after=active_document,
+                ) or dump_dir
+            except Exception as exc:
+                if request is not None:
+                    dump_dir = stage_artifact_dumper.dump_exception(
+                        request=request,
+                        exc=exc,
+                    ) or dump_dir
                 log_exception(
                     logger,
                     "model_stage_exception",
@@ -130,6 +146,7 @@ class PipelineOrchestrator:
                     stage_name=stage.stage_name,
                     stage_run_id=stage_run_id,
                     stage_index=index,
+                    stage_artifact_dump_dir=str(dump_dir) if dump_dir else None,
                 )
                 raise
 
@@ -147,6 +164,7 @@ class PipelineOrchestrator:
                 warning_count=len(response.stage_report.warnings),
                 error_code=response.stage_report.error_code,
                 error_message=response.stage_report.error_message,
+                stage_artifact_dump_dir=str(dump_dir) if dump_dir else None,
             )
 
             if response.status is StageStatus.FAILED:

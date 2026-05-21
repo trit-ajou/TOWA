@@ -43,12 +43,16 @@ def log_exception(
 
 def _json_fields(fields: dict[str, Any]) -> str:
     return json.dumps(
-        _redact_value(fields),
+        redact_sensitive_data(fields),
         sort_keys=True,
         separators=(",", ":"),
         ensure_ascii=True,
         default=str,
     )
+
+
+def redact_sensitive_data(value: Any) -> Any:
+    return _redact_value(value)
 
 
 def _redact_value(value: Any, *, key: str | None = None) -> Any:

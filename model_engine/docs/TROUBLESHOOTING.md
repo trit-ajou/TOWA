@@ -3,6 +3,31 @@
 이 문서는 `model_engine` 실행 중 실제로 관측한 문제와 조정 방법을 정리한다.
 현재 핵심 대상은 `CRAFT -> manga-ocr -> translation` 경로다.
 
+## Stage artifact dump
+
+UI/API 경유 job에서 stage별 입력/출력 artifact를 직접 확인하려면 Docker 실행 전에 아래 값을 켠다.
+
+```bash
+TOWA_MODEL_ENGINE_STAGE_DUMP=1 docker compose up --build model-engine
+```
+
+생성 위치:
+
+```bash
+model_engine/.runtime/transactions/{pipeline_id}/{stage_name}/{stage_run_id}/stage_artifact_dump/
+```
+
+주요 파일:
+
+- `stage_request.json`: stage에 들어간 document/artifact/config
+- `stage_response.json`: stage가 반환한 patch/artifact/report
+- `artifacts_before.json`, `artifacts_after.json`: stage 전후 artifact registry
+- `document_after.json`: patch 적용 후 document
+- `files/input/`, `files/output/`: `file://` artifact hardlink/copy
+
+바이너리 복사를 끄려면 `TOWA_MODEL_ENGINE_STAGE_DUMP_COPY_FILES=0`을 함께 지정한다.
+credential/session/token 계열 값은 dump JSON에서 redaction된다.
+
 ## 1. OCR 파이프라인: CRAFT + manga-ocr
 
 ### 1-1. 평가 대상
