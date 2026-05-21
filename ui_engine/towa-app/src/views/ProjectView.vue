@@ -84,8 +84,10 @@ onBeforeUnmount(() => {
     <!-- 우측: Teleport target (EditorTab이 TranslationPanel 주입) -->
     <div id="towa-right-panel" class="shrink-0 h-full"></div>
 
-    <!-- 페이지 전환 시 캔버스 깜빡임을 가리는 overlay (100ms 이상 전환에서만 노출) -->
-    <PageTransitionOverlay :visible="isPageSwitching" :delay="100" />
+    <!-- 페이지 전환 시 캔버스 깜빡임을 가리는 overlay. 짧은 전환에 거슬리지 않도록
+         delay를 300ms로 설정 — NN/g UX 가이드: 100ms는 즉각 인지(불필요), 300ms부터
+         사용자가 명확히 기다림을 인지. cache hit 단순 전환은 100ms 근처라 overlay 미노출. -->
+    <PageTransitionOverlay :visible="isPageSwitching" :delay="300" />
   </div>
 </template>
 

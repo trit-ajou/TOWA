@@ -172,15 +172,13 @@ export function usePageLoader() {
   async function switchPage(fromPageId: string | null, toPageId: string): Promise<void> {
     isPageSwitching.value = true
     try {
-      // 1. 현재 페이지 저장 + 캐시
+      // 1. 현재 페이지 캐시. 서버 저장은 호출자(EditorTab 등)가 useAutoSave의
+      //    saveImmediately로 switchPage 전에 dirty일 때만 처리.
       let prevDocId: string | null = null
       if (fromPageId) {
         const doc = store.getters['bmp/activeDocument']
         if (doc) {
           prevDocId = doc.id
-          // snapshot 저장 (썸네일 포함)
-          await savePage(fromPageId)
-          // 캐시에도 저장
           const blob = await DocumentFactory.toBlob(doc)
           await pageCache.set(fromPageId, blob)
         }

@@ -20,7 +20,7 @@ defineOptions({ name: 'EditorTab' })
 const store = useStore()
 const route = useRoute()
 const { switchPage } = usePageLoader()
-useAutoSave()
+const { saveImmediately } = useAutoSave()
 
 const projectId = computed(() => route.params.id as string)
 const pages = computed(() => store.getters['pages/forProject'](projectId.value))
@@ -56,6 +56,9 @@ watch(selectedPageId, async (newId, oldId) => {
   if (!newId || newId === oldId || switching.value) return
   switching.value = true
   try {
+    // dirty인 페이지만 즉시 서버 저장 (useAutoSave 내부에서 dirty 체크).
+    // 변경 없으면 saveImmediately는 즉시 resolve → 도커 통신 없음.
+    if (oldId) await saveImmediately()
     await switchPage(oldId ?? null, newId)
   } finally {
     switching.value = false
