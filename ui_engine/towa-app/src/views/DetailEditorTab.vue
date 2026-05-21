@@ -36,7 +36,7 @@ watch(selectedPageId, async (newId, oldId) => {
   if (!newId || newId === oldId || switching.value) return
   switching.value = true
   try {
-    if (oldId) await saveImmediately()
+    if (oldId) await saveImmediately(oldId)
     await switchPage(oldId ?? null, newId)
   } finally {
     switching.value = false

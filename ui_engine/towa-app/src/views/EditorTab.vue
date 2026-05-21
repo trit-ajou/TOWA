@@ -58,7 +58,9 @@ watch(selectedPageId, async (newId, oldId) => {
   try {
     // dirty인 페이지만 즉시 서버 저장 (useAutoSave 내부에서 dirty 체크).
     // 변경 없으면 saveImmediately는 즉시 resolve → 도커 통신 없음.
-    if (oldId) await saveImmediately()
+    // saveImmediately는 명시적으로 떠나는 페이지 ID를 받아야 함.
+    // selectedPageId는 이미 newId로 변경된 상태라 getter는 잘못된 페이지를 반환.
+    if (oldId) await saveImmediately(oldId)
     await switchPage(oldId ?? null, newId)
   } finally {
     switching.value = false
