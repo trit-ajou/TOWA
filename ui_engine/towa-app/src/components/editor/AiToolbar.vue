@@ -15,7 +15,7 @@ import type { Layer } from '@bitmappery/definitions/document'
 // @ts-expect-error bitmappery JS module
 import { createSyncSnapshot } from '@bitmappery/utils/document-util'
 // @ts-expect-error bitmappery JS module
-import { canvasToBlob } from '@bitmappery/utils/canvas-util'
+import { canvasToBlob, resizeImage } from '@bitmappery/utils/canvas-util'
 
 const store = useStore()
 const backend = useAppBackend()
@@ -37,7 +37,9 @@ async function buildInput(operationKind: AiOperationKind, _pageRecord: Page): Pr
   if (!activeDocument) {
     throw new Error('No active Bitmappery document is loaded')
   }
-  const primaryBitmap = await canvasToBlob(createSyncSnapshot(activeDocument), 'image/png')
+  const snapshot = createSyncSnapshot(activeDocument)
+  const normalizedSnapshot = await resizeImage(snapshot, activeDocument.width, activeDocument.height)
+  const primaryBitmap = await canvasToBlob(normalizedSnapshot, 'image/png')
   const requestedBy = currentUserEmail() ?? 'ui-engine'
   const textLayers: Layer[] = (activeDocument.layers ?? []).filter(isTextLayer)
   return {
