@@ -85,6 +85,18 @@ export async function applyAiJobSnapshotToCurrentPage(
       options.sessionKey ? { sessionKey: options.sessionKey } : undefined,
     )
     const canvas = await blobToCanvas(blob)
+    // Document와 AI 결과 bitmap 크기가 다르면 좌표계 mismatch로 렌더가 잘리거나 스케일이
+    // 어긋남. 이론상 model-engine이 동일 크기로 돌려줘야 하지만 실제로는 모델/리사이즈
+    // 정책으로 다를 수 있으므로, 진단용 경고를 남겨 다른 팀이 빠르게 인지하게 한다.
+    // (issue #12: inpaint 결과가 잘리는 현상 재현 시 이 메시지가 노출됨)
+    if (canvas.width !== docW || canvas.height !== docH) {
+      const detail = `document ${docW}x${docH}, AI bitmap ${canvas.width}x${canvas.height} (artifact: ${patch.artifactRef})`
+      console.warn(`[AI bitmap size mismatch] ${detail}`)
+      options.store.commit('bmp/showNotification', {
+        title: 'AI 결과 해상도 불일치',
+        message: detail,
+      })
+    }
     graphicLayers.push(createAiGraphicLayer(canvas, patch.layerPayload, operationLabel, timestamp, graphicLayers.length + 1))
   }
 
