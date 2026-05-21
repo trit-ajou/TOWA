@@ -229,17 +229,27 @@ function createAiGraphicLayer(
   timestamp: string,
   index: number,
 ): Layer {
+  // model-engine이 patch.payload.layer.width/height를 명시했다면 그것이 곧
+  // document 좌표계 상의 layer 영역. 없을 때만 bitmap의 native 크기로 fallback.
+  // 기존 코드는 항상 canvas.width/height로 덮어써서 model-engine 지정 영역이
+  // 무시되고 좌표계 mismatch가 났음 (issue #12).
+  const payloadWidth = positiveOrUndefined(layerPayload?.width)
+  const payloadHeight = positiveOrUndefined(layerPayload?.height)
   return LayerFactory.create({
     name: aiLayerName(operationLabel, timestamp, index),
     type: LayerTypes.LAYER_GRAPHIC,
     source: canvas,
     left: positiveOrZero(layerPayload?.left, 0),
     top: positiveOrZero(layerPayload?.top, 0),
-    width: canvas.width,
-    height: canvas.height,
+    width: payloadWidth ?? canvas.width,
+    height: payloadHeight ?? canvas.height,
     transparent: true,
     visible: true,
   })
+}
+
+function positiveOrUndefined(value: unknown): number | undefined {
+  return typeof value === 'number' && value > 0 ? value : undefined
 }
 
 function aiLayerName(operationLabel: string, timestamp: string, index: number): string {
