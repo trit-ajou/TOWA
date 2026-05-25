@@ -59,12 +59,12 @@ const projectFolderSegments = computed(() => {
 
 function goHome() {
   store.commit('library/SET_PATH', [])
-  router.push('/')
+  router.push(isCloud.value && !isLoggedIn.value ? '/' : '/library')
 }
 
 function goToLibraryPath(path: string[]) {
   store.commit('library/SET_PATH', path)
-  if (!isInLibrary.value) router.push('/')
+  if (!isInLibrary.value) router.push(isCloud.value && !isLoggedIn.value ? '/' : '/library')
 }
 
 function switchTab(tab: ProjectTab) {
