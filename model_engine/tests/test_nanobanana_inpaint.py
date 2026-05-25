@@ -13,9 +13,8 @@ from model_engine.builtin_models.nanobanana_inpaint import (
     MINDLOGIC_IMAGE_MODEL,
     MINDLOGIC_INPAINT_MODEL_ID,
     MINDLOGIC_IMAGE_EDIT_MODE,
-    MINDLOGIC_MASK_MODE,
+    NANOBANANA_DEFAULT_PROMPT,
     NANOBANANA_INPAINT_MODEL_ID,
-    _mindlogic_reference_image_payload,
     _missing_image_error,
     _image_part_to_png_bytes,
     register_mindlogic_inpaint_model,
@@ -80,7 +79,7 @@ class NanobananaInpaintTests(unittest.TestCase):
             )
 
             self.assertEqual(StageStatus.SUCCEEDED, response.status)
-            self.assertEqual(3, len(response.artifacts))
+            self.assertEqual(2, len(response.artifacts))
             bitmap_artifact = next(
                 descriptor
                 for descriptor in response.artifacts.values()
@@ -154,13 +153,9 @@ class NanobananaInpaintTests(unittest.TestCase):
             ) -> bytes:
                 captured["reference_count"] = str(len(reference_images))
                 captured["source_mime_type"] = reference_images[0][1]
-                captured["guide_mime_type"] = reference_images[1][1]
                 captured["prompt"] = prompt
                 captured["model_name"] = model_name
                 captured["api_key"] = api_key
-                guide = Image.open(BytesIO(reference_images[1][0])).convert("RGB")
-                captured["guide_white_pixel"] = str(guide.getpixel((5, 5)))
-                captured["guide_black_pixel"] = str(guide.getpixel((0, 0)))
                 return _fake_generate_edit(
                     reference_images,
                     prompt,
@@ -181,21 +176,17 @@ class NanobananaInpaintTests(unittest.TestCase):
             )
 
             self.assertEqual(StageStatus.SUCCEEDED, response.status)
-            self.assertIn("image 2 as the edit guide", captured["prompt"])
-            self.assertIn("White areas in image 2", captured["prompt"])
+            self.assertIn(NANOBANANA_DEFAULT_PROMPT, captured["prompt"])
             self.assertIn("exactly 10x10 pixels", captured["prompt"])
             self.assertIn("Do not crop, pad, rotate, stretch, zoom", captured["prompt"])
             self.assertEqual(MINDLOGIC_IMAGE_MODEL, captured["model_name"])
-            self.assertEqual("2", captured["reference_count"])
+            self.assertEqual("1", captured["reference_count"])
             self.assertEqual("image/png", captured["source_mime_type"])
-            self.assertEqual("image/png", captured["guide_mime_type"])
-            self.assertEqual("(255, 255, 255)", captured["guide_white_pixel"])
-            self.assertEqual("(0, 0, 0)", captured["guide_black_pixel"])
             self.assertEqual("test-key", captured["api_key"])
             self.assertEqual("mindlogic", response.stage_report.metrics["provider"])
             self.assertEqual("10x10", response.stage_report.metrics["prompt_output_size"])
-            self.assertEqual(2, response.stage_report.metrics["provider_reference_image_count"])
-            self.assertEqual("yes", response.stage_report.metrics["provider_mask_guide"])
+            self.assertEqual(1, response.stage_report.metrics["provider_reference_image_count"])
+            self.assertEqual("no", response.stage_report.metrics["provider_mask_guide"])
             self.assertEqual(MINDLOGIC_INPAINT_MODEL_ID, response.stage_report.metrics["model_id"])
             self.assertEqual("mindlogic_google_edit", response.patches[1].payload["value"]["engine"])
 
@@ -231,20 +222,8 @@ class NanobananaInpaintTests(unittest.TestCase):
             self.assertEqual("pixel_diff", response.stage_report.metrics["composite_mask_mode"])
             self.assertEqual("mindlogic_google_edit", response.patches[1].payload["value"]["engine"])
 
-    def test_mindlogic_mask_reference_payload_uses_user_provided_mask(self) -> None:
-        payload = _mindlogic_reference_image_payload(
-            index=2,
-            image_bytes=b"mask-bytes",
-            mime_type="image/png",
-            is_mask=True,
-        )
-
-        self.assertEqual("EDIT_MODE_INPAINT_REMOVAL", MINDLOGIC_IMAGE_EDIT_MODE)
-        self.assertEqual("REFERENCE_TYPE_MASK", payload["reference_type"])
-        self.assertEqual(MINDLOGIC_MASK_MODE, "MASK_MODE_USER_PROVIDED")
-        self.assertEqual("image/png", payload["mime_type"])
-        self.assertNotIn("reference_image", payload)
-        self.assertNotIn("mask_image_config", payload)
+    def test_mindlogic_edit_mode_uses_single_raw_reference(self) -> None:
+        self.assertEqual("EDIT_MODE_DEFAULT", MINDLOGIC_IMAGE_EDIT_MODE)
 
     def test_bitmap_only_inpaint_writes_diff_overlay_for_ui_layer(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
