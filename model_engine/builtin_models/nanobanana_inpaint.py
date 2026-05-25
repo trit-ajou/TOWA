@@ -401,12 +401,11 @@ def _generate_with_mindlogic_google_edit(
         "model": model_name,
         "prompt": prompt,
         "reference_images": [
-            {
-                "reference_id": index,
-                "reference_type": "REFERENCE_TYPE_RAW",
-                "image_bytes": base64.b64encode(image_bytes).decode("ascii"),
-                "mime_type": mime_type,
-            }
+            _build_mindlogic_reference_image_payload(
+                index=index,
+                image_bytes=image_bytes,
+                mime_type=mime_type,
+            )
             for index, (image_bytes, mime_type) in enumerate(reference_images, start=1)
         ],
         "config": {
@@ -434,6 +433,23 @@ def _generate_with_mindlogic_google_edit(
         keys = sorted(response_payload.keys()) if isinstance(response_payload, dict) else []
         raise RuntimeError(f"Mindlogic image edit response did not include an image: keys={keys}")
     return image_bytes
+
+
+def _build_mindlogic_reference_image_payload(
+    *,
+    index: int,
+    image_bytes: bytes,
+    mime_type: str,
+) -> dict[str, Any]:
+    return {
+        "reference_id": index,
+        "reference_type": "REFERENCE_TYPE_RAW",
+        "reference_image": {
+            "image_bytes": base64.b64encode(image_bytes).decode("ascii"),
+            "mime_type": mime_type,
+        },
+    }
+
 
 def _extract_mindlogic_image_bytes(payload: Any) -> Optional[bytes]:
     if isinstance(payload, str):

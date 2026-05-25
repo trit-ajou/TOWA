@@ -15,6 +15,7 @@ from model_engine.builtin_models.nanobanana_inpaint import (
     MINDLOGIC_IMAGE_EDIT_MODE,
     NANOBANANA_DEFAULT_PROMPT,
     NANOBANANA_INPAINT_MODEL_ID,
+    _build_mindlogic_reference_image_payload,
     _missing_image_error,
     _image_part_to_png_bytes,
     register_mindlogic_inpaint_model,
@@ -223,7 +224,17 @@ class NanobananaInpaintTests(unittest.TestCase):
             self.assertEqual("mindlogic_google_edit", response.patches[1].payload["value"]["engine"])
 
     def test_mindlogic_edit_mode_uses_single_raw_reference(self) -> None:
+        payload = _build_mindlogic_reference_image_payload(
+            index=1,
+            image_bytes=b"raw-bytes",
+            mime_type="image/png",
+        )
+
         self.assertEqual("EDIT_MODE_DEFAULT", MINDLOGIC_IMAGE_EDIT_MODE)
+        self.assertEqual("REFERENCE_TYPE_RAW", payload["reference_type"])
+        self.assertEqual("image/png", payload["reference_image"]["mime_type"])
+        self.assertIn("image_bytes", payload["reference_image"])
+        self.assertNotIn("image_bytes", {k: v for k, v in payload.items() if k != "reference_image"})
 
     def test_bitmap_only_inpaint_writes_diff_overlay_for_ui_layer(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
