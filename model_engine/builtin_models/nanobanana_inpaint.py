@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from io import BytesIO
 import json
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, Sequence
 from urllib import error, request
 from urllib.parse import urlparse
 
@@ -26,6 +26,9 @@ from ..contracts.inpaint_tasks import inpaint_tasks_payload_from_mapping
 from ..models.registry import ModelRegistry
 from ..storage import stage_run_slug, stage_transaction_dir
 
+
+ImageReference = tuple[bytes, str]
+GenerateEditFn = Callable[[Sequence[ImageReference], str, str, str], bytes]
 
 NANOBANANA_INPAINT_MODEL_ID = "builtin.nanobanana.inpaint"
 NANOBANANA_IMAGE_MODEL = "gemini-3.1-flash-image-preview"
@@ -142,9 +145,7 @@ def mindlogic_inpaint_handler(request: StageRequest) -> StageResponse:
 def run_nanobanana_inpaint(
     request: StageRequest,
     *,
-    generate_edit_fn: Optional[
-        Callable[[bytes, str, str, str, str], bytes]
-    ] = None,
+    generate_edit_fn: Optional[GenerateEditFn] = None,
     default_model_name: str = NANOBANANA_IMAGE_MODEL,
     provider_name: str = "nanobanana",
     engine_name: str = "nanobanana_vertex",
@@ -174,17 +175,16 @@ def run_nanobanana_inpaint(
     if not api_key:
         raise RuntimeError("Nanobanana inpaint requires an API key")
 
-    prompt_override = request.stage_config.get("prompt")
     model_name = str(request.stage_config.get("model_name", default_model_name))
-    base_prompt = str(prompt_override or NANOBANANA_DEFAULT_PROMPT)
+    base_prompt = _resolve_inpaint_prompt(request)
     prompt = _build_inpaint_prompt(base_prompt, base_image.size)
     warnings: list[str] = []
 
     try:
         page_bytes = _image_to_bytes(base_image, format_hint="PNG")
+        reference_images: list[ImageReference] = [(page_bytes, "image/png")]
         generated_bytes = generate_edit_fn(
-            page_bytes,
-            "image/png",
+            reference_images,
             prompt,
             model_name,
             api_key,
@@ -223,6 +223,11 @@ def run_nanobanana_inpaint(
         )
 
     output_artifact = _write_inpainted_bitmap(request, edited_image, target_layer_id)
+    output_refs = [provider_output_artifact.artifact_ref, output_artifact.artifact_ref]
+    response_artifacts = {
+        provider_output_artifact.artifact_ref: provider_output_artifact,
+        output_artifact.artifact_ref: output_artifact,
+    }
     patches = _patches_for_inpainting_layer(
         request,
         output_artifact.artifact_ref,
@@ -237,11 +242,13 @@ def run_nanobanana_inpaint(
         "task_count": task_count,
         "target_layer_id": target_layer_id,
         "provider_call_mode": "full_page_single_call",
-        "composite_mask_mode": "local_mask_only" if use_mask else "pixel_diff",
+        "composite_mask_mode": _composite_mask_mode(request) if use_mask else "pixel_diff",
         "provider_output_size": f"{generated_page.width}x{generated_page.height}",
         "base_image_size": f"{base_image.width}x{base_image.height}",
         "prompt_output_size": f"{base_image.width}x{base_image.height}",
         "provider_output_resized": "yes" if resize_warning is not None else "no",
+        "provider_reference_image_count": 1,
+        "provider_mask_guide": "no",
     }
     metrics.update(diff_metrics)
     report = StageReport(
@@ -249,7 +256,7 @@ def run_nanobanana_inpaint(
         stage_run_id=request.stage_run_id,
         status=StageStatus.SUCCEEDED,
         input_refs=sorted(request.artifacts.keys()),
-        output_refs=[provider_output_artifact.artifact_ref, output_artifact.artifact_ref],
+        output_refs=output_refs,
         warnings=warnings,
         metrics=metrics,
         provider=request.credential_bindings.get("primary_provider"),
@@ -262,10 +269,7 @@ def run_nanobanana_inpaint(
         stage_run_id=request.stage_run_id,
         status=StageStatus.SUCCEEDED,
         patches=patches,
-        artifacts={
-            provider_output_artifact.artifact_ref: provider_output_artifact,
-            output_artifact.artifact_ref: output_artifact,
-        },
+        artifacts=response_artifacts,
         stage_report=report,
     )
 
@@ -294,6 +298,13 @@ def _try_resolve_inpaint_tasks(request: StageRequest) -> Optional[object]:
     )
 
 
+def _resolve_inpaint_prompt(request: StageRequest) -> str:
+    prompt_override = request.stage_config.get("prompt")
+    if prompt_override:
+        return str(prompt_override)
+    return NANOBANANA_DEFAULT_PROMPT
+
+
 def _resolve_first_bitmap_artifact(request: StageRequest) -> ArtifactDescriptor:
     for artifact in request.artifacts.values():
         if artifact.kind == "bitmap":
@@ -315,8 +326,7 @@ def _image_to_bytes(image: Image.Image, *, format_hint: str) -> bytes:
 
 
 def _generate_with_nanobanana_vertex(
-    source_image_bytes: bytes,
-    source_mime_type: str,
+    reference_images: Sequence[ImageReference],
     prompt: str,
     model_name: str,
     api_key: str,
@@ -330,12 +340,14 @@ def _generate_with_nanobanana_vertex(
         ) from exc
 
     client = genai.Client(vertexai=True, api_key=api_key)
+    contents: list[object] = [
+        types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
+        for image_bytes, mime_type in reference_images
+    ]
+    contents.append(prompt)
     response = client.models.generate_content(
         model=model_name,
-        contents=[
-            types.Part.from_bytes(data=source_image_bytes, mime_type=source_mime_type),
-            prompt,
-        ],
+        contents=contents,
         config=types.GenerateContentConfig(response_modalities=["TEXT", "IMAGE"]),
     )
     response_texts: list[str] = []
@@ -380,8 +392,7 @@ def _image_part_to_png_bytes(part: object) -> bytes:
 
 
 def _generate_with_mindlogic_google_edit(
-    source_image_bytes: bytes,
-    source_mime_type: str,
+    reference_images: Sequence[ImageReference],
     prompt: str,
     model_name: str,
     api_key: str,
@@ -390,14 +401,12 @@ def _generate_with_mindlogic_google_edit(
         "model": model_name,
         "prompt": prompt,
         "reference_images": [
-            {
-                "reference_id": 1,
-                "reference_type": "REFERENCE_TYPE_RAW",
-                "reference_image": {
-                    "image_bytes": base64.b64encode(source_image_bytes).decode("ascii"),
-                    "mime_type": source_mime_type,
-                },
-            }
+            _build_mindlogic_reference_image_payload(
+                index=index,
+                image_bytes=image_bytes,
+                mime_type=mime_type,
+            )
+            for index, (image_bytes, mime_type) in enumerate(reference_images, start=1)
         ],
         "config": {
             "edit_mode": MINDLOGIC_IMAGE_EDIT_MODE,
@@ -424,6 +433,22 @@ def _generate_with_mindlogic_google_edit(
         keys = sorted(response_payload.keys()) if isinstance(response_payload, dict) else []
         raise RuntimeError(f"Mindlogic image edit response did not include an image: keys={keys}")
     return image_bytes
+
+
+def _build_mindlogic_reference_image_payload(
+    *,
+    index: int,
+    image_bytes: bytes,
+    mime_type: str,
+) -> dict[str, Any]:
+    return {
+        "reference_id": index,
+        "reference_type": "REFERENCE_TYPE_RAW",
+        "reference_image": {
+            "image_bytes": base64.b64encode(image_bytes).decode("ascii"),
+            "mime_type": mime_type,
+        },
+    }
 
 
 def _extract_mindlogic_image_bytes(payload: Any) -> Optional[bytes]:
@@ -475,14 +500,26 @@ def _build_composite_mask(
     tasks_payload: object,
     image_size: tuple[int, int],
 ) -> Image.Image:
+    mask_mode = _composite_mask_mode(request)
     composite_mask = Image.new("L", image_size, color=0)
     for task in getattr(tasks_payload, "tasks", []) or []:
+        if mask_mode == "expanded_bbox":
+            bbox = task.expanded_bbox
+            bbox_mask = Image.new("L", (bbox["width"], bbox["height"]), color=255)
+            composite_mask.paste(bbox_mask, (bbox["x"], bbox["y"]))
+            continue
+        if mask_mode != "mask_artifact":
+            raise ValueError(f"Unsupported output_mask_mode: {mask_mode}")
         mask_artifact = request.artifacts[task.mask_artifact_ref]
         mask_path = _file_path_from_uri(mask_artifact.uri)
         region_mask = Image.open(mask_path).convert("L")
         position = (task.expanded_bbox["x"], task.expanded_bbox["y"])
         composite_mask.paste(region_mask, position, region_mask)
     return composite_mask
+
+
+def _composite_mask_mode(request: StageRequest) -> str:
+    return str(request.stage_config.get("output_mask_mode", "mask_artifact"))
 
 
 def _build_inpaint_prompt(base_prompt: str, image_size: tuple[int, int]) -> str:
