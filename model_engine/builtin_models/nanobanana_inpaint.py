@@ -9,7 +9,7 @@ from typing import Any, Callable, Optional
 from urllib import error, request
 from urllib.parse import urlparse
 
-from PIL import Image
+from PIL import Image, ImageChops, ImageFilter
 
 from ..adapters.callable import CallableModelAdapter
 from ..contracts.artifacts import ArtifactDescriptor, ArtifactStatus
@@ -176,7 +176,8 @@ def run_nanobanana_inpaint(
 
     prompt_override = request.stage_config.get("prompt")
     model_name = str(request.stage_config.get("model_name", default_model_name))
-    prompt = str(prompt_override or NANOBANANA_DEFAULT_PROMPT)
+    base_prompt = str(prompt_override or NANOBANANA_DEFAULT_PROMPT)
+    prompt = _build_inpaint_prompt(base_prompt, base_image.size)
     warnings: list[str] = []
 
     try:
@@ -202,8 +203,14 @@ def run_nanobanana_inpaint(
             edited_image = _initial_inpainting_canvas(request, base_image, target_layer_id)
             composite_mask = _build_composite_mask(request, tasks_payload, base_image.size)
             edited_image.paste(generated_page, (0, 0), composite_mask)
+            diff_metrics: dict[str, int | float | str] = {}
         else:
-            edited_image = generated_page
+            edited_image, diff_metrics = _build_diff_overlay_image(
+                request,
+                base_image,
+                generated_page,
+                warnings,
+            )
     except Exception as exc:
         return _failed_response(
             request,
@@ -224,6 +231,19 @@ def run_nanobanana_inpaint(
     )
     finished_at = datetime.now(timezone.utc)
     task_count = len(tasks_payload.tasks) if tasks_payload else 0
+    metrics = {
+        "provider": provider_name,
+        "model_name": model_name,
+        "task_count": task_count,
+        "target_layer_id": target_layer_id,
+        "provider_call_mode": "full_page_single_call",
+        "composite_mask_mode": "local_mask_only" if use_mask else "pixel_diff",
+        "provider_output_size": f"{generated_page.width}x{generated_page.height}",
+        "base_image_size": f"{base_image.width}x{base_image.height}",
+        "prompt_output_size": f"{base_image.width}x{base_image.height}",
+        "provider_output_resized": "yes" if resize_warning is not None else "no",
+    }
+    metrics.update(diff_metrics)
     report = StageReport(
         stage_name=request.stage_name,
         stage_run_id=request.stage_run_id,
@@ -231,17 +251,7 @@ def run_nanobanana_inpaint(
         input_refs=sorted(request.artifacts.keys()),
         output_refs=[provider_output_artifact.artifact_ref, output_artifact.artifact_ref],
         warnings=warnings,
-        metrics={
-            "provider": provider_name,
-            "model_name": model_name,
-            "task_count": task_count,
-            "target_layer_id": target_layer_id,
-            "provider_call_mode": "full_page_single_call",
-            "composite_mask_mode": "local_mask_only" if use_mask else "none",
-            "provider_output_size": f"{generated_page.width}x{generated_page.height}",
-            "base_image_size": f"{base_image.width}x{base_image.height}",
-            "provider_output_resized": "yes" if resize_warning is not None else "no",
-        },
+        metrics=metrics,
         provider=request.credential_bindings.get("primary_provider"),
         started_at=started_at,
         finished_at=finished_at,
@@ -473,6 +483,81 @@ def _build_composite_mask(
         position = (task.expanded_bbox["x"], task.expanded_bbox["y"])
         composite_mask.paste(region_mask, position, region_mask)
     return composite_mask
+
+
+def _build_inpaint_prompt(base_prompt: str, image_size: tuple[int, int]) -> str:
+    width, height = image_size
+    return (
+        f"{base_prompt}\n\n"
+        "Output constraint: preserve the exact source canvas size and aspect ratio. "
+        f"The output image must be exactly {width}x{height} pixels. "
+        "Do not crop, pad, rotate, stretch, zoom, or change the page scale."
+    )
+
+
+def _build_diff_overlay_image(
+    request: StageRequest,
+    base_image: Image.Image,
+    generated_page: Image.Image,
+    warnings: list[str],
+) -> tuple[Image.Image, dict[str, int | float | str]]:
+    threshold = int(request.stage_config.get("diff_threshold", 24))
+    dilate_radius = int(request.stage_config.get("diff_dilate_radius", 1))
+    large_ratio_threshold = float(
+        request.stage_config.get("diff_large_region_ratio_threshold", 0.35)
+    )
+    diff_mask = _build_pixel_diff_mask(
+        base_image,
+        generated_page,
+        threshold=threshold,
+        dilate_radius=dilate_radius,
+    )
+    edited_image = Image.new("RGBA", base_image.size, color=(0, 0, 0, 0))
+    diff_bbox = diff_mask.getbbox()
+    if diff_bbox is not None:
+        edited_image.paste(generated_page, (0, 0), diff_mask)
+
+    changed_pixels = diff_mask.histogram()[255]
+    total_pixels = max(base_image.width * base_image.height, 1)
+    changed_ratio = changed_pixels / total_pixels
+    if changed_ratio > large_ratio_threshold:
+        warnings.append(
+            "diff_overlay_large_changed_region: "
+            f"ratio={changed_ratio:.6f} threshold={large_ratio_threshold:.6f}"
+        )
+    return edited_image, {
+        "diff_threshold": threshold,
+        "diff_dilate_radius": dilate_radius,
+        "diff_changed_pixel_count": changed_pixels,
+        "diff_changed_pixel_ratio": round(changed_ratio, 6),
+        "diff_bbox": _bbox_to_metric(diff_bbox),
+    }
+
+
+def _build_pixel_diff_mask(
+    base_image: Image.Image,
+    generated_page: Image.Image,
+    *,
+    threshold: int,
+    dilate_radius: int,
+) -> Image.Image:
+    base_rgb = base_image.convert("RGB")
+    generated_rgb = generated_page.convert("RGB")
+    diff = ImageChops.difference(base_rgb, generated_rgb)
+    red_diff, green_diff, blue_diff = diff.split()
+    max_channel_diff = ImageChops.lighter(ImageChops.lighter(red_diff, green_diff), blue_diff)
+    thresholded = max_channel_diff.point(lambda value: 255 if value >= threshold else 0)
+    if dilate_radius <= 0:
+        return thresholded
+    kernel_size = dilate_radius * 2 + 1
+    return thresholded.filter(ImageFilter.MaxFilter(kernel_size))
+
+
+def _bbox_to_metric(bbox: tuple[int, int, int, int] | None) -> str:
+    if bbox is None:
+        return "none"
+    left, top, right, bottom = bbox
+    return f"{left},{top},{right},{bottom}"
 
 
 def _normalize_generated_page_size(

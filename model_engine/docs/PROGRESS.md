@@ -67,6 +67,8 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - Docker `model-engine`은 `model_engine/.runtime`을 `/app/model_engine/.runtime`로 마운트해 API 서버도 `runtime_config.json`을 읽는다. `TOWA_INPAINT_PROVIDER`, `TOWA_INPAINT_MODEL_NAME`, provider API key는 env 우선, runtime config fallback 순서로 해석한다
 - Docker `model-engine`은 `model_engine/.cache/models`도 `/cache/models`로 마운트한다. UI에서 첫 inpaint job을 테스트할 때 CRAFT detector/refiner 가중치를 컨테이너 재생성마다 다시 다운로드하지 않도록 하여 polling timeout 가능성을 줄인다
 - 공통 stage artifact dump 기능 추가. `TOWA_MODEL_ENGINE_STAGE_DUMP=1` 또는 `runtime_context.metadata.stage_artifact_dump=true`일 때 각 stage transaction 아래 `stage_artifact_dump/`를 만들고 `stage_request.json`, `stage_response.json`, `artifacts_before.json`, `artifacts_after.json`, `document_after.json`을 저장한다. 기본값으로 `file://` artifact는 `files/input`, `files/output` 아래 hardlink/copy하며, `TOWA_MODEL_ENGINE_STAGE_DUMP_COPY_FILES=0` 또는 metadata `stage_artifact_dump_copy_files=false`로 바이너리 복사를 끌 수 있다. dump JSON은 credential/session/token 계열 값을 redaction한다.
+- bitmap-only inpaint 경로의 UI용 `inpainting_layer_bitmap`은 provider full-page output을 그대로 전달하지 않고, base image와 provider output의 pixel diff를 기반으로 투명 overlay를 생성한다. 전체 provider 결과는 계속 `provider_output_bitmap` artifact로 남긴다. diff 경로는 `diff_threshold`, `diff_dilate_radius`, `diff_large_region_ratio_threshold` stage config를 지원하며 stage report에 diff bbox/changed pixel metrics를 남긴다.
+- Mindlogic/Nanobanana inpaint provider 호출 prompt에 입력 bitmap의 실제 canvas 크기를 동적으로 추가한다. 예를 들어 UI에서 받은 source bitmap이 `1333x750`이면 provider prompt에 output이 정확히 `1333x750 pixels`이고 crop/pad/stretch/scale 변경을 하면 안 된다는 제약을 붙인다. stage report에는 `prompt_output_size`를 남긴다.
 
 ## 2026-05-14 세션 handoff
 
