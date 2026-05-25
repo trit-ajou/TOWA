@@ -4,6 +4,13 @@
 
 ---
 
+## 2026-05-26
+
+### 00:36 — 홈 라우팅 개편: 로그인 시 라이브러리 직행 (#20)
+- `router/index.ts` `beforeEach`에 landing 가드 추가. `to.name === 'landing'` 이고 `!isCloud || isLoggedIn` 이면 `library`로 redirect. Landing은 cloud + 미로그인 전용
+- `components/common/AppNavbar.vue` `goHome` / `goToLibraryPath`: cloud + 미로그인일 때만 `/`, 그 외 모두 `/library`로 push
+- 검증: Playwright로 (1) standalone `/` → `/library`, (2) cloud + 로그인 `/` → `/library`, (3) cloud + 미로그인 `/` → landing 유지 확인
+
 ## 2026-05-14
 
 ### 10:27 — 페이지 전환 시 캔버스 가로 비율 깨짐 fix

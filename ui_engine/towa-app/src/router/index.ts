@@ -62,6 +62,10 @@ router.beforeEach((to) => {
   const isCloud = DEPLOYMENT_MODE.value === 'cloud'
   const isLoggedIn = store.getters['auth/isLoggedIn']
 
+  if (to.name === 'landing' && (!isCloud || isLoggedIn)) {
+    return { name: 'library' }
+  }
+
   if (isCloud && to.meta.requiresAuth && !isLoggedIn) {
     return { name: 'login', query: { redirect: to.fullPath } }
   }
