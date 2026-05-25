@@ -990,6 +990,22 @@ def _build_operation_stages(
     if request.operation_kind == "inpaint":
         return [
             AdapterBackedStage(
+                "text_detection",
+                stage_kind=StageKind.TEXT_DETECTION,
+                registry=registry,
+                preferred_model_id=CRAFT_TEXT_DETECTION_MODEL_ID,
+                config=common_detection_config,
+            ),
+            _FunctionStage(
+                "mask_or_erase_planning",
+                run_mask_or_erase_planning,
+                config={
+                    "input_artifact_ref": input_artifact_ref,
+                    "padding": 12,
+                    "target_layer_id": "layer_inpainting",
+                },
+            ),
+            AdapterBackedStage(
                 "inpaint",
                 stage_kind=StageKind.INPAINT,
                 registry=registry,
@@ -997,6 +1013,7 @@ def _build_operation_stages(
                 config={
                     "input_artifact_ref": input_artifact_ref,
                     "target_layer_id": "layer_inpainting",
+                    "output_mask_mode": "expanded_bbox",
                     **_inpaint_provider_config_from_runtime(request.runtime_context),
                 },
             ),

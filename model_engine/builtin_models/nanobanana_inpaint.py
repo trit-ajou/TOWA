@@ -237,7 +237,7 @@ def run_nanobanana_inpaint(
         "task_count": task_count,
         "target_layer_id": target_layer_id,
         "provider_call_mode": "full_page_single_call",
-        "composite_mask_mode": "local_mask_only" if use_mask else "pixel_diff",
+        "composite_mask_mode": _composite_mask_mode(request) if use_mask else "pixel_diff",
         "provider_output_size": f"{generated_page.width}x{generated_page.height}",
         "base_image_size": f"{base_image.width}x{base_image.height}",
         "prompt_output_size": f"{base_image.width}x{base_image.height}",
@@ -475,14 +475,26 @@ def _build_composite_mask(
     tasks_payload: object,
     image_size: tuple[int, int],
 ) -> Image.Image:
+    mask_mode = _composite_mask_mode(request)
     composite_mask = Image.new("L", image_size, color=0)
     for task in getattr(tasks_payload, "tasks", []) or []:
+        if mask_mode == "expanded_bbox":
+            bbox = task.expanded_bbox
+            bbox_mask = Image.new("L", (bbox["width"], bbox["height"]), color=255)
+            composite_mask.paste(bbox_mask, (bbox["x"], bbox["y"]))
+            continue
+        if mask_mode != "mask_artifact":
+            raise ValueError(f"Unsupported output_mask_mode: {mask_mode}")
         mask_artifact = request.artifacts[task.mask_artifact_ref]
         mask_path = _file_path_from_uri(mask_artifact.uri)
         region_mask = Image.open(mask_path).convert("L")
         position = (task.expanded_bbox["x"], task.expanded_bbox["y"])
         composite_mask.paste(region_mask, position, region_mask)
     return composite_mask
+
+
+def _composite_mask_mode(request: StageRequest) -> str:
+    return str(request.stage_config.get("output_mask_mode", "mask_artifact"))
 
 
 def _build_inpaint_prompt(base_prompt: str, image_size: tuple[int, int]) -> str:
