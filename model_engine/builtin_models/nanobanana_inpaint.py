@@ -438,6 +438,7 @@ def _generate_with_mindlogic_google_edit(
             "edit_mode": MINDLOGIC_IMAGE_EDIT_MODE,
             "number_of_images": 1,
             "output_mime_type": "image/png",
+            "mask_dilation": MINDLOGIC_MASK_DILATION,
         },
     }
     endpoint = MINDLOGIC_IMAGE_EDIT_BASE_URL.rstrip("/") + MINDLOGIC_IMAGE_EDIT_PATH
@@ -471,16 +472,9 @@ def _mindlogic_reference_image_payload(
     payload: dict[str, Any] = {
         "reference_id": index,
         "reference_type": "REFERENCE_TYPE_MASK" if is_mask else "REFERENCE_TYPE_RAW",
-        "reference_image": {
-            "image_bytes": base64.b64encode(image_bytes).decode("ascii"),
-            "mime_type": mime_type,
-        },
+        "image_bytes": base64.b64encode(image_bytes).decode("ascii"),
+        "mime_type": mime_type,
     }
-    if is_mask:
-        payload["mask_image_config"] = {
-            "mask_mode": MINDLOGIC_MASK_MODE,
-            "dilation": MINDLOGIC_MASK_DILATION,
-        }
     return payload
 
 

@@ -241,9 +241,10 @@ class NanobananaInpaintTests(unittest.TestCase):
 
         self.assertEqual("EDIT_MODE_INPAINT_REMOVAL", MINDLOGIC_IMAGE_EDIT_MODE)
         self.assertEqual("REFERENCE_TYPE_MASK", payload["reference_type"])
-        self.assertEqual("MASK_MODE_USER_PROVIDED", payload["mask_image_config"]["mask_mode"])
-        self.assertEqual(MINDLOGIC_MASK_MODE, payload["mask_image_config"]["mask_mode"])
-        self.assertEqual("image/png", payload["reference_image"]["mime_type"])
+        self.assertEqual(MINDLOGIC_MASK_MODE, "MASK_MODE_USER_PROVIDED")
+        self.assertEqual("image/png", payload["mime_type"])
+        self.assertNotIn("reference_image", payload)
+        self.assertNotIn("mask_image_config", payload)
 
     def test_bitmap_only_inpaint_writes_diff_overlay_for_ui_layer(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
