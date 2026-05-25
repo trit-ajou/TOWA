@@ -395,16 +395,15 @@ def _fake_translate_blocks(blocks, config: dict[str, object], api_key: str) -> l
 
 
 def _fake_generate_green_page(
-    source_image_bytes: bytes,
-    source_mime_type: str,
+    reference_images: list[tuple[bytes, str]],
     prompt: str,
     model_name: str,
     api_key: str,
 ) -> bytes:
-    _ = source_mime_type
     _ = prompt
     _ = model_name
     _ = api_key
+    source_image_bytes, _source_mime_type = reference_images[0]
     source_image = Image.open(BytesIO(source_image_bytes)).convert("RGBA")
     edited = Image.new("RGBA", source_image.size, color=(0, 255, 0, 255))
     buffer = BytesIO()
