@@ -173,14 +173,17 @@ class NanobananaInpaintTests(unittest.TestCase):
                         planning_response.artifacts,
                         provider="mindlogic",
                     )
-                )
+            )
 
             self.assertEqual(StageStatus.SUCCEEDED, response.status)
-            self.assertEqual(NANOBANANA_DEFAULT_PROMPT, captured["prompt"])
+            self.assertIn(NANOBANANA_DEFAULT_PROMPT, captured["prompt"])
+            self.assertIn("exactly 10x10 pixels", captured["prompt"])
+            self.assertIn("Do not crop, pad, rotate, stretch, zoom", captured["prompt"])
             self.assertEqual(MINDLOGIC_IMAGE_MODEL, captured["model_name"])
             self.assertEqual("image/png", captured["source_mime_type"])
             self.assertEqual("test-key", captured["api_key"])
             self.assertEqual("mindlogic", response.stage_report.metrics["provider"])
+            self.assertEqual("10x10", response.stage_report.metrics["prompt_output_size"])
             self.assertEqual(MINDLOGIC_INPAINT_MODEL_ID, response.stage_report.metrics["model_id"])
             self.assertEqual("mindlogic_google_edit", response.patches[1].payload["value"]["engine"])
 
@@ -213,8 +216,39 @@ class NanobananaInpaintTests(unittest.TestCase):
             self.assertEqual(StageStatus.SUCCEEDED, response.status)
             self.assertEqual(MINDLOGIC_INPAINT_MODEL_ID, response.stage_report.metrics["model_id"])
             self.assertEqual("0", str(response.stage_report.metrics["task_count"]))
-            self.assertEqual("none", response.stage_report.metrics["composite_mask_mode"])
+            self.assertEqual("pixel_diff", response.stage_report.metrics["composite_mask_mode"])
             self.assertEqual("mindlogic_google_edit", response.patches[1].payload["value"]["engine"])
+
+    def test_bitmap_only_inpaint_writes_diff_overlay_for_ui_layer(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace_dir = Path(tmpdir)
+            _write_base_image(workspace_dir / "page.png")
+
+            response = run_nanobanana_inpaint(
+                _inpaint_request(workspace_dir, {}),
+                generate_edit_fn=_fake_generate_edit_partial,
+            )
+
+            self.assertEqual(StageStatus.SUCCEEDED, response.status)
+            self.assertEqual("pixel_diff", response.stage_report.metrics["composite_mask_mode"])
+            self.assertEqual("4,4,7,7", response.stage_report.metrics["diff_bbox"])
+            self.assertEqual(9, response.stage_report.metrics["diff_changed_pixel_count"])
+            bitmap_artifact = next(
+                descriptor
+                for descriptor in response.artifacts.values()
+                if descriptor.metadata.get("role") == "inpainting_layer_bitmap"
+            )
+            provider_artifact = next(
+                descriptor
+                for descriptor in response.artifacts.values()
+                if descriptor.metadata.get("role") == "provider_output_bitmap"
+            )
+            output_image = Image.open(Path(bitmap_artifact.uri.removeprefix("file://"))).convert("RGBA")
+            provider_image = Image.open(Path(provider_artifact.uri.removeprefix("file://"))).convert("RGBA")
+            self.assertEqual((0, 0, 0, 0), output_image.getpixel((0, 0)))
+            self.assertEqual((0, 255, 0, 255), output_image.getpixel((5, 5)))
+            self.assertEqual((0, 0, 255, 255), provider_image.getpixel((0, 0)))
+            self.assertEqual((0, 255, 0, 255), provider_image.getpixel((5, 5)))
 
     def test_nanobanana_inpaint_resizes_provider_output_to_base_size(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -435,6 +469,24 @@ def _fake_generate_edit(
     _ = api_key
     source_image = Image.open(BytesIO(source_image_bytes)).convert("RGBA")
     edited = Image.new("RGBA", source_image.size, color=(0, 255, 0, 255))
+    buffer = BytesIO()
+    edited.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def _fake_generate_edit_partial(
+    source_image_bytes: bytes,
+    source_mime_type: str,
+    prompt: str,
+    model_name: str,
+    api_key: str,
+) -> bytes:
+    _ = source_mime_type
+    _ = prompt
+    _ = model_name
+    _ = api_key
+    edited = Image.open(BytesIO(source_image_bytes)).convert("RGBA")
+    edited.putpixel((5, 5), (0, 255, 0, 255))
     buffer = BytesIO()
     edited.save(buffer, format="PNG")
     return buffer.getvalue()
