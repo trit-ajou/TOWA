@@ -14,6 +14,7 @@ from model_engine.builtin_models.nanobanana_inpaint import (
     MINDLOGIC_IMAGE_MODEL,
     MINDLOGIC_INPAINT_MODEL_ID,
     NANOBANANA_DEFAULT_PROMPT,
+    NANOBANANA_IMAGE_MODEL,
     NANOBANANA_INPAINT_MODEL_ID,
     _generate_with_mindlogic_gateway_image,
     _missing_image_error,
@@ -43,6 +44,10 @@ from model_engine.stages import AdapterBackedStage, run_mask_or_erase_planning
 
 
 class NanobananaInpaintTests(unittest.TestCase):
+    def test_mindlogic_inpaint_defaults_to_stable_gateway_edit_model(self) -> None:
+        self.assertEqual("gemini-2.5-flash-image", MINDLOGIC_IMAGE_MODEL)
+        self.assertNotEqual(NANOBANANA_IMAGE_MODEL, MINDLOGIC_IMAGE_MODEL)
+
     def test_mask_or_erase_planning_creates_tasks_and_masks(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             request = _planning_request(Path(tmpdir))
