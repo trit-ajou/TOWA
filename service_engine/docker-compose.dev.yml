@@ -1,0 +1,71 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-towa}
+      POSTGRES_USER: ${POSTGRES_USER:-towa}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-towa}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-towa} -d ${POSTGRES_DB:-towa}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - service-engine-dev-postgres:/var/lib/postgresql/data
+
+  db-test:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${TEST_POSTGRES_DB:-towa_test}
+      POSTGRES_USER: ${POSTGRES_USER:-towa}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-towa}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-towa} -d ${TEST_POSTGRES_DB:-towa_test}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - service-engine-test-postgres:/var/lib/postgresql/data
+
+  service-engine-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: dev
+    working_dir: /app/service_engine
+    environment:
+      APP_ENV: docker
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-towa}:${POSTGRES_PASSWORD:-towa}@db:5432/${POSTGRES_DB:-towa}
+      SERVICE_ENGINE_CORS_ALLOW_ORIGINS: ${SERVICE_ENGINE_CORS_ALLOW_ORIGINS:-http://localhost:5173}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${SERVICE_ENGINE_PORT:-8000}:8000"
+    volumes:
+      - ./:/app/service_engine
+    command: >
+      sh -c "python3 -m app.cli.dev_admin migrate &&
+             python3 -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
+
+  service-engine-test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: dev
+    working_dir: /app/service_engine
+    environment:
+      APP_ENV: docker
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-towa}:${POSTGRES_PASSWORD:-towa}@db-test:5432/${TEST_POSTGRES_DB:-towa_test}
+      TEST_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-towa}:${POSTGRES_PASSWORD:-towa}@db-test:5432/${TEST_POSTGRES_DB:-towa_test}
+      SERVICE_ENGINE_CORS_ALLOW_ORIGINS: ${SERVICE_ENGINE_CORS_ALLOW_ORIGINS:-http://localhost:5173}
+    depends_on:
+      db-test:
+        condition: service_healthy
+    volumes:
+      - ./:/app/service_engine
+    command: ["python3", "-m", "pytest"]
+
+volumes:
+  service-engine-dev-postgres:
+  service-engine-test-postgres:
