@@ -70,7 +70,7 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - bitmap-only inpaint 경로의 UI용 `inpainting_layer_bitmap`은 provider full-page output을 그대로 전달한다. 전체 provider 결과는 debug용 `provider_output_bitmap` artifact로도 함께 남긴다.
 - Mindlogic/Nanobanana inpaint provider 호출 prompt에 입력 bitmap의 실제 canvas 크기를 동적으로 추가한다. 예를 들어 UI에서 받은 source bitmap이 `1333x750`이면 provider prompt에 output이 정확히 `1333x750 pixels`이고 crop/pad/stretch/scale 변경을 하면 안 된다는 제약을 붙인다. stage report에는 `prompt_output_size`를 남긴다.
 - API `inpaint` job은 e2e 재검증을 위해 `inpaint` 단일 stage로 실행한다. UI에는 provider full-page output을 `inpainting_layer_bitmap`으로 그대로 반환하고, provider 결과도 debug용 `provider_output_bitmap`으로 남긴다.
-- Mindlogic inpaint provider 호출은 legacy Google edit/Imagen endpoint가 아니라 gateway `/images/generate/`의 `gemini-3.1-flash-image-preview` 경로를 기본으로 사용한다. raw 원본 bitmap 1장을 data URL로 넘기고 stage report에는 `provider_reference_image_count=1`, `provider_mask_guide=no`, `composite_mask_mode=full_page`를 남긴다.
+- Mindlogic inpaint provider 호출은 legacy Google edit/Imagen endpoint가 아니라 gateway `/images/generate/`의 `gemini-2.5-flash-image` 경로를 기본으로 사용한다. raw 원본 bitmap 1장을 data URL로 넘기고 stage report에는 `provider_reference_image_count=1`, `provider_mask_guide=no`, `composite_mask_mode=full_page`를 남긴다. 저장된 정상 산출물(`job_bab0fabc...`) 기준으로 `gemini-3.1-flash-image-preview`는 원본 편집 대신 새 만화 페이지를 생성하는 문제가 있어 Mindlogic 기본 inpaint 모델에서 제외했다.
 
 ## 2026-05-14 세션 handoff
 
