@@ -61,7 +61,7 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - job 생성/시작/완료, background executor 예외, billing finalization 실패, stage 시작/종료/실패를 structured app log로 남기도록 보강
 - 로그 payload는 `job_id`, `pipeline_id`, `operation_kind`, `request_ref`, `stage_name`, `stage_run_id`, `status`, `error_code` 중심으로 남기고 credential/session/token 계열 값은 redaction
 - Mindlogic image 연동 전 실 API shape를 확인하기 위한 `scripts/probe_mindlogic_image_edit.py` probe 스크립트 추가. `/v1/gateway/images/generate/`와 legacy `/v1/api/google/models/edit-image` payload를 모두 확인할 수 있게 구성
-- built-in `inpaint=mindlogic` adapter 추가. 기존 나노바나나 인페인트와 동일한 `NANOBANANA_DEFAULT_PROMPT`, full-page provider call, local mask composite 계약을 유지하고 provider 호출부만 Mindlogic Google edit endpoint로 분리
+- built-in `inpaint=mindlogic` adapter 추가. 기존 나노바나나 인페인트와 동일한 `NANOBANANA_DEFAULT_PROMPT`, full-page provider call, local mask composite 계약을 유지하고 provider 호출부만 Mindlogic image gateway로 분리
 - API job inpaint 경로는 `TOWA_INPAINT_PROVIDER=mindlogic` 또는 runtime metadata `inpaint_provider=mindlogic`일 때 `builtin.mindlogic.inpaint`를 선택한다. SaaS/platform key env는 `TOWA_PLATFORM_PROVIDER_MINDLOGIC_API_KEY`
 - Docker inference sample에서 `CRAFT -> mask_or_erase_planning -> Mindlogic inpaint` 추론 성공 확인. 결과 artifact는 `model_engine/.runtime/mindlogic_inpaint_docker/transactions/pipe_inpaint_sample/inpaint/pipe_inpaint_sample_inpaint_3/`
 - Docker `model-engine`은 `model_engine/.runtime`을 `/app/model_engine/.runtime`로 마운트해 API 서버도 `runtime_config.json`을 읽는다. `TOWA_INPAINT_PROVIDER`, `TOWA_INPAINT_MODEL_NAME`, provider API key는 env 우선, runtime config fallback 순서로 해석한다
@@ -70,7 +70,7 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - bitmap-only inpaint 경로의 UI용 `inpainting_layer_bitmap`은 provider full-page output을 그대로 전달한다. 전체 provider 결과는 debug용 `provider_output_bitmap` artifact로도 함께 남긴다.
 - Mindlogic/Nanobanana inpaint provider 호출 prompt에 입력 bitmap의 실제 canvas 크기를 동적으로 추가한다. 예를 들어 UI에서 받은 source bitmap이 `1333x750`이면 provider prompt에 output이 정확히 `1333x750 pixels`이고 crop/pad/stretch/scale 변경을 하면 안 된다는 제약을 붙인다. stage report에는 `prompt_output_size`를 남긴다.
 - API `inpaint` job은 e2e 재검증을 위해 `inpaint` 단일 stage로 실행한다. UI에는 provider full-page output을 `inpainting_layer_bitmap`으로 그대로 반환하고, provider 결과도 debug용 `provider_output_bitmap`으로 남긴다.
-- Mindlogic inpaint provider 호출은 gateway mask 계약 오류를 피하기 위해 raw 원본 bitmap 1장만 nested `reference_image` payload로 전달한다. stage report에는 `provider_reference_image_count=1`, `provider_mask_guide=no`, `composite_mask_mode=full_page`를 남긴다.
+- Mindlogic inpaint provider 호출은 legacy Google edit/Imagen endpoint가 아니라 gateway `/images/generate/`의 `gemini-3.1-flash-image-preview` 경로를 기본으로 사용한다. raw 원본 bitmap 1장을 data URL로 넘기고 stage report에는 `provider_reference_image_count=1`, `provider_mask_guide=no`, `composite_mask_mode=full_page`를 남긴다.
 
 ## 2026-05-14 세션 handoff
 

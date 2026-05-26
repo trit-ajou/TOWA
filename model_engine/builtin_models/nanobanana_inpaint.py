@@ -5,9 +5,10 @@ from datetime import datetime, timezone
 from io import BytesIO
 import json
 from pathlib import Path
+import time
 from typing import Any, Callable, Optional, Sequence
 from urllib import error, request
-from urllib.parse import urlparse
+from urllib.parse import quote, urlencode, urlparse
 
 from PIL import Image
 
@@ -33,10 +34,11 @@ GenerateEditFn = Callable[[Sequence[ImageReference], str, str, str], bytes]
 NANOBANANA_INPAINT_MODEL_ID = "builtin.nanobanana.inpaint"
 NANOBANANA_IMAGE_MODEL = "gemini-3.1-flash-image-preview"
 MINDLOGIC_INPAINT_MODEL_ID = "builtin.mindlogic.inpaint"
-MINDLOGIC_IMAGE_MODEL = "imagen-3.0-capability-001"
-MINDLOGIC_IMAGE_EDIT_BASE_URL = "https://factchat-cloud.mindlogic.ai/v1/api/google"
-MINDLOGIC_IMAGE_EDIT_PATH = "/models/edit-image"
-MINDLOGIC_IMAGE_EDIT_MODE = "EDIT_MODE_DEFAULT"
+MINDLOGIC_IMAGE_MODEL = "gemini-3.1-flash-image-preview"
+MINDLOGIC_IMAGE_GATEWAY_BASE_URL = "https://factchat-cloud.mindlogic.ai/v1/gateway"
+MINDLOGIC_IMAGE_GENERATE_PATH = "/images/generate/"
+MINDLOGIC_IMAGE_POLL_INTERVAL_SECONDS = 5.0
+MINDLOGIC_IMAGE_POLL_TIMEOUT_SECONDS = 180.0
 NANOBANANA_DEFAULT_PROMPT = (
     "Use the provided manga page as the source image. "
     "Remove all visible source text, speech balloon text, and sound effects from the page. "
@@ -99,8 +101,8 @@ def build_mindlogic_inpaint_manifest() -> StageManifest:
         ),
         custom_model=False,
         priority=50,
-        display_name="Mindlogic Image Edit Inpaint",
-        tags=["builtin", "mindlogic", "inpaint", "google-edit"],
+        display_name="Mindlogic Nanobanana Inpaint",
+        tags=["builtin", "mindlogic", "nanobanana", "inpaint", "gateway-image"],
     )
 
 
@@ -135,10 +137,10 @@ def nanobanana_inpaint_handler(request: StageRequest) -> StageResponse:
 def mindlogic_inpaint_handler(request: StageRequest) -> StageResponse:
     return run_nanobanana_inpaint(
         request,
-        generate_edit_fn=_generate_with_mindlogic_google_edit,
+        generate_edit_fn=_generate_with_mindlogic_gateway_image,
         default_model_name=MINDLOGIC_IMAGE_MODEL,
         provider_name="mindlogic",
-        engine_name="mindlogic_google_edit",
+        engine_name="mindlogic_gateway_nanobanana",
     )
 
 
@@ -386,64 +388,132 @@ def _image_part_to_png_bytes(part: object) -> bytes:
     raise RuntimeError("Nanobanana image part could not be converted into PNG bytes")
 
 
-def _generate_with_mindlogic_google_edit(
+def _generate_with_mindlogic_gateway_image(
     reference_images: Sequence[ImageReference],
     prompt: str,
     model_name: str,
     api_key: str,
 ) -> bytes:
+    if not reference_images:
+        raise RuntimeError("Mindlogic gateway image generation requires a source image")
+
+    image_bytes, mime_type = reference_images[0]
     payload = {
         "model": model_name,
         "prompt": prompt,
-        "reference_images": [
-            _build_mindlogic_reference_image_payload(
-                index=index,
-                image_bytes=image_bytes,
-                mime_type=mime_type,
-            )
-            for index, (image_bytes, mime_type) in enumerate(reference_images, start=1)
-        ],
-        "config": {
-            "edit_mode": MINDLOGIC_IMAGE_EDIT_MODE,
-            "number_of_images": 1,
-            "output_mime_type": "image/png",
-        },
+        "number_of_images": 1,
+        # The gateway nanobanana route accepted a single data-url source image in the probe.
+        "image": _mindlogic_data_url(image_bytes, mime_type),
     }
-    endpoint = MINDLOGIC_IMAGE_EDIT_BASE_URL.rstrip("/") + MINDLOGIC_IMAGE_EDIT_PATH
+    endpoint = _mindlogic_gateway_endpoint(MINDLOGIC_IMAGE_GENERATE_PATH)
+    response_payload = _post_mindlogic_json(endpoint, payload=payload, api_key=api_key, timeout=180.0)
+    response_payload = _poll_mindlogic_gateway_image_if_needed(
+        response_payload,
+        model_name=model_name,
+        api_key=api_key,
+    )
+
+    generated_image_bytes = _extract_mindlogic_image_bytes(response_payload)
+    if generated_image_bytes is None:
+        keys = sorted(response_payload.keys()) if isinstance(response_payload, dict) else []
+        raise RuntimeError(f"Mindlogic gateway image response did not include an image: keys={keys}")
+    return generated_image_bytes
+
+
+def _mindlogic_data_url(image_bytes: bytes, mime_type: str) -> str:
+    encoded = base64.b64encode(image_bytes).decode("ascii")
+    return f"data:{mime_type};base64,{encoded}"
+
+
+def _mindlogic_gateway_endpoint(path: str) -> str:
+    endpoint = MINDLOGIC_IMAGE_GATEWAY_BASE_URL.rstrip("/") + "/" + path.strip("/")
+    if path.endswith("/"):
+        endpoint += "/"
+    return endpoint
+
+
+def _post_mindlogic_json(
+    url: str,
+    *,
+    payload: dict[str, Any],
+    api_key: str,
+    timeout: float,
+) -> dict[str, Any]:
     body = json.dumps(payload).encode("utf-8")
-    req = request.Request(endpoint, data=body, method="POST")
-    req.add_header("Authorization", f"Bearer {api_key}")
-    req.add_header("Accept", "application/json")
+    req = request.Request(url, data=body, method="POST")
+    _add_mindlogic_headers(req, api_key=api_key)
     req.add_header("Content-Type", "application/json")
-    req.add_header("User-Agent", "curl/8.7.1")
     try:
-        with request.urlopen(req, timeout=180.0) as resp:
-            response_payload = json.loads(resp.read().decode("utf-8"))
+        with request.urlopen(req, timeout=timeout) as resp:
+            return _read_mindlogic_json(resp.read())
     except error.HTTPError as exc:
         raw = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"Mindlogic image edit failed: HTTP {exc.code}: {raw}") from exc
-
-    image_bytes = _extract_mindlogic_image_bytes(response_payload)
-    if image_bytes is None:
-        keys = sorted(response_payload.keys()) if isinstance(response_payload, dict) else []
-        raise RuntimeError(f"Mindlogic image edit response did not include an image: keys={keys}")
-    return image_bytes
+        raise RuntimeError(f"Mindlogic gateway image failed: HTTP {exc.code}: {raw}") from exc
 
 
-def _build_mindlogic_reference_image_payload(
+def _get_mindlogic_json(
+    url: str,
     *,
-    index: int,
-    image_bytes: bytes,
-    mime_type: str,
+    params: dict[str, str],
+    api_key: str,
+    timeout: float,
 ) -> dict[str, Any]:
-    return {
-        "reference_id": index,
-        "reference_type": "REFERENCE_TYPE_RAW",
-        "reference_image": {
-            "image_bytes": base64.b64encode(image_bytes).decode("ascii"),
-            "mime_type": mime_type,
-        },
-    }
+    req = request.Request(f"{url}?{urlencode(params)}", method="GET")
+    _add_mindlogic_headers(req, api_key=api_key)
+    try:
+        with request.urlopen(req, timeout=timeout) as resp:
+            return _read_mindlogic_json(resp.read())
+    except error.HTTPError as exc:
+        raw = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"Mindlogic gateway image poll failed: HTTP {exc.code}: {raw}") from exc
+
+
+def _add_mindlogic_headers(req: request.Request, *, api_key: str) -> None:
+    req.add_header("Authorization", f"Bearer {api_key}")
+    req.add_header("Accept", "application/json")
+    req.add_header("User-Agent", "curl/8.7.1")
+
+
+def _read_mindlogic_json(raw: bytes) -> dict[str, Any]:
+    payload = json.loads(raw.decode("utf-8"))
+    if not isinstance(payload, dict):
+        raise RuntimeError("Mindlogic gateway response was not a JSON object")
+    return payload
+
+
+def _poll_mindlogic_gateway_image_if_needed(
+    payload: dict[str, Any],
+    *,
+    model_name: str,
+    api_key: str,
+) -> dict[str, Any]:
+    if _extract_mindlogic_image_bytes(payload) is not None:
+        return payload
+
+    operation_id = payload.get("operation_id")
+    if not isinstance(operation_id, str) or not operation_id:
+        return payload
+
+    poll_url = _mindlogic_gateway_endpoint(f"/images/generate/{quote(operation_id)}/")
+    deadline = time.monotonic() + MINDLOGIC_IMAGE_POLL_TIMEOUT_SECONDS
+    last_payload = payload
+    while time.monotonic() < deadline:
+        time.sleep(MINDLOGIC_IMAGE_POLL_INTERVAL_SECONDS)
+        last_payload = _get_mindlogic_json(
+            poll_url,
+            params={"model": model_name},
+            api_key=api_key,
+            timeout=180.0,
+        )
+        if _extract_mindlogic_image_bytes(last_payload) is not None:
+            return last_payload
+        status = str(last_payload.get("status", "")).lower()
+        if status in {"failed", "error"}:
+            raise RuntimeError(f"Mindlogic gateway image generation failed: {last_payload}")
+        if status in {"completed", "succeeded"}:
+            return last_payload
+
+    raise TimeoutError(f"Timed out polling Mindlogic image generation operation_id={operation_id}")
 
 
 def _extract_mindlogic_image_bytes(payload: Any) -> Optional[bytes]:
