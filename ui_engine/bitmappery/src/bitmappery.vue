@@ -21,7 +21,7 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 <template>
-    <div id="bitmappery-app" ref="app">
+    <div id="bitmappery-app" ref="app" :class="{ 'header-hidden': !showHeaderMenu }">
         <header-menu v-if="showHeaderMenu" />
         <section class="main">
             <toolbox
@@ -365,6 +365,25 @@ export default {
         @include mixins.large() {
             padding: variables.$spacing-medium;
         }
+    }
+
+    // TOWA: header-menu가 비활성화된 모드에서는 .main이 부모(=#bitmappery-app)를 꽉 채우고
+    // padding/document-container margin도 제거 (캔버스 영역 하단 여백 방지).
+    &.header-hidden .main {
+        height: 100%;
+        @include mixins.large() {
+            padding: 0;
+        }
+    }
+    &.header-hidden .document-container {
+        margin: 0;
+    }
+    // canvas-wrapper는 @include component.component() 으로 .component__content height/padding이
+    // heading-height 기준 calc. 우리는 component__header를 v-if로 숨기므로 이 보정도 제거해야
+    // 캔버스가 wrapper 전체를 채움 (하단 여백 방지).
+    &.header-hidden .canvas-wrapper .component__content {
+        height: 100%;
+        padding: 0;
     }
 
     .blind {
