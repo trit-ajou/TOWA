@@ -22,9 +22,10 @@
  */
 <template>
     <div id="bitmappery-app" ref="app">
-        <header-menu />
+        <header-menu v-if="showHeaderMenu" />
         <section class="main">
             <toolbox
+                v-if="showToolbox"
                 ref="toolbox"
                 class="toolbox"
                 :class="{ 'collapsed': !toolboxOpened }"
@@ -33,14 +34,17 @@
                 <component :is="documentCanvas" ref="documentCanvas" />
             </div>
             <div
+                v-if="showOptionsPanel || showLayerPanel"
                 ref="panels"
                 class="panels"
                 :class="{ 'collapsed': !openedPanels.length }"
             >
                 <tool-options-panel
+                    v-if="showOptionsPanel"
                     class="tool-options-panel"
                 />
                 <layer-panel
+                    v-if="showLayerPanel"
                     class="layer-panel"
                 />
             </div>
@@ -83,6 +87,7 @@ import type { Document } from "@/definitions/document";
 import ToolTypes from "@/definitions/tool-types";
 import DocumentFactory from "@/factories/document-factory";
 import { isMobile } from "@/utils/environment-util";
+import { isFeatureEnabled } from "@/config/towa-features";
 import { loadImageFiles } from "@/services/file-loader-queue";
 import { renderState } from "@/services/render-service";
 import ImageToDocumentManager from "@/mixins/image-to-document-manager";
@@ -202,6 +207,11 @@ export default {
         showLoader(): boolean {
             return this.isLoading || renderState.pending > 0;
         },
+        // TOWA: bitmappery 기본 UI는 mode preset으로 일괄 off, towa-app이 대체
+        showHeaderMenu(): boolean { return isFeatureEnabled( "UI_HEADER_MENU" ); },
+        showToolbox(): boolean { return isFeatureEnabled( "UI_TOOLBOX" ); },
+        showOptionsPanel(): boolean { return isFeatureEnabled( "UI_TOOL_OPTIONS_PANEL" ); },
+        showLayerPanel(): boolean { return isFeatureEnabled( "UI_LAYER_PANEL" ); },
     },
     watch: {
         activeDocument( document: Document ): void {

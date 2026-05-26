@@ -35,14 +35,16 @@
         @touchcancel="handleOutsideUp( $event )"
     >
         <template v-if="activeDocument">
-            <div class="component__header">
-                <h2 class="component__title">{{ documentTitle }}</h2>
-            </div>
-            <button
-                type="button"
-                class="component__header-button"
-                @click="requestDocumentClose()"
-            >&#215;</button>
+            <template v-if="showDocumentHeader">
+                <div class="component__header">
+                    <h2 class="component__title">{{ documentTitle }}</h2>
+                </div>
+                <button
+                    type="button"
+                    class="component__header-button"
+                    @click="requestDocumentClose()"
+                >&#215;</button>
+            </template>
             <div
                 ref="canvasContainer"
                 class="component__content"
@@ -90,6 +92,7 @@ import { hasBlend } from "@/utils/layer-util";
 import { fitInWindow } from "@/utils/zoom-util";
 import Scrollbars from "./scrollbars/scrollbars.vue";
 import TouchDecorator from "./decorators/touch-decorator";
+import { isFeatureEnabled } from "@/config/towa-features";
 
 /* internal non-reactive properties */
 
@@ -153,6 +156,9 @@ export default {
                 return name; // is local image
             }
             return `${name}.${PROJECT_FILE_EXTENSION}`;
+        },
+        showDocumentHeader(): boolean {
+            return isFeatureEnabled( "UI_DOCUMENT_HEADER" );
         },
         hasGuideRenderer(): boolean {
             return this.snapAlign || this.pixelGrid;
@@ -373,12 +379,20 @@ export default {
             // replace below with updated zCanvas lib to not multiply by zoom
             this.cvsWidth  = this.canvasDimensions.width  * zoom;
             this.cvsHeight = this.canvasDimensions.height * zoom;
-            zCanvas.setDocumentScale( this.cvsWidth, this.cvsHeight, xScale, zoom, this.activeDocument );
+            // TOWA: zoom 도구가 anchor를 지정한 경우, 그 anchor가 화면에서 같은 위치를 유지하도록 패닝.
+            // anchor는 사용 후 즉시 클리어 (다음 줌 작업은 새 anchor 또는 기본 ratio 사용).
+            const anchor = this.$store.getters[ "bmp/pendingZoomAnchor" ];
+            zCanvas.setDocumentScale( this.cvsWidth, this.cvsHeight, xScale, zoom, this.activeDocument, anchor );
+            if ( anchor ) {
+                this.$store.commit( "bmp/setPendingZoomAnchor", null );
+            }
             this.centerCanvas = zCanvas.getWidth() < containerSize.width || zCanvas.getHeight() < containerSize.height ;
         },
         scaleWrapper(): void {
             if ( !mobileView ) {
-                this.wrapperHeight = `${window.innerHeight - containerSize.top - 20}px`;
+                // TOWA: 우리 레이아웃은 bitmappery를 absolute로 임베드해서 부모 컨테이너 높이가
+                // window 전체가 아님. window 기준 계산은 빈 영역을 남기므로 부모 100% 사용.
+                this.wrapperHeight = "100%";
             }
         },
         calcIdealDimensions( scaleDocumentToFit = false ): void {

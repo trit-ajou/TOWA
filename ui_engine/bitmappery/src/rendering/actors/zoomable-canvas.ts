@@ -105,33 +105,52 @@ class ZoomableCanvas extends canvas {
         }
     }
 
-    setDocumentScale( targetWidth: number, targetHeight: number, scale: number, zoom: number, activeDocument: Document = null ): void {
+    setDocumentScale(
+        targetWidth: number, targetHeight: number, scale: number, zoom: number,
+        activeDocument: Document = null,
+        anchor: { localX: number; localY: number } | null = null,
+    ): void {
         const { left, top, width, height } = this._viewport;
 
-        let scrollWidth  = this._width  - width;
-        let scrollHeight = this._height - height;
+        // anchor가 있으면 anchor가 화면에서 같은 위치를 유지하도록 ratio 계산.
+        // 없으면 기본: 현재 viewport ratio 유지 (centered if unscrolled).
+        let worldRatioX: number;
+        let worldRatioY: number;
+        let focalX: number;  // anchor의 viewport 내 비율 (0~1)
+        let focalY: number;
 
-        // cache the current scroll offset so we can zoom from the current offset
-        // note that by default we zoom from the center (when document was unscrolled)
-        const ratioX = ( left / scrollWidth )  || .5;
-        const ratioY = ( top  / scrollHeight ) || .5;
+        if ( anchor ) {
+            worldRatioX = ( left + anchor.localX ) / this._width;
+            worldRatioY = ( top  + anchor.localY ) / this._height;
+            focalX = anchor.localX / width;
+            focalY = anchor.localY / height;
+        } else {
+            const scrollWidthBefore  = this._width  - width;
+            const scrollHeightBefore = this._height - height;
+            const ratioX = ( left / scrollWidthBefore )  || .5;
+            const ratioY = ( top  / scrollHeightBefore ) || .5;
+            worldRatioX = focalX = ratioX;
+            worldRatioY = focalY = ratioY;
+        }
 
         this.setDimensions( fastRound( targetWidth ), fastRound( targetHeight ), true, true );
-        this.setZoomFactor( scale * zoom ); // eventually replace with zCanvas.setZoom()
+        this.setZoomFactor( scale * zoom );
 
-        // update scroll widths after scaling operation
-
-        scrollWidth  = this._width  - width;
-        scrollHeight = this._height - height;
-
-        // maintain relative scroll offset after rescale
-        this.panViewport(
-            fastRound( scrollWidth  * ratioX ),
-            fastRound( scrollHeight * ratioY ), true
-        );
+        let newLeft: number;
+        let newTop: number;
+        if ( anchor ) {
+            newLeft = worldRatioX * this._width  - focalX * width;
+            newTop  = worldRatioY * this._height - focalY * height;
+        } else {
+            const scrollWidth  = this._width  - width;
+            const scrollHeight = this._height - height;
+            newLeft = scrollWidth  * worldRatioX;
+            newTop  = scrollHeight * worldRatioY;
+        }
+        this.panViewport( fastRound( newLeft ), fastRound( newTop ), true );
 
         if ( activeDocument ) {
-            this.documentScale = activeDocument.width / this._width; // the scale of the Document relative to this on-screen canvas
+            this.documentScale = activeDocument.width / this._width;
         }
     }
 
