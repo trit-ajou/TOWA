@@ -50,8 +50,7 @@ from ..ipc.serde import document_from_data, document_to_data, patch_to_data, sta
 from ..logging_utils import log_event, log_exception
 from ..models import ModelRegistry
 from ..orchestrator import PipelineOrchestrator
-from ..stages import AdapterBackedStage, Stage, run_mask_or_erase_planning
-from ..stages.base import Stage as StageProtocol
+from ..stages import AdapterBackedStage, Stage
 from .service_bridge import (
     ServiceEngineBridgeClient,
     ServiceEngineHTTPError,
@@ -93,7 +92,7 @@ SERVICE_USAGE_OPERATION_KIND = {
 }
 OPERATION_STAGE_NAMES = {
     "detect": ["text_detection"],
-    "inpaint": ["text_detection", "mask_or_erase_planning", "inpaint"],
+    "inpaint": ["inpaint"],
     "translate": ["text_detection", "ocr", "translation"],
 }
 OPERATION_META_KEYS = {
@@ -880,31 +879,6 @@ def _server_job_workspace_path(job_id: str) -> Path:
     return path.resolve()
 
 
-class _FunctionStage(StageProtocol):
-    """Wrap planner-like stage functions so the executor can compose them uniformly."""
-
-    def __init__(
-        self,
-        stage_name: str,
-        handler: Callable[[Any], Any],
-        *,
-        config: dict[str, object] | None = None,
-    ) -> None:
-        self._stage_name = stage_name
-        self._handler = handler
-        self._config = dict(config or {})
-
-    @property
-    def stage_name(self) -> str:
-        return self._stage_name
-
-    def stage_config(self) -> dict[str, object]:
-        return dict(self._config)
-
-    def run(self, request: Any) -> Any:
-        return self._handler(request)
-
-
 def _build_builtin_registry() -> ModelRegistry:
     registry = ModelRegistry()
     register_craft_text_detection_model(registry)
@@ -990,22 +964,6 @@ def _build_operation_stages(
     if request.operation_kind == "inpaint":
         return [
             AdapterBackedStage(
-                "text_detection",
-                stage_kind=StageKind.TEXT_DETECTION,
-                registry=registry,
-                preferred_model_id=CRAFT_TEXT_DETECTION_MODEL_ID,
-                config=common_detection_config,
-            ),
-            _FunctionStage(
-                "mask_or_erase_planning",
-                run_mask_or_erase_planning,
-                config={
-                    "input_artifact_ref": input_artifact_ref,
-                    "padding": 12,
-                    "target_layer_id": "layer_inpainting",
-                },
-            ),
-            AdapterBackedStage(
                 "inpaint",
                 stage_kind=StageKind.INPAINT,
                 registry=registry,
@@ -1013,7 +971,6 @@ def _build_operation_stages(
                 config={
                     "input_artifact_ref": input_artifact_ref,
                     "target_layer_id": "layer_inpainting",
-                    "output_mask_mode": "expanded_bbox",
                     **_inpaint_provider_config_from_runtime(request.runtime_context),
                 },
             ),

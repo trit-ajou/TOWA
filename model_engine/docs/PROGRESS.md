@@ -67,10 +67,10 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - Docker `model-engine`은 `model_engine/.runtime`을 `/app/model_engine/.runtime`로 마운트해 API 서버도 `runtime_config.json`을 읽는다. `TOWA_INPAINT_PROVIDER`, `TOWA_INPAINT_MODEL_NAME`, provider API key는 env 우선, runtime config fallback 순서로 해석한다
 - Docker `model-engine`은 `model_engine/.cache/models`도 `/cache/models`로 마운트한다. UI에서 첫 inpaint job을 테스트할 때 CRAFT detector/refiner 가중치를 컨테이너 재생성마다 다시 다운로드하지 않도록 하여 polling timeout 가능성을 줄인다
 - 공통 stage artifact dump 기능 추가. `TOWA_MODEL_ENGINE_STAGE_DUMP=1` 또는 `runtime_context.metadata.stage_artifact_dump=true`일 때 각 stage transaction 아래 `stage_artifact_dump/`를 만들고 `stage_request.json`, `stage_response.json`, `artifacts_before.json`, `artifacts_after.json`, `document_after.json`을 저장한다. 기본값으로 `file://` artifact는 `files/input`, `files/output` 아래 hardlink/copy하며, `TOWA_MODEL_ENGINE_STAGE_DUMP_COPY_FILES=0` 또는 metadata `stage_artifact_dump_copy_files=false`로 바이너리 복사를 끌 수 있다. dump JSON은 credential/session/token 계열 값을 redaction한다.
-- bitmap-only inpaint 경로의 UI용 `inpainting_layer_bitmap`은 provider full-page output을 그대로 전달하지 않고, base image와 provider output의 pixel diff를 기반으로 투명 overlay를 생성한다. 전체 provider 결과는 계속 `provider_output_bitmap` artifact로 남긴다. diff 경로는 `diff_threshold`, `diff_dilate_radius`, `diff_large_region_ratio_threshold` stage config를 지원하며 stage report에 diff bbox/changed pixel metrics를 남긴다.
+- bitmap-only inpaint 경로의 UI용 `inpainting_layer_bitmap`은 provider full-page output을 그대로 전달한다. 전체 provider 결과는 debug용 `provider_output_bitmap` artifact로도 함께 남긴다.
 - Mindlogic/Nanobanana inpaint provider 호출 prompt에 입력 bitmap의 실제 canvas 크기를 동적으로 추가한다. 예를 들어 UI에서 받은 source bitmap이 `1333x750`이면 provider prompt에 output이 정확히 `1333x750 pixels`이고 crop/pad/stretch/scale 변경을 하면 안 된다는 제약을 붙인다. stage report에는 `prompt_output_size`를 남긴다.
-- API `inpaint` job은 다시 `text_detection -> mask_or_erase_planning -> inpaint` 순서로 실행한다. UI에는 provider full-page 결과가 아니라 `mask_or_erase_planning`의 expanded bbox 영역만 불투명한 `inpainting_layer_bitmap`을 반환하고, bbox 밖은 alpha 0으로 유지한다. provider full-page output은 debug용 `provider_output_bitmap`으로 계속 남긴다.
-- Mindlogic inpaint provider 호출은 gateway mask 계약 오류를 피하기 위해 raw 원본 bitmap 1장만 nested `reference_image` payload로 전달한다. API `inpaint` job은 여전히 `text_detection -> mask_or_erase_planning -> inpaint` 순서로 실행하고, UI에는 provider full-page output 중 `mask_or_erase_planning` expanded bbox 영역만 불투명한 `inpainting_layer_bitmap`으로 잘라 전달한다. stage report에는 `provider_reference_image_count=1`, `provider_mask_guide=no`를 남긴다.
+- API `inpaint` job은 e2e 재검증을 위해 `inpaint` 단일 stage로 실행한다. UI에는 provider full-page output을 `inpainting_layer_bitmap`으로 그대로 반환하고, provider 결과도 debug용 `provider_output_bitmap`으로 남긴다.
+- Mindlogic inpaint provider 호출은 gateway mask 계약 오류를 피하기 위해 raw 원본 bitmap 1장만 nested `reference_image` payload로 전달한다. stage report에는 `provider_reference_image_count=1`, `provider_mask_guide=no`, `composite_mask_mode=full_page`를 남긴다.
 
 ## 2026-05-14 세션 handoff
 
@@ -470,8 +470,8 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - 기본 `ModelJobManager` executor를 placeholder에서 orchestrator 기반 executor로 전환
 - `detect`는 built-in `CRAFT text_detection` stage 조합 사용
 - `translate`는 `text_detection -> ocr -> translation` 조합 사용
-- `inpaint`는 `text_detection -> mask_or_erase_planning -> inpaint` 조합 사용
-- planner 함수를 job executor 안에서 재사용할 수 있도록 경량 function-stage 래퍼 추가
+- `inpaint`는 e2e 재검증을 위해 `inpaint` 단일 stage 조합 사용
+- planner 함수는 직접 stage 테스트와 샘플 경로에서 계속 재사용 가능하도록 유지
 
 비고:
 
