@@ -2,16 +2,22 @@
 import { computed, ref } from 'vue'
 import { useStore } from 'vuex'
 import { useRouter } from 'vue-router'
-import { Folder as FolderIcon, FolderOpen, Clock, Trash2, FolderPlus } from 'lucide-vue-next'
+import { Folder as FolderIcon, FolderOpen, Clock, Trash2 } from 'lucide-vue-next'
 import SearchBar from '@/components/common/SearchBar.vue'
 import BaseButton from '@/components/common/BaseButton.vue'
 import BaseModal from '@/components/common/BaseModal.vue'
 import FolderTreeNode from '@/components/home/FolderTreeNode.vue'
 import MoveToFolderModal from '@/components/home/MoveToFolderModal.vue'
+import AddMenu from '@/components/home/AddMenu.vue'
 import { useModal } from '@/composables/useModal'
 import type { Folder, FolderNode } from '@/types/folder'
 import type { Project } from '@/types/project'
 import { validateFolderNameSyntax, MAX_FOLDER_DEPTH } from '@/types/folder'
+
+const emit = defineEmits<{
+  /** Sidebar +/AddMenu picked "새 프로젝트" — host (LibraryView) opens the modal. */
+  createProjectRequested: []
+}>()
 
 const store = useStore()
 const router = useRouter()
@@ -278,13 +284,12 @@ defineExpose({
     <div>
       <div class="flex items-center justify-between mb-1">
         <h3 class="text-xs font-semibold text-towa-text-muted uppercase tracking-wider">폴더</h3>
-        <button
-          class="p-1 text-towa-text-muted hover:text-towa-accent rounded transition-colors"
-          title="새 폴더 (루트)"
-          @click="openCreateModal(null)"
-        >
-          <FolderPlus :size="14" />
-        </button>
+        <AddMenu
+          variant="icon-button"
+          label="추가"
+          @create-project="emit('createProjectRequested')"
+          @create-folder="openCreateModal(currentFolderId)"
+        />
       </div>
 
       <!-- Root (drop target for moving to root) -->

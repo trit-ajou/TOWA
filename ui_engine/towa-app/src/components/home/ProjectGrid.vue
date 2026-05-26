@@ -2,9 +2,9 @@
 import type { Project } from '@/types/project'
 import type { FolderNode } from '@/types/folder'
 import type { PreviewItem } from './FolderCard.vue'
-import { Plus } from 'lucide-vue-next'
 import ProjectCard from './ProjectCard.vue'
 import FolderCard from './FolderCard.vue'
+import AddMenu from './AddMenu.vue'
 
 defineProps<{
   projects: Project[]
@@ -14,7 +14,8 @@ defineProps<{
 
 const emit = defineEmits<{
   select: [project: Project]
-  create: []
+  createProject: []
+  createFolder: []
   openFolder: [folderId: string]
   deleteProject: [project: Project]
   moveProject: [project: Project]
@@ -41,16 +42,6 @@ function onDropOnFolder(ev: DragEvent, folderId: string) {
 
 <template>
   <div class="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-4">
-    <!-- Create new project -->
-    <div
-      class="bg-towa-surface border-2 border-dashed border-towa-border rounded-lg flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-towa-accent hover:text-towa-accent text-towa-text-muted transition-colors overflow-hidden"
-    >
-      <div class="aspect-[3/4] flex flex-col items-center justify-center gap-2 w-full" @click="emit('create')">
-        <Plus :size="32" />
-        <span class="text-sm font-medium">새 프로젝트</span>
-      </div>
-    </div>
-
     <!-- Subfolders (drop target) -->
     <div
       v-for="folder in subfolders"
@@ -78,6 +69,14 @@ function onDropOnFolder(ev: DragEvent, folderId: string) {
       @click="emit('select', project)"
       @delete="emit('deleteProject', project)"
       @move="emit('moveProject', project)"
+    />
+
+    <!-- Add tile (last index) -->
+    <AddMenu
+      variant="tile"
+      label="추가"
+      @create-project="emit('createProject')"
+      @create-folder="emit('createFolder')"
     />
   </div>
 </template>

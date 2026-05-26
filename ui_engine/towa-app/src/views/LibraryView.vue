@@ -12,6 +12,7 @@ import HomeSidebar from '@/components/home/HomeSidebar.vue'
 import ProjectGrid from '@/components/home/ProjectGrid.vue'
 import CreateProjectModal from '@/components/home/CreateProjectModal.vue'
 import MoveToFolderModal from '@/components/home/MoveToFolderModal.vue'
+import AddMenu from '@/components/home/AddMenu.vue'
 import BaseModal from '@/components/common/BaseModal.vue'
 import BaseButton from '@/components/common/BaseButton.vue'
 import { ChevronLeft } from 'lucide-vue-next'
@@ -187,13 +188,18 @@ function goToParent() {
   const cur = currentFolder.value
   store.commit('library/SET_CURRENT_FOLDER', cur?.parentId ?? null)
 }
+
+/** + 메뉴 → 새 폴더: 현재 위치(currentFolderId)에 만든다. 사이드바 모달 재사용. */
+function startCreateFolderHere() {
+  sidebar.value?.openCreateModal(currentFolderId.value)
+}
 </script>
 
 <template>
   <div class="flex h-[calc(100vh-48px)]">
-    <HomeSidebar ref="sidebar" />
+    <HomeSidebar ref="sidebar" @create-project-requested="createModal.open()" />
     <main class="flex-1 p-6 overflow-y-auto">
-      <!-- Breadcrumb + Status filter chips -->
+      <!-- Breadcrumb + Status filter chips + Add menu -->
       <div class="flex items-center justify-between mb-4">
         <div class="flex items-center gap-2 text-sm text-towa-text-muted">
           <button
@@ -207,18 +213,26 @@ function goToParent() {
           <span v-if="currentFolder">{{ folderPath }}</span>
           <span v-else>전체</span>
         </div>
-        <div class="flex items-center gap-1 bg-towa-surface rounded-lg p-0.5">
-          <button
-            v-for="opt in statusOptions"
-            :key="opt.value"
-            class="px-2.5 py-1 text-xs rounded-md transition-colors"
-            :class="statusFilter === opt.value
-              ? 'bg-towa-surface-light text-towa-text font-medium'
-              : 'text-towa-text-muted hover:text-towa-text'"
-            @click="setStatusFilter(opt.value)"
-          >
-            {{ opt.label }}
-          </button>
+        <div class="flex items-center gap-3">
+          <div class="flex items-center gap-1 bg-towa-surface rounded-lg p-0.5">
+            <button
+              v-for="opt in statusOptions"
+              :key="opt.value"
+              class="px-2.5 py-1 text-xs rounded-md transition-colors"
+              :class="statusFilter === opt.value
+                ? 'bg-towa-surface-light text-towa-text font-medium'
+                : 'text-towa-text-muted hover:text-towa-text'"
+              @click="setStatusFilter(opt.value)"
+            >
+              {{ opt.label }}
+            </button>
+          </div>
+          <AddMenu
+            variant="toolbar"
+            label="추가"
+            @create-project="createModal.open()"
+            @create-folder="startCreateFolderHere"
+          />
         </div>
       </div>
 
@@ -227,7 +241,8 @@ function goToParent() {
         :subfolders="subfolders"
         :folder-previews="folderPreviews"
         @select="selectProject"
-        @create="createModal.open()"
+        @create-project="createModal.open()"
+        @create-folder="startCreateFolderHere"
         @open-folder="navigateToFolder"
         @delete-project="confirmDeleteProject"
         @move-project="openMoveModal"
