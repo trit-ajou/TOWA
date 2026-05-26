@@ -20,6 +20,43 @@ function onDragStart(ev: DragEvent) {
   if (!ev.dataTransfer) return
   ev.dataTransfer.effectAllowed = 'move'
   ev.dataTransfer.setData('application/x-towa-project-id', props.project.id)
+
+  // Compact drag ghost: small thumbnail + name pill
+  const ghost = document.createElement('div')
+  ghost.style.cssText = [
+    'position: fixed',
+    'top: -1000px',
+    'left: -1000px',
+    'width: 120px',
+    'display: flex',
+    'align-items: center',
+    'gap: 8px',
+    'padding: 6px 10px 6px 6px',
+    'background: rgba(30, 30, 50, 0.95)',
+    'color: white',
+    'border: 1px solid rgba(255,255,255,0.15)',
+    'border-radius: 6px',
+    'box-shadow: 0 8px 24px rgba(0,0,0,0.4)',
+    'font-size: 12px',
+    'font-family: inherit',
+    'pointer-events: none',
+  ].join(';')
+  if (props.project.thumbnail) {
+    const img = document.createElement('img')
+    img.src = props.project.thumbnail
+    img.style.cssText = 'width: 24px; height: 32px; object-fit: cover; border-radius: 3px; flex-shrink: 0'
+    ghost.appendChild(img)
+  }
+  const label = document.createElement('span')
+  label.textContent = props.project.name
+  label.style.cssText = 'overflow: hidden; text-overflow: ellipsis; white-space: nowrap'
+  ghost.appendChild(label)
+
+  document.body.appendChild(ghost)
+  ev.dataTransfer.setDragImage(ghost, 12, 18)
+  // Removed on next tick (after the browser snapshots it for the drag image)
+  setTimeout(() => ghost.remove(), 0)
+
   emit('dragStart', props.project.id)
 }
 

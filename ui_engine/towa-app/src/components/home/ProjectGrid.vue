@@ -19,6 +19,10 @@ const emit = defineEmits<{
   deleteProject: [project: Project]
   moveProject: [project: Project]
   dropOnFolder: [folderId: string, projectId: string]
+  folderCreateChild: [folderId: string]
+  folderRename: [folderId: string]
+  folderMove: [folderId: string]
+  folderDelete: [folderId: string]
 }>()
 
 function onDragOver(ev: DragEvent) {
@@ -59,6 +63,10 @@ function onDropOnFolder(ev: DragEvent, folderId: string) {
         :item-count="folderPreviews[folder.id]?.count ?? 0"
         :preview-items="folderPreviews[folder.id]?.items ?? []"
         @click="emit('openFolder', folder.id)"
+        @create-child="emit('folderCreateChild', folder.id)"
+        @rename="emit('folderRename', folder.id)"
+        @move="emit('folderMove', folder.id)"
+        @delete="emit('folderDelete', folder.id)"
       />
     </div>
 

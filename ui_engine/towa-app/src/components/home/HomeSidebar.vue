@@ -237,6 +237,13 @@ function onRootDrop(ev: DragEvent) {
   if (!id) return
   moveProjectTo(null, id)
 }
+
+defineExpose({
+  openCreateModal,
+  openRenameModal,
+  openDeleteDialog,
+  openMoveFolderModal,
+})
 </script>
 
 <template>

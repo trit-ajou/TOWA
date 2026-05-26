@@ -14,6 +14,7 @@ import CreateProjectModal from '@/components/home/CreateProjectModal.vue'
 import MoveToFolderModal from '@/components/home/MoveToFolderModal.vue'
 import BaseModal from '@/components/common/BaseModal.vue'
 import BaseButton from '@/components/common/BaseButton.vue'
+import { ChevronLeft } from 'lucide-vue-next'
 
 const store = useStore()
 const router = useRouter()
@@ -22,6 +23,19 @@ const deleteModal = useModal()
 const moveModal = useModal()
 const projectToDelete = ref<Project | null>(null)
 const projectToMove = ref<Project | null>(null)
+
+interface SidebarApi {
+  openCreateModal: (parentId: string | null) => void
+  openRenameModal: (folderId: string) => void
+  openDeleteDialog: (folderId: string) => void
+  openMoveFolderModal: (folderId: string) => void
+}
+const sidebar = ref<SidebarApi | null>(null)
+
+function onFolderCreateChild(folderId: string) { sidebar.value?.openCreateModal(folderId) }
+function onFolderRename(folderId: string) { sidebar.value?.openRenameModal(folderId) }
+function onFolderMove(folderId: string) { sidebar.value?.openMoveFolderModal(folderId) }
+function onFolderDelete(folderId: string) { sidebar.value?.openDeleteDialog(folderId) }
 
 const currentFolderId = computed<string | null>(() => store.getters['library/currentFolderId'])
 const statusFilter = computed<ProjectStatus | 'all'>(() => store.getters['library/statusFilter'])
@@ -168,15 +182,28 @@ async function onDropOnFolder(folderId: string, projectId: string) {
   if ((project.folderId ?? null) === folderId) return
   await store.dispatch('projects/update', { ...project, folderId })
 }
+
+function goToParent() {
+  const cur = currentFolder.value
+  store.commit('library/SET_CURRENT_FOLDER', cur?.parentId ?? null)
+}
 </script>
 
 <template>
   <div class="flex h-[calc(100vh-48px)]">
-    <HomeSidebar />
+    <HomeSidebar ref="sidebar" />
     <main class="flex-1 p-6 overflow-y-auto">
       <!-- Breadcrumb + Status filter chips -->
       <div class="flex items-center justify-between mb-4">
-        <div class="text-sm text-towa-text-muted">
+        <div class="flex items-center gap-2 text-sm text-towa-text-muted">
+          <button
+            v-if="currentFolder"
+            class="p-1 rounded hover:bg-towa-surface hover:text-towa-text transition-colors"
+            :title="currentFolder.parentId ? '상위 폴더로' : '루트로'"
+            @click="goToParent"
+          >
+            <ChevronLeft :size="16" />
+          </button>
           <span v-if="currentFolder">{{ folderPath }}</span>
           <span v-else>전체</span>
         </div>
@@ -205,6 +232,10 @@ async function onDropOnFolder(folderId: string, projectId: string) {
         @delete-project="confirmDeleteProject"
         @move-project="openMoveModal"
         @drop-on-folder="onDropOnFolder"
+        @folder-create-child="onFolderCreateChild"
+        @folder-rename="onFolderRename"
+        @folder-move="onFolderMove"
+        @folder-delete="onFolderDelete"
       />
     </main>
 
