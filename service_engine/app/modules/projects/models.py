@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
-from sqlalchemy import CheckConstraint, ForeignKey, Integer, LargeBinary, String, Uuid, UniqueConstraint
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, LargeBinary, String, Uuid, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -13,6 +14,53 @@ from app.db.types import enum_type, json_type
 
 if TYPE_CHECKING:
     from app.modules.auth.models import User
+
+
+class Folder(TimestampMixin, Base):
+    __tablename__ = "folders"
+    __table_args__ = (
+        Index(
+            "uq_folders_user_id_root_name_live",
+            "user_id",
+            "name",
+            unique=True,
+            sqlite_where=text("parent_id IS NULL AND deleted_at IS NULL"),
+            postgresql_where=text("parent_id IS NULL AND deleted_at IS NULL"),
+        ),
+        Index(
+            "uq_folders_user_id_parent_id_name_live",
+            "user_id",
+            "parent_id",
+            "name",
+            unique=True,
+            sqlite_where=text("parent_id IS NOT NULL AND deleted_at IS NULL"),
+            postgresql_where=text("parent_id IS NOT NULL AND deleted_at IS NULL"),
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(
+        Uuid,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    parent_id: Mapped[UUID | None] = mapped_column(
+        Uuid,
+        ForeignKey("folders.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+
+    user: Mapped["User"] = relationship(back_populates="folders")
+    parent: Mapped["Folder | None"] = relationship(
+        back_populates="children",
+        remote_side="Folder.id",
+    )
+    children: Mapped[list["Folder"]] = relationship(back_populates="parent")
+    projects: Mapped[list["Project"]] = relationship(back_populates="folder")
 
 
 class Project(TimestampMixin, Base):
@@ -33,10 +81,17 @@ class Project(TimestampMixin, Base):
         enum_type(ProjectStatus, name="project_status"),
         nullable=False,
     )
-    folder: Mapped[str] = mapped_column(String(512), nullable=False, default="", server_default="")
+    folder_id: Mapped[UUID | None] = mapped_column(
+        Uuid,
+        ForeignKey("folders.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     config: Mapped[dict[str, Any]] = mapped_column(json_type(), nullable=False, default=dict)
 
     user: Mapped["User"] = relationship(back_populates="projects")
+    folder: Mapped["Folder | None"] = relationship(back_populates="projects")
     pages: Mapped[list["Page"]] = relationship(
         back_populates="project",
         cascade="all, delete-orphan",

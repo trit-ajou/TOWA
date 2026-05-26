@@ -24,6 +24,11 @@ from app.modules.billing.service import (
     UsageJobConflictError,
     UsageJobNotFoundError,
 )
+from app.modules.projects.folders import (
+    FolderConflictError,
+    FolderNotFoundError,
+    ProjectBadRequestError,
+)
 from app.modules.projects.service import (
     PageConflictError,
     PageNotFoundError,
@@ -224,6 +229,18 @@ def raise_usage_http_error(exc: Exception) -> None:
 
 
 def raise_project_http_error(exc: Exception) -> None:
+    if isinstance(exc, ProjectBadRequestError):
+        raise APIError(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            code="bad_request",
+            message=str(exc),
+        ) from exc
+    if isinstance(exc, FolderNotFoundError):
+        raise APIError(
+            status_code=status.HTTP_404_NOT_FOUND,
+            code="folder_not_found",
+            message=str(exc),
+        ) from exc
     if isinstance(exc, ProjectNotFoundError):
         raise APIError(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -241,6 +258,13 @@ def raise_project_http_error(exc: Exception) -> None:
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             code="validation_error",
             message=str(exc),
+        ) from exc
+    if isinstance(exc, FolderConflictError):
+        raise APIError(
+            status_code=status.HTTP_409_CONFLICT,
+            code="folder_conflict",
+            message=str(exc),
+            details={"reason": exc.reason} if exc.reason else None,
         ) from exc
     if isinstance(exc, ProjectConflictError):
         raise APIError(

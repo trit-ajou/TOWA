@@ -214,3 +214,11 @@ __marimo__/
 package-lock.json
 node_modules/
 .env.local
+
+# Local poster/reference artifacts generated during assistant sessions
+/output/poster_reference/
+/tmp/render_poster_pdfs.py
+/tmp/poster_reference_plan.md
+/tmp/pdf_tools_venv/
+/tmp/uv-cache/
+/tmp/

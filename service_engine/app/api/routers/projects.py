@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Query, Request, UploadFile
 from sqlalchemy.orm import Session
 
 from app.api.errors import openapi_error_responses, raise_project_http_error
@@ -56,7 +56,7 @@ def create_project(
             source_lang=payload.source_lang,
             target_lang=payload.target_lang,
             status=payload.status,
-            folder=payload.folder,
+            folder_id=payload.folder_id,
             config=payload.config,
         )
     except Exception as exc:  # noqa: BLE001
@@ -126,23 +126,48 @@ def update_project(
 
 @router.delete(
     "/projects/{project_id}",
-    response_model=ProjectDeleteResponse,
-    responses=openapi_error_responses(401, 404),
+    response_model=ProjectResponse | ProjectDeleteResponse,
+    responses=openapi_error_responses(400, 401, 404),
 )
 def delete_project(
     project_id: str,
+    permanent: bool = Query(default=False),
     session_token: str = Depends(get_session_token),
     session: Session = Depends(get_db_session),
-) -> ProjectDeleteResponse:
+) -> ProjectResponse | ProjectDeleteResponse:
     try:
-        deleted_project_id = project_service.delete_project(
+        result = project_service.delete_project(
+            session,
+            session_token=session_token,
+            project_id=project_id,
+            permanent=permanent,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise_project_http_error(exc)
+    if isinstance(result, str):
+        return ProjectDeleteResponse(deleted=True, project_id=result)
+    return ProjectResponse.model_validate(result)
+
+
+@router.post(
+    "/projects/{project_id}/restore",
+    response_model=ProjectResponse,
+    responses=openapi_error_responses(400, 401, 404, 409),
+)
+def restore_project(
+    project_id: str,
+    session_token: str = Depends(get_session_token),
+    session: Session = Depends(get_db_session),
+) -> ProjectResponse:
+    try:
+        project = project_service.restore_project(
             session,
             session_token=session_token,
             project_id=project_id,
         )
     except Exception as exc:  # noqa: BLE001
         raise_project_http_error(exc)
-    return ProjectDeleteResponse(deleted=True, project_id=deleted_project_id)
+    return ProjectResponse.model_validate(project)
 
 
 @router.get(

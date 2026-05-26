@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 from datetime import datetime, timezone
+from io import BytesIO
 from pathlib import Path
 import tempfile
 import time
@@ -129,6 +130,39 @@ class OrchestratedJobExecutorTests(unittest.TestCase):
                 "openai_compatible_translation",
                 result.document.stage_meta["translation"]["engine"],
             )
+
+    def test_inpaint_job_runs_detection_planning_then_bbox_limited_inpaint(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            request = _job_request(Path(tmpdir), operation_kind="inpaint")
+            request.runtime_context.metadata["inpaint_provider"] = "nanobanana"
+            executor = OrchestratedJobExecutor()
+
+            with patch(
+                "model_engine.builtin_models.craft_text_detection._detect_with_craft",
+                side_effect=_fake_detect_text,
+            ), patch(
+                "model_engine.builtin_models.nanobanana_inpaint._generate_with_nanobanana_vertex",
+                side_effect=_fake_generate_green_page,
+            ):
+                result = executor.execute(request)
+
+            self.assertEqual(ModelJobStatus.SUCCEEDED, result.status)
+            self.assertEqual(
+                ["text_detection", "mask_or_erase_planning", "inpaint"],
+                [report.stage_name for report in result.stage_reports],
+            )
+            self.assertEqual(
+                "expanded_bbox",
+                result.stage_reports[-1].metrics["composite_mask_mode"],
+            )
+            bitmap_artifact = next(
+                descriptor
+                for descriptor in result.artifacts.values()
+                if descriptor.metadata.get("role") == "inpainting_layer_bitmap"
+            )
+            output_image = Image.open(Path(bitmap_artifact.uri.removeprefix("file://"))).convert("RGBA")
+            self.assertEqual((0, 255, 0, 255), output_image.getpixel((5, 5)))
+            self.assertEqual((0, 0, 0, 0), output_image.getpixel((40, 0)))
 
     def test_model_job_manager_defaults_to_orchestrated_executor(self) -> None:
         manager = ModelJobManager()
@@ -358,6 +392,23 @@ def _fake_translate_blocks(blocks, config: dict[str, object], api_key: str) -> l
     _ = config
     _ = api_key
     return [{"block_id": block.block_id, "translated_text": "세로쓰기 텍스트"} for block in blocks]
+
+
+def _fake_generate_green_page(
+    reference_images: list[tuple[bytes, str]],
+    prompt: str,
+    model_name: str,
+    api_key: str,
+) -> bytes:
+    _ = prompt
+    _ = model_name
+    _ = api_key
+    source_image_bytes, _source_mime_type = reference_images[0]
+    source_image = Image.open(BytesIO(source_image_bytes)).convert("RGBA")
+    edited = Image.new("RGBA", source_image.size, color=(0, 255, 0, 255))
+    buffer = BytesIO()
+    edited.save(buffer, format="PNG")
+    return buffer.getvalue()
 
 
 class _RecordingInputArtifactStage(Stage):

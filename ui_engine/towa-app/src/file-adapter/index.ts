@@ -14,9 +14,14 @@ export function createFileAdapter(
   mode: DeploymentMode,
   ctx: FileAdapterContext,
 ): FileAdapter {
-  return mode === 'cloud'
-    ? new CloudFileAdapter(ctx.backend, ctx.getSessionKey)
-    : new LocalFileAdapter()
+  if (mode === 'standalone') {
+    throw new Error(
+      'Standalone mode is not supported in the current build. ' +
+      'LocalFileAdapter is retained only as a skeleton for the future LocalFileManager ' +
+      '(planned alongside Electron wrapping). Use VITE_DEPLOYMENT_MODE=cloud. See issue #37.',
+    )
+  }
+  return new CloudFileAdapter(ctx.backend, ctx.getSessionKey)
 }
 
 export type { FileAdapter, PageSummary, PageSnapshotMeta, PageSnapshot } from './contracts'
