@@ -72,6 +72,41 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - API `inpaint` job은 e2e 재검증을 위해 `inpaint` 단일 stage로 실행한다. UI에는 provider full-page output을 `inpainting_layer_bitmap`으로 그대로 반환하고, provider 결과도 debug용 `provider_output_bitmap`으로 남긴다.
 - Mindlogic inpaint provider 호출은 legacy Google edit/Imagen endpoint가 아니라 gateway `/images/generate/`의 `gemini-2.5-flash-image` 경로를 기본으로 사용한다. raw 원본 bitmap 1장을 data URL로 넘기고 stage report에는 `provider_reference_image_count=1`, `provider_mask_guide=no`, `composite_mask_mode=full_page`를 남긴다. 저장된 정상 산출물(`job_bab0fabc...`) 기준으로 `gemini-3.1-flash-image-preview`는 원본 편집 대신 새 만화 페이지를 생성하는 문제가 있어 Mindlogic 기본 inpaint 모델에서 제외했다.
 
+## 2026-05-26 Mindlogic inpaint 장애 기록
+
+문제:
+
+- Vertex/Nanobanana 크레딧 문제를 피하려고 Mindlogic gateway 기반 inpaint를 사용했다.
+- UI에서 inpaint를 누르면 요청 자체는 성공하고 `provider_output_bitmap`, `inpainting_layer_bitmap` artifact도 생성됐지만, 결과 이미지가 원본 만화에서 글자만 지워진 이미지가 아니라 완전히 다른 새 만화 페이지처럼 생성되는 현상이 발생했다.
+- UI 렌더링 문제인지 model engine/provider 문제인지 헷갈릴 수 있었으므로, model engine artifact를 직접 확인했다.
+
+확인한 증거:
+
+- 최근 실패 job의 model engine input artifact는 원본 페이지 그대로였고, 크기도 정상으로 들어왔다. 즉 UI -> model engine 이미지 전달 자체가 깨진 것은 아니었다.
+- 실패 provider output은 원본과 다른 새 만화 페이지였고, 최종 `inpainting.png`도 provider output을 그대로 따라갔다.
+- 저장된 정상 산출물 `model_engine/.runtime/debug/job_bab0fabc6076486d86c51357c957f7b4/.../provider_output.png`는 원본 페이지 구도와 캐릭터/패널을 유지한 채 말풍선/텍스트만 제거된 결과였다.
+- 또 다른 sample run `model_engine/.runtime/mindlogic_inpaint_docker/.../provider_output.png`는 텍스트가 남은 원본에 가까웠고, `inpainting.png`는 mask 영역만 남긴 중간 실험 결과였으므로 최종 e2e 판단 기준으로 쓰지 않는다.
+
+원인 판단:
+
+- Mindlogic gateway 자체가 항상 실패한 것이 아니라, inpaint 기본 image model을 `gemini-3.1-flash-image-preview`로 바꾼 뒤 원본 보존형 edit 동작이 깨진 것으로 판단한다.
+- `gemini-3.1-flash-image-preview`는 같은 `/v1/gateway/images/generate/` endpoint와 `image` data URL payload를 받아도, 현재 관측 기준으로는 원본을 엄격한 편집 대상이 아니라 생성 참고 이미지처럼 다루는 경향이 있었다.
+- 과거 정상 경로는 Mindlogic gateway `/images/generate/` + `gemini-2.5-flash-image` + 기존 `NANOBANANA_DEFAULT_PROMPT` + source bitmap data URL 조합이었다.
+- 따라서 이번 문제는 prompt 누락이나 UI 업로드 누락보다, Mindlogic image model 선택 변경으로 생긴 provider behavior regression으로 취급한다.
+
+복구:
+
+- `builtin.mindlogic.inpaint` 기본 모델을 `gemini-2.5-flash-image`로 되돌렸다.
+- endpoint는 계속 Mindlogic gateway `/v1/gateway/images/generate/`를 사용한다. Imagen/legacy Google edit endpoint로 되돌린 것이 아니다.
+- `builtin.nanobanana.inpaint`의 Vertex 기본값은 그대로 `gemini-3.1-flash-image-preview`를 유지한다. 변경 범위는 Mindlogic provider 기본값만이다.
+- 검증: `docker compose run --rm model-engine python3 -m unittest model_engine.tests.test_nanobanana_inpaint` 통과, `docker compose up -d --build model-engine` 후 컨테이너 내부 `MINDLOGIC_IMAGE_MODEL == gemini-2.5-flash-image` 확인, `GET /healthz` 정상.
+
+주의:
+
+- Mindlogic inpaint에서 `gemini-3.1-flash-image-preview`를 다시 기본값으로 올리려면, UI e2e가 아니라 먼저 model engine artifact 기준으로 provider output이 원본 페이지를 보존하며 글자만 제거하는지 확인해야 한다.
+- 이때 비교 기준은 UI 화면이 아니라 `provider_output_bitmap`과 source bitmap이다. UI 레이어 렌더링/스케일 문제와 provider 생성 품질 문제를 섞어 보면 원인 파악이 어려워진다.
+- 실패 시에는 `TOWA_MODEL_ENGINE_STAGE_DUMP=1` 또는 runtime metadata `stage_artifact_dump=true`를 켜고, stage transaction 아래 `stage_artifact_dump/` 및 `provider_output_bitmap`을 먼저 확인한다.
+
 ## 2026-05-14 세션 handoff
 
 현재 작업 브랜치와 PR 상태:
