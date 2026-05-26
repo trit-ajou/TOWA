@@ -149,7 +149,7 @@ class OrchestratedJobExecutorTests(unittest.TestCase):
                 [report.stage_name for report in result.stage_reports],
             )
             self.assertEqual(
-                "full_page",
+                "pixel_diff",
                 result.stage_reports[-1].metrics["composite_mask_mode"],
             )
             bitmap_artifact = next(

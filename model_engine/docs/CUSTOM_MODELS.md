@@ -360,7 +360,7 @@ python3 model_engine/scripts/run_inpaint_sample.py \
 - planner mask는 provider에 보내지 않고 로컬 `inpainting layer` 합성에만 쓴다.
 - 생성 파일은 모두 transaction 경로 아래에 저장된다.
 - provider가 멈추거나 timeout이면 stage는 `failed`가 되고, partial bitmap + failure snapshot이 남는다.
-- provider별 기본 image model은 다르다. Vertex `nanobanana`는 `gemini-3.1-flash-image-preview`를 사용하지만, Mindlogic gateway inpaint는 원본 보존형 편집 동작이 확인된 `gemini-2.5-flash-image`를 기본값으로 사용한다.
+- provider별 기본 image model은 다르다. Vertex `nanobanana`는 `gemini-3.1-flash-image-preview`를 사용하지만, Mindlogic inpaint는 Google edit endpoint의 `imagen-3.0-capability-001`를 기본값으로 사용한다.
 
 결과물을 보는 위치:
 

@@ -16,7 +16,7 @@ from model_engine.builtin_models.nanobanana_inpaint import (
     NANOBANANA_DEFAULT_PROMPT,
     NANOBANANA_IMAGE_MODEL,
     NANOBANANA_INPAINT_MODEL_ID,
-    _generate_with_mindlogic_gateway_image,
+    _generate_with_mindlogic_google_edit,
     _missing_image_error,
     _image_part_to_png_bytes,
     register_mindlogic_inpaint_model,
@@ -44,8 +44,8 @@ from model_engine.stages import AdapterBackedStage, run_mask_or_erase_planning
 
 
 class NanobananaInpaintTests(unittest.TestCase):
-    def test_mindlogic_inpaint_defaults_to_stable_gateway_edit_model(self) -> None:
-        self.assertEqual("gemini-2.5-flash-image", MINDLOGIC_IMAGE_MODEL)
+    def test_mindlogic_inpaint_defaults_to_prod_google_edit_model(self) -> None:
+        self.assertEqual("imagen-3.0-capability-001", MINDLOGIC_IMAGE_MODEL)
         self.assertNotEqual(NANOBANANA_IMAGE_MODEL, MINDLOGIC_IMAGE_MODEL)
 
     def test_mask_or_erase_planning_creates_tasks_and_masks(self) -> None:
@@ -170,7 +170,7 @@ class NanobananaInpaintTests(unittest.TestCase):
                 )
 
             with patch(
-                "model_engine.builtin_models.nanobanana_inpaint._generate_with_mindlogic_gateway_image",
+                "model_engine.builtin_models.nanobanana_inpaint._generate_with_mindlogic_google_edit",
                 side_effect=_capture_generate_edit,
             ):
                 response = stage.run(
@@ -194,7 +194,7 @@ class NanobananaInpaintTests(unittest.TestCase):
             self.assertEqual(1, response.stage_report.metrics["provider_reference_image_count"])
             self.assertEqual("no", response.stage_report.metrics["provider_mask_guide"])
             self.assertEqual(MINDLOGIC_INPAINT_MODEL_ID, response.stage_report.metrics["model_id"])
-            self.assertEqual("mindlogic_gateway_nanobanana", response.patches[1].payload["value"]["engine"])
+            self.assertEqual("mindlogic_google_edit", response.patches[1].payload["value"]["engine"])
 
     def test_registry_runs_mindlogic_inpaint_with_bitmap_only(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -211,7 +211,7 @@ class NanobananaInpaintTests(unittest.TestCase):
             )
 
             with patch(
-                "model_engine.builtin_models.nanobanana_inpaint._generate_with_mindlogic_gateway_image",
+                "model_engine.builtin_models.nanobanana_inpaint._generate_with_mindlogic_google_edit",
                 side_effect=_fake_generate_edit,
             ):
                 response = stage.run(
@@ -225,10 +225,10 @@ class NanobananaInpaintTests(unittest.TestCase):
             self.assertEqual(StageStatus.SUCCEEDED, response.status)
             self.assertEqual(MINDLOGIC_INPAINT_MODEL_ID, response.stage_report.metrics["model_id"])
             self.assertEqual("0", str(response.stage_report.metrics["task_count"]))
-            self.assertEqual("full_page", response.stage_report.metrics["composite_mask_mode"])
-            self.assertEqual("mindlogic_gateway_nanobanana", response.patches[1].payload["value"]["engine"])
+            self.assertEqual("pixel_diff", response.stage_report.metrics["composite_mask_mode"])
+            self.assertEqual("mindlogic_google_edit", response.patches[1].payload["value"]["engine"])
 
-    def test_mindlogic_gateway_uses_nanobanana_image_route(self) -> None:
+    def test_mindlogic_google_edit_uses_prod_payload_shape(self) -> None:
         source_image = Image.new("RGBA", (2, 2), color=(1, 2, 3, 255))
         source_buffer = BytesIO()
         source_image.save(source_buffer, format="PNG")
@@ -248,7 +248,7 @@ class NanobananaInpaintTests(unittest.TestCase):
             "model_engine.builtin_models.nanobanana_inpaint._post_mindlogic_json",
             side_effect=_fake_post,
         ):
-            generated = _generate_with_mindlogic_gateway_image(
+            generated = _generate_with_mindlogic_google_edit(
                 [(source_buffer.getvalue(), "image/png")],
                 "remove text",
                 MINDLOGIC_IMAGE_MODEL,
@@ -256,16 +256,30 @@ class NanobananaInpaintTests(unittest.TestCase):
             )
 
         self.assertEqual(output_buffer.getvalue(), generated)
-        self.assertTrue(str(captured["url"]).endswith("/images/generate/"))
+        self.assertTrue(str(captured["url"]).endswith("/models/edit-image"))
         payload = captured["payload"]
         self.assertIsInstance(payload, dict)
         self.assertEqual(MINDLOGIC_IMAGE_MODEL, payload["model"])
         self.assertEqual("remove text", payload["prompt"])
-        self.assertEqual(1, payload["number_of_images"])
-        self.assertTrue(str(payload["image"]).startswith("data:image/png;base64,"))
+        self.assertEqual(
+            {
+                "edit_mode": "EDIT_MODE_DEFAULT",
+                "number_of_images": 1,
+                "output_mime_type": "image/png",
+            },
+            payload["config"],
+        )
+        reference = payload["reference_images"][0]
+        self.assertEqual(1, reference["reference_id"])
+        self.assertEqual("REFERENCE_TYPE_RAW", reference["reference_type"])
+        self.assertEqual("image/png", reference["reference_image"]["mime_type"])
+        self.assertEqual(
+            source_buffer.getvalue(),
+            base64.b64decode(reference["reference_image"]["image_bytes"]),
+        )
         self.assertEqual("test-key", captured["api_key"])
 
-    def test_bitmap_only_inpaint_writes_full_provider_output_for_ui_layer(self) -> None:
+    def test_bitmap_only_inpaint_writes_diff_overlay_for_ui_layer(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             workspace_dir = Path(tmpdir)
             _write_base_image(workspace_dir / "page.png")
@@ -276,7 +290,8 @@ class NanobananaInpaintTests(unittest.TestCase):
             )
 
             self.assertEqual(StageStatus.SUCCEEDED, response.status)
-            self.assertEqual("full_page", response.stage_report.metrics["composite_mask_mode"])
+            self.assertEqual("pixel_diff", response.stage_report.metrics["composite_mask_mode"])
+            self.assertEqual(1, response.stage_report.metrics["diff_changed_pixel_count"])
             bitmap_artifact = next(
                 descriptor
                 for descriptor in response.artifacts.values()
@@ -289,7 +304,7 @@ class NanobananaInpaintTests(unittest.TestCase):
             )
             output_image = Image.open(Path(bitmap_artifact.uri.removeprefix("file://"))).convert("RGBA")
             provider_image = Image.open(Path(provider_artifact.uri.removeprefix("file://"))).convert("RGBA")
-            self.assertEqual((0, 0, 255, 255), output_image.getpixel((0, 0)))
+            self.assertEqual((0, 0, 0, 0), output_image.getpixel((0, 0)))
             self.assertEqual((0, 255, 0, 255), output_image.getpixel((5, 5)))
             self.assertEqual((0, 0, 255, 255), provider_image.getpixel((0, 0)))
             self.assertEqual((0, 255, 0, 255), provider_image.getpixel((5, 5)))

@@ -5,12 +5,11 @@ from datetime import datetime, timezone
 from io import BytesIO
 import json
 from pathlib import Path
-import time
 from typing import Any, Callable, Optional, Sequence
 from urllib import error, request
-from urllib.parse import quote, urlencode, urlparse
+from urllib.parse import urlparse
 
-from PIL import Image
+from PIL import Image, ImageChops, ImageFilter
 
 from ..adapters.callable import CallableModelAdapter
 from ..contracts.artifacts import ArtifactDescriptor, ArtifactStatus
@@ -34,11 +33,9 @@ GenerateEditFn = Callable[[Sequence[ImageReference], str, str, str], bytes]
 NANOBANANA_INPAINT_MODEL_ID = "builtin.nanobanana.inpaint"
 NANOBANANA_IMAGE_MODEL = "gemini-3.1-flash-image-preview"
 MINDLOGIC_INPAINT_MODEL_ID = "builtin.mindlogic.inpaint"
-MINDLOGIC_IMAGE_MODEL = "gemini-2.5-flash-image"
-MINDLOGIC_IMAGE_GATEWAY_BASE_URL = "https://factchat-cloud.mindlogic.ai/v1/gateway"
-MINDLOGIC_IMAGE_GENERATE_PATH = "/images/generate/"
-MINDLOGIC_IMAGE_POLL_INTERVAL_SECONDS = 5.0
-MINDLOGIC_IMAGE_POLL_TIMEOUT_SECONDS = 180.0
+MINDLOGIC_IMAGE_MODEL = "imagen-3.0-capability-001"
+MINDLOGIC_GOOGLE_EDIT_BASE_URL = "https://factchat-cloud.mindlogic.ai/v1/api/google"
+MINDLOGIC_GOOGLE_EDIT_PATH = "/models/edit-image"
 NANOBANANA_DEFAULT_PROMPT = (
     "Use the provided manga page as the source image. "
     "Remove all visible source text, speech balloon text, and sound effects from the page. "
@@ -101,8 +98,8 @@ def build_mindlogic_inpaint_manifest() -> StageManifest:
         ),
         custom_model=False,
         priority=50,
-        display_name="Mindlogic Nanobanana Inpaint",
-        tags=["builtin", "mindlogic", "nanobanana", "inpaint", "gateway-image"],
+        display_name="Mindlogic Google Edit Inpaint",
+        tags=["builtin", "mindlogic", "imagen", "inpaint", "google-edit"],
     )
 
 
@@ -137,10 +134,10 @@ def nanobanana_inpaint_handler(request: StageRequest) -> StageResponse:
 def mindlogic_inpaint_handler(request: StageRequest) -> StageResponse:
     return run_nanobanana_inpaint(
         request,
-        generate_edit_fn=_generate_with_mindlogic_gateway_image,
+        generate_edit_fn=_generate_with_mindlogic_google_edit,
         default_model_name=MINDLOGIC_IMAGE_MODEL,
         provider_name="mindlogic",
-        engine_name="mindlogic_gateway_nanobanana",
+        engine_name="mindlogic_google_edit",
     )
 
 
@@ -201,14 +198,21 @@ def run_nanobanana_inpaint(
             provider_name,
         )
 
+        diff_metrics: dict[str, str | int | float] = {}
         if use_mask:
             edited_image = _initial_inpainting_canvas(request, base_image, target_layer_id)
             composite_mask = _build_composite_mask(request, tasks_payload, base_image.size)
             edited_image.paste(generated_page, (0, 0), composite_mask)
             composite_mask_mode = _composite_mask_mode(request)
         else:
-            edited_image = generated_page
-            composite_mask_mode = "full_page"
+            edited_image, diff_metrics, diff_warning = _build_diff_overlay_image(
+                request,
+                base_image,
+                generated_page,
+            )
+            if diff_warning is not None:
+                warnings.append(diff_warning)
+            composite_mask_mode = "pixel_diff"
     except Exception as exc:
         return _failed_response(
             request,
@@ -248,6 +252,7 @@ def run_nanobanana_inpaint(
         "provider_reference_image_count": 1,
         "provider_mask_guide": "no",
     }
+    metrics.update(diff_metrics)
     report = StageReport(
         stage_name=request.stage_name,
         stage_run_id=request.stage_run_id,
@@ -388,45 +393,47 @@ def _image_part_to_png_bytes(part: object) -> bytes:
     raise RuntimeError("Nanobanana image part could not be converted into PNG bytes")
 
 
-def _generate_with_mindlogic_gateway_image(
+def _generate_with_mindlogic_google_edit(
     reference_images: Sequence[ImageReference],
     prompt: str,
     model_name: str,
     api_key: str,
 ) -> bytes:
     if not reference_images:
-        raise RuntimeError("Mindlogic gateway image generation requires a source image")
+        raise RuntimeError("Mindlogic image edit requires a source image")
 
-    image_bytes, mime_type = reference_images[0]
     payload = {
         "model": model_name,
         "prompt": prompt,
-        "number_of_images": 1,
-        # The gateway nanobanana route accepted a single data-url source image in the probe.
-        "image": _mindlogic_data_url(image_bytes, mime_type),
+        "reference_images": [
+            {
+                "reference_id": index,
+                "reference_type": "REFERENCE_TYPE_RAW",
+                "reference_image": {
+                    "image_bytes": base64.b64encode(image_bytes).decode("ascii"),
+                    "mime_type": mime_type,
+                },
+            }
+            for index, (image_bytes, mime_type) in enumerate(reference_images, start=1)
+        ],
+        "config": {
+            "edit_mode": "EDIT_MODE_DEFAULT",
+            "number_of_images": 1,
+            "output_mime_type": "image/png",
+        },
     }
-    endpoint = _mindlogic_gateway_endpoint(MINDLOGIC_IMAGE_GENERATE_PATH)
+    endpoint = _mindlogic_google_edit_endpoint(MINDLOGIC_GOOGLE_EDIT_PATH)
     response_payload = _post_mindlogic_json(endpoint, payload=payload, api_key=api_key, timeout=180.0)
-    response_payload = _poll_mindlogic_gateway_image_if_needed(
-        response_payload,
-        model_name=model_name,
-        api_key=api_key,
-    )
 
     generated_image_bytes = _extract_mindlogic_image_bytes(response_payload)
     if generated_image_bytes is None:
         keys = sorted(response_payload.keys()) if isinstance(response_payload, dict) else []
-        raise RuntimeError(f"Mindlogic gateway image response did not include an image: keys={keys}")
+        raise RuntimeError(f"Mindlogic image edit response did not include an image: keys={keys}")
     return generated_image_bytes
 
 
-def _mindlogic_data_url(image_bytes: bytes, mime_type: str) -> str:
-    encoded = base64.b64encode(image_bytes).decode("ascii")
-    return f"data:{mime_type};base64,{encoded}"
-
-
-def _mindlogic_gateway_endpoint(path: str) -> str:
-    endpoint = MINDLOGIC_IMAGE_GATEWAY_BASE_URL.rstrip("/") + "/" + path.strip("/")
+def _mindlogic_google_edit_endpoint(path: str) -> str:
+    endpoint = MINDLOGIC_GOOGLE_EDIT_BASE_URL.rstrip("/") + "/" + path.strip("/")
     if path.endswith("/"):
         endpoint += "/"
     return endpoint
@@ -448,24 +455,7 @@ def _post_mindlogic_json(
             return _read_mindlogic_json(resp.read())
     except error.HTTPError as exc:
         raw = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"Mindlogic gateway image failed: HTTP {exc.code}: {raw}") from exc
-
-
-def _get_mindlogic_json(
-    url: str,
-    *,
-    params: dict[str, str],
-    api_key: str,
-    timeout: float,
-) -> dict[str, Any]:
-    req = request.Request(f"{url}?{urlencode(params)}", method="GET")
-    _add_mindlogic_headers(req, api_key=api_key)
-    try:
-        with request.urlopen(req, timeout=timeout) as resp:
-            return _read_mindlogic_json(resp.read())
-    except error.HTTPError as exc:
-        raw = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"Mindlogic gateway image poll failed: HTTP {exc.code}: {raw}") from exc
+        raise RuntimeError(f"Mindlogic image edit failed: HTTP {exc.code}: {raw}") from exc
 
 
 def _add_mindlogic_headers(req: request.Request, *, api_key: str) -> None:
@@ -477,43 +467,8 @@ def _add_mindlogic_headers(req: request.Request, *, api_key: str) -> None:
 def _read_mindlogic_json(raw: bytes) -> dict[str, Any]:
     payload = json.loads(raw.decode("utf-8"))
     if not isinstance(payload, dict):
-        raise RuntimeError("Mindlogic gateway response was not a JSON object")
+        raise RuntimeError("Mindlogic image edit response was not a JSON object")
     return payload
-
-
-def _poll_mindlogic_gateway_image_if_needed(
-    payload: dict[str, Any],
-    *,
-    model_name: str,
-    api_key: str,
-) -> dict[str, Any]:
-    if _extract_mindlogic_image_bytes(payload) is not None:
-        return payload
-
-    operation_id = payload.get("operation_id")
-    if not isinstance(operation_id, str) or not operation_id:
-        return payload
-
-    poll_url = _mindlogic_gateway_endpoint(f"/images/generate/{quote(operation_id)}/")
-    deadline = time.monotonic() + MINDLOGIC_IMAGE_POLL_TIMEOUT_SECONDS
-    last_payload = payload
-    while time.monotonic() < deadline:
-        time.sleep(MINDLOGIC_IMAGE_POLL_INTERVAL_SECONDS)
-        last_payload = _get_mindlogic_json(
-            poll_url,
-            params={"model": model_name},
-            api_key=api_key,
-            timeout=180.0,
-        )
-        if _extract_mindlogic_image_bytes(last_payload) is not None:
-            return last_payload
-        status = str(last_payload.get("status", "")).lower()
-        if status in {"failed", "error"}:
-            raise RuntimeError(f"Mindlogic gateway image generation failed: {last_payload}")
-        if status in {"completed", "succeeded"}:
-            return last_payload
-
-    raise TimeoutError(f"Timed out polling Mindlogic image generation operation_id={operation_id}")
 
 
 def _extract_mindlogic_image_bytes(payload: Any) -> Optional[bytes]:
@@ -585,6 +540,53 @@ def _build_composite_mask(
 
 def _composite_mask_mode(request: StageRequest) -> str:
     return str(request.stage_config.get("output_mask_mode", "mask_artifact"))
+
+
+def _build_diff_overlay_image(
+    request: StageRequest,
+    base_image: Image.Image,
+    generated_page: Image.Image,
+) -> tuple[Image.Image, dict[str, str | int | float], Optional[str]]:
+    threshold = int(request.stage_config.get("diff_threshold", 24))
+    dilate_radius = int(request.stage_config.get("diff_dilate_radius", 1))
+    large_region_ratio_threshold = float(
+        request.stage_config.get("diff_large_region_ratio_threshold", 0.35)
+    )
+
+    diff = ImageChops.difference(base_image.convert("RGB"), generated_page.convert("RGB")).convert("L")
+    mask = diff.point(lambda value: 255 if value > threshold else 0)
+    total_pixels = base_image.width * base_image.height
+    changed_pixel_count = total_pixels - mask.histogram()[0]
+    changed_ratio = changed_pixel_count / total_pixels if total_pixels else 0.0
+    diff_bbox = mask.getbbox()
+
+    if dilate_radius > 0:
+        kernel_size = dilate_radius * 2 + 1
+        mask = mask.filter(ImageFilter.MaxFilter(kernel_size))
+
+    overlay = Image.new("RGBA", base_image.size, color=(0, 0, 0, 0))
+    overlay.paste(generated_page, (0, 0), mask)
+    metrics: dict[str, str | int | float] = {
+        "diff_threshold": threshold,
+        "diff_dilate_radius": dilate_radius,
+        "diff_changed_pixel_count": changed_pixel_count,
+        "diff_changed_pixel_ratio": round(changed_ratio, 6),
+        "diff_bbox": _format_bbox(diff_bbox),
+    }
+    warning = None
+    if changed_ratio > large_region_ratio_threshold:
+        warning = (
+            "diff_overlay_large_changed_region: "
+            f"ratio={changed_ratio:.6f} threshold={large_region_ratio_threshold:.6f}"
+        )
+    return overlay, metrics, warning
+
+
+def _format_bbox(bbox: Optional[tuple[int, int, int, int]]) -> str:
+    if bbox is None:
+        return ""
+    left, top, right, bottom = bbox
+    return f"{left},{top},{right},{bottom}"
 
 
 def _build_inpaint_prompt(base_prompt: str, image_size: tuple[int, int]) -> str:
