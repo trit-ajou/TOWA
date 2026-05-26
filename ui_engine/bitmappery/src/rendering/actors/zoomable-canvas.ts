@@ -108,27 +108,31 @@ class ZoomableCanvas extends canvas {
     setDocumentScale(
         targetWidth: number, targetHeight: number, scale: number, zoom: number,
         activeDocument: Document = null,
-        anchor: { localX: number; localY: number } | null = null,
+        anchor: { localX: number; localY: number; focalX: number; focalY: number } | null = null,
     ): void {
-        const { left, top, width, height } = this._viewport;
+        const oldViewport = { ...this._viewport };
+        const oldWidth    = this._width;
+        const oldHeight   = this._height;
+        const { width: vpW, height: vpH } = oldViewport;
 
-        // anchor가 있으면 anchor가 화면에서 같은 위치를 유지하도록 ratio 계산.
-        // 없으면 기본: 현재 viewport ratio 유지 (centered if unscrolled).
-        let worldRatioX: number;
-        let worldRatioY: number;
-        let focalX: number;  // anchor의 viewport 내 비율 (0~1)
-        let focalY: number;
+        // anchor 모드: 클릭/커서 위치의 world point가 화면에서 같은 viewport 위치에 유지
+        // 기본 모드: 캔버스가 viewport보다 크면 이전 viewport ratio 유지, 작으면 centered
+        let worldRatioX: number, worldRatioY: number;
+        let focalX: number, focalY: number;
 
         if ( anchor ) {
-            worldRatioX = ( left + anchor.localX ) / this._width;
-            worldRatioY = ( top  + anchor.localY ) / this._height;
-            focalX = anchor.localX / width;
-            focalY = anchor.localY / height;
+            // localX/Y는 canvas element 내부 좌표 (world point 식별용)
+            worldRatioX = ( oldViewport.left + anchor.localX ) / oldWidth;
+            worldRatioY = ( oldViewport.top  + anchor.localY ) / oldHeight;
+            // focalX/Y는 viewport(container) 내 좌표 (줌 후에도 이 화면 위치 유지)
+            focalX = anchor.focalX / vpW;
+            focalY = anchor.focalY / vpH;
         } else {
-            const scrollWidthBefore  = this._width  - width;
-            const scrollHeightBefore = this._height - height;
-            const ratioX = ( left / scrollWidthBefore )  || .5;
-            const ratioY = ( top  / scrollHeightBefore ) || .5;
+            // 캔버스가 viewport보다 클 때만 이전 ratio 의미 있음
+            const oldScrollW = oldWidth  - vpW;
+            const oldScrollH = oldHeight - vpH;
+            const ratioX = oldScrollW > 0 ? ( oldViewport.left / oldScrollW ) : 0.5;
+            const ratioY = oldScrollH > 0 ? ( oldViewport.top  / oldScrollH ) : 0.5;
             worldRatioX = focalX = ratioX;
             worldRatioY = focalY = ratioY;
         }
@@ -136,18 +140,41 @@ class ZoomableCanvas extends canvas {
         this.setDimensions( fastRound( targetWidth ), fastRound( targetHeight ), true, true );
         this.setZoomFactor( scale * zoom );
 
-        let newLeft: number;
-        let newTop: number;
-        if ( anchor ) {
-            newLeft = worldRatioX * this._width  - focalX * width;
-            newTop  = worldRatioY * this._height - focalY * height;
+        // 캔버스가 viewport보다 크면 element는 viewport 좌상단 (offset 0), viewport pan으로 anchor 유지
+        // 캔버스가 작으면 element offset(transform)으로 anchor 유지 (viewport.left=0)
+        let newViewportLeft: number, newViewportTop: number;
+        let elementOffsetX: number, elementOffsetY: number;
+
+        if ( this._width >= vpW ) {
+            elementOffsetX = 0;
+            newViewportLeft = anchor
+                ? worldRatioX * this._width - focalX * vpW
+                : ( this._width - vpW ) * worldRatioX;
         } else {
-            const scrollWidth  = this._width  - width;
-            const scrollHeight = this._height - height;
-            newLeft = scrollWidth  * worldRatioX;
-            newTop  = scrollHeight * worldRatioY;
+            newViewportLeft = 0;
+            elementOffsetX = anchor
+                ? focalX * vpW - worldRatioX * this._width
+                : ( vpW - this._width ) / 2; // centered when smaller than viewport
         }
-        this.panViewport( fastRound( newLeft ), fastRound( newTop ), true );
+        if ( this._height >= vpH ) {
+            elementOffsetY = 0;
+            newViewportTop = anchor
+                ? worldRatioY * this._height - focalY * vpH
+                : ( this._height - vpH ) * worldRatioY;
+        } else {
+            newViewportTop = 0;
+            elementOffsetY = anchor
+                ? focalY * vpH - worldRatioY * this._height
+                : ( vpH - this._height ) / 2;
+        }
+
+        this.panViewport( fastRound( newViewportLeft ), fastRound( newViewportTop ), true );
+
+        // TOWA: canvas element 위치를 직접 제어. .center CSS는 document-canvas.vue에서 비활성화됨.
+        this._element.style.position = "absolute";
+        this._element.style.left = `${fastRound( elementOffsetX )}px`;
+        this._element.style.top  = `${fastRound( elementOffsetY )}px`;
+        this._element.style.transform = ""; // .center 클래스의 잔존 transform 제거
 
         if ( activeDocument ) {
             this.documentScale = activeDocument.width / this._width;

@@ -45,10 +45,11 @@
                     @click="requestDocumentClose()"
                 >&#215;</button>
             </template>
+            <!-- TOWA: 'center' 클래스 비활성화. canvas element 위치는 zoomable-canvas가
+                 setDocumentScale 안에서 transform으로 직접 제어 (anchor 기반 줌 지원). -->
             <div
                 ref="canvasContainer"
                 class="component__content"
-                :class="{ 'center': centerCanvas }"
             ></div>
             <scrollbars
                 v-if="activeDocument"

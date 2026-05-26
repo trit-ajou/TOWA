@@ -34,13 +34,19 @@ function setLevel(next: number) {
 function setLevelAt(next: number, clientX: number, clientY: number) {
   const canvas = getCanvasInstance() as unknown as { getElement(): HTMLCanvasElement } | null
   const el = canvas?.getElement?.()
-  if (el) {
-    const rect = el.getBoundingClientRect()
-    const localX = clientX - rect.left
-    const localY = clientY - rect.top
-    // 클릭이 캔버스 영역 안에 있을 때만 anchor 적용. 캔버스 밖 클릭은 기본 동작(centered).
-    if (localX >= 0 && localX <= rect.width && localY >= 0 && localY <= rect.height) {
-      store.commit('bmp/setPendingZoomAnchor', { localX, localY })
+  const container = el?.parentElement // bitmappery .component__content (= zCanvas viewport)
+  if (el && container) {
+    const elRect = el.getBoundingClientRect()
+    const containerRect = container.getBoundingClientRect()
+    // canvas element 내 좌표 (world ratio 계산용)
+    const localX = clientX - elRect.left
+    const localY = clientY - elRect.top
+    // viewport(container) 내 좌표 (focal 계산용 — 줌 후에도 이 화면 위치를 유지)
+    const focalX = clientX - containerRect.left
+    const focalY = clientY - containerRect.top
+    // 클릭이 viewport 안일 때만 anchor 적용
+    if (focalX >= 0 && focalX <= containerRect.width && focalY >= 0 && focalY <= containerRect.height) {
+      store.commit('bmp/setPendingZoomAnchor', { localX, localY, focalX, focalY })
     }
   }
   setLevel(next)
@@ -75,7 +81,8 @@ function onPointerDown(e: PointerEvent) {
     startLevel: zoomLevel.value,
   }
   moved.value = false
-  overlay.setPointerCapture(e.pointerId)
+  // pointerCapture는 합성 이벤트(테스트 환경)에서 실패할 수 있음 — 실제 마우스에는 영향 없음
+  try { overlay.setPointerCapture(e.pointerId) } catch { /* noop */ }
 }
 
 function onPointerMove(e: PointerEvent) {
@@ -91,7 +98,7 @@ function onPointerUp(e: PointerEvent) {
   const d = drag.value
   if (!d || e.pointerId !== d.pointerId) return
   const overlay = e.currentTarget as HTMLElement
-  overlay.releasePointerCapture?.(e.pointerId)
+  try { overlay.releasePointerCapture?.(e.pointerId) } catch { /* noop */ }
   // 드래그 이동이 거의 없으면 클릭으로 간주 → 클릭 위치 기준 줌인
   if (!moved.value) {
     setLevelAt(d.startLevel + STEP, d.startClientX, d.startClientY)
