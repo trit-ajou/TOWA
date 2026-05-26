@@ -15,7 +15,7 @@ defineProps<{
 defineEmits<{
   select: [project: Project]
   create: []
-  openFolder: [folderName: string]
+  openFolder: [folderId: string]
   deleteProject: [project: Project]
 }>()
 </script>
@@ -37,9 +37,9 @@ defineEmits<{
       v-for="folder in subfolders"
       :key="folder.id"
       :name="folder.name"
-      :item-count="folderPreviews[folder.name]?.count ?? 0"
-      :preview-items="folderPreviews[folder.name]?.items ?? []"
-      @click="$emit('openFolder', folder.name)"
+      :item-count="folderPreviews[folder.id]?.count ?? 0"
+      :preview-items="folderPreviews[folder.id]?.items ?? []"
+      @click="$emit('openFolder', folder.id)"
     />
 
     <!-- Project cards -->

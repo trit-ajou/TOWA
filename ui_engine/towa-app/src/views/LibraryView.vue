@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 import { useStore } from 'vuex'
 import { useRouter } from 'vue-router'
 import type { Project, ProjectStatus } from '@/types/project'
-import type { FolderNode } from '@/types/folder'
+import type { Folder, FolderNode } from '@/types/folder'
 import type { PreviewItem } from '@/components/home/FolderCard.vue'
 import { useModal } from '@/composables/useModal'
 import { createUlid } from '@/utils/ulid'
@@ -20,10 +20,19 @@ const createModal = useModal()
 const deleteModal = useModal()
 const projectToDelete = ref<Project | null>(null)
 
-const currentPath = computed<string[]>(() => store.getters['library/currentPath'])
+const currentFolderId = computed<string | null>(() => store.getters['library/currentFolderId'])
 const statusFilter = computed<ProjectStatus | 'all'>(() => store.getters['library/statusFilter'])
-const subfolders = computed<FolderNode[]>(() => store.getters['library/currentSubfolders'])
-const folderPathStr = computed(() => currentPath.value.join('/') || null)
+const searchQuery = computed<string>(() => store.getters['library/searchQuery'])
+
+const allProjects = computed<Project[]>(() => store.getters['projects/all'])
+const allFolders = computed<Folder[]>(() => store.getters['folders/all'])
+const childrenOf = computed(() => store.getters['folders/childrenOf'] as (parentId: string | null) => Folder[])
+const currentFolder = computed<Folder | undefined>(() =>
+  currentFolderId.value ? (store.getters['folders/byId'](currentFolderId.value) as Folder | undefined) : undefined,
+)
+const folderPath = computed<string>(() =>
+  currentFolderId.value ? (store.getters['folders/pathOf'](currentFolderId.value) as string) : '',
+)
 
 const statusOptions = [
   { value: 'all' as const, label: '전체' },
@@ -36,60 +45,44 @@ function setStatusFilter(filter: ProjectStatus | 'all') {
   store.commit('library/SET_STATUS_FILTER', filter)
 }
 
-const allProjects = computed<Project[]>(() => store.getters['projects/all'])
+const subfolders = computed<FolderNode[]>(() =>
+  childrenOf.value(currentFolderId.value).map((f) => ({
+    id: f.id,
+    name: f.name,
+    parentId: f.parentId,
+    children: childrenOf.value(f.id).map((c) => ({ id: c.id, name: c.name, parentId: c.parentId, children: [] })),
+  })),
+)
 
-// Only projects whose folder EXACTLY matches current path
-const projectsHere = computed(() => {
-  const path = folderPathStr.value
-  let filtered: Project[]
-
-  if (!path) {
-    filtered = allProjects.value.filter((p) => !p.folder)
-  } else {
-    filtered = allProjects.value.filter((p) => p.folder === path)
-  }
-
-  if (statusFilter.value !== 'all') {
-    filtered = filtered.filter((p) => p.status === statusFilter.value)
-  }
-
-  return filtered
+const projectsHere = computed<Project[]>(() => {
+  let list = allProjects.value.filter((p) => (p.folderId ?? null) === currentFolderId.value)
+  if (statusFilter.value !== 'all') list = list.filter((p) => p.status === statusFilter.value)
+  const q = searchQuery.value.trim().toLowerCase()
+  if (q) list = list.filter((p) => p.name.toLowerCase().includes(q))
+  return list
 })
 
-// Preview: direct children only (subfolders first, then direct projects), max 4
 const folderPreviews = computed(() => {
   const previews: Record<string, { count: number; items: PreviewItem[] }> = {}
-  const basePath = folderPathStr.value
-
   for (const folder of subfolders.value) {
-    const subPath = basePath ? `${basePath}/${folder.name}` : folder.name
     const items: PreviewItem[] = []
-
-    // Add child subfolders first
     for (const child of folder.children) {
       items.push({ type: 'folder', name: child.name })
     }
-
-    // Add direct projects in this folder (exact match)
-    const directProjects = allProjects.value.filter((p) => p.folder === subPath)
+    const directProjects = allProjects.value.filter((p) => p.folderId === folder.id)
     for (const proj of directProjects) {
       items.push({ type: 'project', name: proj.name, thumbnail: proj.thumbnail })
     }
-
-    // Total count = subfolders + direct projects
-    const totalCount = folder.children.length + directProjects.length
-
-    previews[folder.name] = {
-      count: totalCount,
+    previews[folder.id] = {
+      count: folder.children.length + directProjects.length,
       items: items.slice(0, 4),
     }
   }
-
   return previews
 })
 
-function navigateToFolder(folderName: string) {
-  store.commit('library/NAVIGATE_INTO', folderName)
+function navigateToFolder(folderId: string | null) {
+  store.commit('library/SET_CURRENT_FOLDER', folderId)
 }
 
 function selectProject(project: Project) {
@@ -111,7 +104,9 @@ async function createProject(form: { name: string; sourceLang: string; targetLan
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     status: 'todo',
-    folder: folderPathStr.value ?? '',
+    folderId: currentFolderId.value,
+    folderPath: folderPath.value || null,
+    deletedAt: null,
     config: {
       autoDetect: form.autoDetect,
       autoInpaint: form.autoInpaint,
@@ -157,8 +152,12 @@ async function deleteProject() {
   <div class="flex h-[calc(100vh-48px)]">
     <HomeSidebar />
     <main class="flex-1 p-6 overflow-y-auto">
-      <!-- Status filter chips -->
-      <div class="flex items-center justify-end mb-4">
+      <!-- Breadcrumb + Status filter chips -->
+      <div class="flex items-center justify-between mb-4">
+        <div class="text-sm text-towa-text-muted">
+          <span v-if="currentFolder">{{ folderPath }}</span>
+          <span v-else>전체</span>
+        </div>
         <div class="flex items-center gap-1 bg-towa-surface rounded-lg p-0.5">
           <button
             v-for="opt in statusOptions"
@@ -198,7 +197,7 @@ async function deleteProject() {
     >
       <p class="text-sm text-towa-text-muted">
         <span class="font-medium text-towa-text">{{ projectToDelete?.name }}</span>
-        프로젝트를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.
+        프로젝트를 휴지통으로 옮깁니다.
       </p>
       <template #footer>
         <BaseButton variant="secondary" size="sm" @click="deleteModal.close()">취소</BaseButton>

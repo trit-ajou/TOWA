@@ -30,9 +30,9 @@ const projects: Module<ProjectsState, unknown> = {
     all: (state) => state.list,
     byId: (state) => (id: string) => state.list.find((p) => p.id === id),
 
-    byFolder: (state) => (folderPath: string | null) => {
-      if (!folderPath) return state.list
-      return state.list.filter((p) => p.folder === folderPath || p.folder.startsWith(folderPath + '/'))
+    /** Projects whose parent folder is exactly `folderId` (or root if null). */
+    byFolder: (state) => (folderId: string | null) => {
+      return state.list.filter((p) => (p.folderId ?? null) === folderId)
     },
 
     recentlyEdited: (state) => (count: number = 3) => {
@@ -95,6 +95,20 @@ const projects: Module<ProjectsState, unknown> = {
         await adapter.deleteProject(id)
       }
       commit('REMOVE_PROJECT', id)
+    },
+
+    async restore({ commit, state }, id: string) {
+      const adapter = state.fileAdapter
+      if (!adapter) return
+      const record = await adapter.restoreProject(id)
+      commit('ADD_PROJECT', { ...record } as Project)
+    },
+
+    async permanentlyDelete({ state }, id: string) {
+      const adapter = state.fileAdapter
+      if (!adapter) return
+      await adapter.permanentlyDeleteProject(id)
+      // 리스트에는 이미 없음 (휴지통에 있던 항목)
     },
   },
 }

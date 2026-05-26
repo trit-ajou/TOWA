@@ -1,17 +1,19 @@
 import type {
   AppBackend,
+  FolderDto,
   PageSnapshotPayload,
   PageSummaryDto,
   ProjectCreateInput,
   ProjectDto,
   ProjectPatchInput,
+  TrashEntryDto,
 } from '@/backend/contracts'
 import { BackendError } from '@/backend/errors'
 import type { PageStatus } from '@/types/page'
 import type { ProjectConfig, ProjectStatus } from '@/types/project'
 
-import type { FileAdapter, PageSnapshot, PageSummary } from './contracts'
-import type { ProjectRecord } from './db'
+import type { DeleteFolderMode, FileAdapter, PageSnapshot, PageSummary, TrashEntry } from './contracts'
+import type { FolderRecord, ProjectRecord } from './db'
 
 export type SessionKeyProvider = () => string | null
 
@@ -60,7 +62,7 @@ export class CloudFileAdapter implements FileAdapter {
       sourceLang: project.sourceLang,
       targetLang: project.targetLang,
       status: project.status,
-      folder: project.folder,
+      folderId: project.folderId,
       config: project.config as unknown as Record<string, unknown>,
       thumbnailUrl: project.thumbnailUrl ?? null,
     }
@@ -75,7 +77,7 @@ export class CloudFileAdapter implements FileAdapter {
     if (patch.sourceLang !== undefined) body.sourceLang = patch.sourceLang
     if (patch.targetLang !== undefined) body.targetLang = patch.targetLang
     if (patch.status !== undefined) body.status = patch.status
-    if (patch.folder !== undefined) body.folder = patch.folder
+    if (patch.folderId !== undefined) body.folderId = patch.folderId
     if (patch.config !== undefined) body.config = patch.config as unknown as Record<string, unknown>
     const dto = await this.backend.files.updateProject(id, body, this.authOpts())
     return toProjectRecord(dto)
@@ -83,6 +85,52 @@ export class CloudFileAdapter implements FileAdapter {
 
   async deleteProject(id: string): Promise<void> {
     await this.backend.files.deleteProject(id, this.authOpts())
+  }
+
+  async restoreProject(id: string): Promise<ProjectRecord> {
+    const dto = await this.backend.files.restoreProject(id, this.authOpts())
+    return toProjectRecord(dto)
+  }
+
+  async permanentlyDeleteProject(id: string): Promise<void> {
+    await this.backend.files.permanentlyDeleteProject(id, this.authOpts())
+  }
+
+  // --- Folder CRUD ---
+
+  async listFolders(params?: { search?: string }): Promise<FolderRecord[]> {
+    const items = await this.backend.files.listFolders(this.authOpts(), params)
+    return items.map(toFolderRecord)
+  }
+
+  async createFolder(input: { name: string; parentId: string | null }): Promise<FolderRecord> {
+    const dto = await this.backend.files.createFolder(input, this.authOpts())
+    return toFolderRecord(dto)
+  }
+
+  async updateFolder(id: string, patch: { name?: string; parentId?: string | null }): Promise<FolderRecord> {
+    const dto = await this.backend.files.updateFolder(id, patch, this.authOpts())
+    return toFolderRecord(dto)
+  }
+
+  async deleteFolder(id: string, mode: DeleteFolderMode): Promise<void> {
+    await this.backend.files.deleteFolder(id, { mode }, this.authOpts())
+  }
+
+  async restoreFolder(id: string): Promise<FolderRecord> {
+    const dto = await this.backend.files.restoreFolder(id, this.authOpts())
+    return toFolderRecord(dto)
+  }
+
+  async permanentlyDeleteFolder(id: string): Promise<void> {
+    await this.backend.files.deleteFolder(id, { mode: 'permanent' }, this.authOpts())
+  }
+
+  // --- Trash ---
+
+  async listTrash(): Promise<TrashEntry[]> {
+    const items = await this.backend.files.listTrash(this.authOpts())
+    return items.map(toTrashEntry)
   }
 
   // --- Pages (summary list) ---
@@ -142,12 +190,32 @@ function toProjectRecord(dto: ProjectDto): ProjectRecord {
     targetLang: dto.targetLang,
     pageCount: dto.pageCount,
     status: dto.status as ProjectStatus,
-    folder: dto.folder,
+    folderId: dto.folderId,
+    folderPath: dto.folderPath,
+    deletedAt: dto.deletedAt,
     config: dto.config as unknown as ProjectConfig,
     createdAt: dto.createdAt,
     updatedAt: dto.updatedAt,
     thumbnailUrl: dto.thumbnailUrl,
   }
+}
+
+function toFolderRecord(dto: FolderDto): FolderRecord {
+  return {
+    id: dto.id,
+    name: dto.name,
+    parentId: dto.parentId,
+    path: dto.path,
+    createdAt: dto.createdAt,
+    updatedAt: dto.updatedAt,
+    deletedAt: dto.deletedAt,
+  }
+}
+
+function toTrashEntry(dto: TrashEntryDto): TrashEntry {
+  return dto.type === 'folder'
+    ? { type: 'folder', item: toFolderRecord(dto.item) }
+    : { type: 'project', item: toProjectRecord(dto.item) }
 }
 
 function toPageSummary(dto: PageSummaryDto): PageSummary {

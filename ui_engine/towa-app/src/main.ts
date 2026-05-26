@@ -52,14 +52,19 @@ app.provide(FILE_ADAPTER_KEY, fileAdapter)
 // 4) store 모듈에 adapter 주입
 store.dispatch('projects/init', fileAdapter)
 store.dispatch('pages/init', fileAdapter)
+store.dispatch('folders/init', fileAdapter)
+store.dispatch('trash/init', fileAdapter)
 
-// 5) 세션 복원 → 로그인 상태이면 프로젝트 로드
+// 5) 세션 복원 → 로그인 상태이면 프로젝트·폴더 로드
 async function init() {
   await store.dispatch('auth/restoreFromStorage')
   const isLoggedIn = store.getters['auth/isLoggedIn']
   if (isLoggedIn) {
     try {
-      await store.dispatch('projects/loadAll')
+      await Promise.all([
+        store.dispatch('projects/loadAll'),
+        store.dispatch('folders/loadAll'),
+      ])
     } catch (e) {
       // 서버 오류 시 빈 상태로 진입 (UI에서 재시도 안내)
       console.warn('[init] loadAll failed on cloud boot:', e)

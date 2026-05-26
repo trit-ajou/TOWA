@@ -1,80 +1,37 @@
 import type { Module } from 'vuex'
-import type { FolderNode } from '@/types/folder'
 import type { ProjectStatus } from '@/types/project'
 
 interface LibraryState {
-  currentPath: string[]  // e.g. [] = root, ['주간연재'] = 주간연재 폴더, ['주간연재', '점프'] = 하위
+  /** null = 루트(전체). */
+  currentFolderId: string | null
   statusFilter: ProjectStatus | 'all'
-  folderTree: FolderNode[]
+  searchQuery: string
 }
 
 const library: Module<LibraryState, unknown> = {
   namespaced: true,
 
   state: (): LibraryState => ({
-    currentPath: [],
+    currentFolderId: null,
     statusFilter: 'all',
-    folderTree: [
-      {
-        id: 'f-weekly',
-        name: '주간연재',
-        children: [
-          { id: 'f-jump', name: '점프', children: [] },
-          { id: 'f-magazine', name: '매거진', children: [] },
-        ],
-      },
-      {
-        id: 'f-webtoon',
-        name: '웹툰',
-        children: [
-          { id: 'f-naver', name: '네이버', children: [] },
-          { id: 'f-kakao', name: '카카오', children: [] },
-        ],
-      },
-      {
-        id: 'f-tankobon',
-        name: '단행본',
-        children: [],
-      },
-    ],
+    searchQuery: '',
   }),
 
   getters: {
-    currentPath: (state) => state.currentPath,
-    currentFolderName: (state) => state.currentPath.length > 0 ? state.currentPath[state.currentPath.length - 1] : null,
+    currentFolderId: (state) => state.currentFolderId,
     statusFilter: (state) => state.statusFilter,
-    folderTree: (state) => state.folderTree,
-
-    // Get subfolders at current path
-    currentSubfolders: (state): FolderNode[] => {
-      if (state.currentPath.length === 0) return state.folderTree
-      let nodes = state.folderTree
-      for (const segment of state.currentPath) {
-        const found = nodes.find((n) => n.name === segment)
-        if (!found) return []
-        nodes = found.children
-      }
-      return nodes
-    },
-
-    // Build full folder path string for matching with project.folder
-    currentFolderPath: (state): string | null => {
-      return state.currentPath.length > 0 ? state.currentPath.join('/') : null
-    },
+    searchQuery: (state) => state.searchQuery,
   },
 
   mutations: {
-    SET_PATH(state, path: string[]) {
-      state.currentPath = path
-    },
-    NAVIGATE_INTO(state, folderName: string) {
-      state.currentPath = [...state.currentPath, folderName]
-    },
-    NAVIGATE_UP(state) {
-      state.currentPath = state.currentPath.slice(0, -1)
+    SET_CURRENT_FOLDER(state, folderId: string | null) {
+      state.currentFolderId = folderId
     },
     SET_STATUS_FILTER(state, filter: ProjectStatus | 'all') {
       state.statusFilter = filter
+    },
+    SET_SEARCH_QUERY(state, q: string) {
+      state.searchQuery = q
     },
   },
 }
