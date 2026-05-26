@@ -3,7 +3,6 @@ from __future__ import annotations
 import copy
 import re
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Any
 
 from sqlalchemy import Select, func, select, update
@@ -13,7 +12,8 @@ from sqlalchemy.orm.attributes import set_committed_value
 from app.core.clock import utcnow
 from app.db.enums import PageStatus, ProjectStatus
 from app.modules.auth import service as auth_service
-from app.modules.projects.models import Page, PageSnapshot, Project
+from app.modules.projects import folders as folder_service
+from app.modules.projects.models import Folder, Page, PageSnapshot, Project
 
 ULID_RE = re.compile(r"^[0-9A-HJKMNP-TV-Z]{26}$")
 
@@ -99,18 +99,22 @@ def _normalize_optional_text(value: str | None, *, field_name: str) -> str | Non
     return normalized
 
 
-def _normalize_folder(value: str | None) -> str:
-    if value is None:
-        return ""
-    return value.strip()
+def _project_query_for_user(user_id, *, include_deleted: bool = False) -> Select[tuple[Project]]:
+    statement = select(Project).where(Project.user_id == user_id)
+    if not include_deleted:
+        statement = statement.where(Project.deleted_at.is_(None))
+    return statement
 
 
-def _project_query_for_user(user_id) -> Select[tuple[Project]]:
-    return select(Project).where(Project.user_id == user_id)
-
-
-def _load_project(session: Session, *, user_id, project_id: str, for_update: bool = False) -> Project:
-    statement = _project_query_for_user(user_id).where(Project.id == project_id)
+def _load_project(
+    session: Session,
+    *,
+    user_id,
+    project_id: str,
+    include_deleted: bool = False,
+    for_update: bool = False,
+) -> Project:
+    statement = _project_query_for_user(user_id, include_deleted=include_deleted).where(Project.id == project_id)
     if for_update:
         statement = statement.with_for_update()
     project = session.scalar(statement)
@@ -133,6 +137,7 @@ def _load_page(
         .where(
             Page.id == page_id,
             Project.user_id == user_id,
+            Project.deleted_at.is_(None),
         )
         .options(contains_eager(Page.project))
     )
@@ -162,22 +167,6 @@ def _page_count_map(session: Session, *, project_ids: list[str]) -> dict[str, in
         .group_by(Page.project_id),
     ).all()
     return {project_id: page_count for project_id, page_count in rows}
-
-
-def _present_project(project: Project, *, page_count: int) -> dict[str, Any]:
-    return {
-        "id": project.id,
-        "name": project.name,
-        "thumbnail_url": project.thumbnail_url,
-        "source_lang": project.source_lang,
-        "target_lang": project.target_lang,
-        "page_count": page_count,
-        "status": project.status,
-        "folder": project.folder,
-        "config": copy.deepcopy(project.config),
-        "created_at": project.created_at,
-        "updated_at": project.updated_at,
-    }
 
 
 def _canonical_metadata(write: PageSnapshotWrite) -> dict[str, Any]:
@@ -218,7 +207,7 @@ def create_project(
     source_lang: str,
     target_lang: str,
     status: ProjectStatus,
-    folder: str,
+    folder_id: str | None,
     config: dict[str, Any],
 ) -> dict[str, Any]:
     normalized_project_id = _normalize_ulid(project_id, field_name="id")
@@ -226,7 +215,7 @@ def create_project(
     normalized_thumbnail_url = _normalize_optional_text(thumbnail_url, field_name="thumbnail_url")
     normalized_source_lang = _normalize_required_text(source_lang, field_name="source_lang")
     normalized_target_lang = _normalize_required_text(target_lang, field_name="target_lang")
-    normalized_folder = _normalize_folder(folder)
+    normalized_folder_id = folder_service.normalize_optional_uuid(folder_id, field_name="folder_id")
 
     with session.begin():
         context = auth_service.authenticate_session_token(session, session_token=session_token)
@@ -234,6 +223,13 @@ def create_project(
             raise ProjectConflictError(
                 f"Project {normalized_project_id} already exists.",
                 reason="duplicate_project_id",
+            )
+        folder = None
+        if normalized_folder_id is not None:
+            folder = folder_service.load_folder(
+                session,
+                user_id=context.user.id,
+                folder_id=normalized_folder_id,
             )
 
         project = Project(
@@ -244,12 +240,12 @@ def create_project(
             source_lang=normalized_source_lang,
             target_lang=normalized_target_lang,
             status=status,
-            folder=normalized_folder,
+            folder_id=folder.id if folder else None,
             config=copy.deepcopy(config),
         )
         session.add(project)
         session.flush()
-        return _present_project(project, page_count=0)
+        return folder_service.present_project(project, page_count=0)
 
 
 def list_projects(session: Session, *, session_token: str) -> list[dict[str, Any]]:
@@ -258,7 +254,7 @@ def list_projects(session: Session, *, session_token: str) -> list[dict[str, Any
         _project_query_for_user(context.user.id).order_by(Project.updated_at.desc(), Project.created_at.desc()),
     ).all()
     counts = _page_count_map(session, project_ids=[project.id for project in projects])
-    return [_present_project(project, page_count=counts.get(project.id, 0)) for project in projects]
+    return [folder_service.present_project(project, page_count=counts.get(project.id, 0)) for project in projects]
 
 
 def get_project(session: Session, *, session_token: str, project_id: str) -> dict[str, Any]:
@@ -266,7 +262,7 @@ def get_project(session: Session, *, session_token: str, project_id: str) -> dic
     context = auth_service.authenticate_session_token(session, session_token=session_token)
     project = _load_project(session, user_id=context.user.id, project_id=normalized_project_id)
     counts = _page_count_map(session, project_ids=[project.id])
-    return _present_project(project, page_count=counts.get(project.id, 0))
+    return folder_service.present_project(project, page_count=counts.get(project.id, 0))
 
 
 def update_project(
@@ -295,10 +291,17 @@ def update_project(
                 if value is None:
                     raise ValueError("status must not be null.")
                 project.status = value
-            elif field_name == "folder":
-                if value is None:
-                    raise ValueError("folder must not be null.")
-                project.folder = _normalize_folder(value)
+            elif field_name == "folder_id":
+                normalized_folder_id = folder_service.normalize_optional_uuid(value, field_name="folder_id")
+                if normalized_folder_id is None:
+                    project.folder_id = None
+                else:
+                    folder = folder_service.load_folder(
+                        session,
+                        user_id=context.user.id,
+                        folder_id=normalized_folder_id,
+                    )
+                    project.folder_id = folder.id
             elif field_name == "config":
                 if value is None:
                     raise ValueError("config must not be null.")
@@ -306,16 +309,59 @@ def update_project(
 
         session.flush()
         counts = _page_count_map(session, project_ids=[project.id])
-        return _present_project(project, page_count=counts.get(project.id, 0))
+        return folder_service.present_project(project, page_count=counts.get(project.id, 0))
 
 
-def delete_project(session: Session, *, session_token: str, project_id: str) -> str:
+def delete_project(
+    session: Session,
+    *,
+    session_token: str,
+    project_id: str,
+    permanent: bool = False,
+) -> dict[str, Any] | str:
     normalized_project_id = _normalize_ulid(project_id, field_name="project_id")
     with session.begin():
         context = auth_service.authenticate_session_token(session, session_token=session_token)
+        if permanent:
+            project = _load_project(
+                session,
+                user_id=context.user.id,
+                project_id=normalized_project_id,
+                include_deleted=True,
+                for_update=True,
+            )
+            if project.deleted_at is None:
+                raise folder_service.ProjectBadRequestError("Only trashed projects can be permanently deleted.")
+            session.delete(project)
+            return normalized_project_id
         project = _load_project(session, user_id=context.user.id, project_id=normalized_project_id, for_update=True)
-        session.delete(project)
-    return normalized_project_id
+        project.deleted_at = utcnow()
+        session.flush()
+        counts = _page_count_map(session, project_ids=[project.id])
+        return folder_service.present_project(project, page_count=counts.get(project.id, 0))
+
+
+def restore_project(session: Session, *, session_token: str, project_id: str) -> dict[str, Any]:
+    normalized_project_id = _normalize_ulid(project_id, field_name="project_id")
+    with session.begin():
+        context = auth_service.authenticate_session_token(session, session_token=session_token)
+        project = _load_project(
+            session,
+            user_id=context.user.id,
+            project_id=normalized_project_id,
+            include_deleted=True,
+            for_update=True,
+        )
+        if project.deleted_at is None:
+            raise folder_service.ProjectBadRequestError("Only trashed projects can be restored.")
+        if project.folder_id is not None:
+            folder = session.get(Folder, project.folder_id)
+            if folder is None or folder.user_id != context.user.id or folder.deleted_at is not None:
+                project.folder_id = None
+        project.deleted_at = None
+        session.flush()
+        counts = _page_count_map(session, project_ids=[project.id])
+        return folder_service.present_project(project, page_count=counts.get(project.id, 0))
 
 
 def list_pages(session: Session, *, session_token: str, project_id: str) -> list[Page]:

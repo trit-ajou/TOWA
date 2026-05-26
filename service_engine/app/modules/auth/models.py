@@ -14,7 +14,7 @@ from app.db.types import enum_type
 
 if TYPE_CHECKING:
     from app.modules.billing.models import CreditAccount, CreditLedger, UsageJob
-    from app.modules.projects.models import Project
+    from app.modules.projects.models import Folder, Project
 
 
 class User(TimestampMixin, Base):
@@ -41,6 +41,7 @@ class User(TimestampMixin, Base):
     )
     usage_jobs: Mapped[list["UsageJob"]] = relationship(back_populates="user")
     credit_entries: Mapped[list["CreditLedger"]] = relationship(back_populates="user")
+    folders: Mapped[list["Folder"]] = relationship(back_populates="user")
     projects: Mapped[list["Project"]] = relationship(back_populates="user")
 
     @validates("email")

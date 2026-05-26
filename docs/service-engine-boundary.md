@@ -22,6 +22,7 @@
 - credit account의 잔액과 reserved amount
 - usage job 상태
 - capture 시 credit ledger 기록
+- folder tree metadata
 - project metadata
 - page summary 목록
 - page snapshot의 persistence authority
@@ -34,6 +35,7 @@
 - `usage_jobs`
 - `credit_holds`
 - `credit_ledger`
+- `folders`
 - `projects`
 - `pages`
 - page snapshot binary storage
@@ -57,6 +59,7 @@
 
 - `POST /auth/dev/login`
 - `GET /auth/me`
+- cloud에서 folder CRUD/trash/restore
 - cloud에서 project CRUD
 - cloud에서 page summary 조회
 - cloud에서 page snapshot load/save/delete
@@ -75,6 +78,7 @@
 - 잔액, 예약, 확정 차감 처리
 - usage idempotency 보장
 - cloud project/page snapshot 저장/조회
+- cloud folder/project trash 상태 관리
 - private page thumbnail fetch
 - 공통 error envelope 유지
 
@@ -94,6 +98,8 @@
 - page save 정책은 `last-write-wins`다
 - page create는 append-only다
 - page delete는 hard delete + dense reindex다
+- folder와 project delete는 기본적으로 trash 이동이며, `permanent=true`일 때 hard delete한다
+- folder tree depth 제한은 UI가 담당하고 service는 저장/권한/무결성만 담당한다
 - `original image`는 immutable이 아니라 current page snapshot의 일부다
 - `layer_blob`과 project `config`는 service 기준 opaque payload다
 - `textBlocks`는 service 기준 구조화된 page metadata다
@@ -111,7 +117,7 @@
 - session TTL 기본값은 `24시간`이다
 - hold TTL 기본값은 `30분`이다
 - standalone의 project/page 저장은 UI 내부 IndexedDB가 담당한다
-- cloud의 project/page 저장은 service API가 담당한다
+- cloud의 folder/project/page 저장은 service API가 담당한다
 - project cover 선택과 cover 깨짐 후속 갱신은 UI가 담당한다
 
 ## Non-Goals For This Phase
@@ -126,7 +132,7 @@
 - revision/lock/conflict resolution
 - collaboration/real-time sync
 - page middle insert / reorder
-- project/page trash
+- trash 자동 정리/보관 기간 정책
 - bitmappery blob introspection
 - `UI <-> model` 상세 wire contract 고정
 
