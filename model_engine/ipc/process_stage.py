@@ -49,7 +49,7 @@ class ProcessStage(Stage):
 
         payload = json.dumps(stage_request_to_data(request))
         env = os.environ.copy()
-        env.update(_build_stage_env(request))
+        env.update(build_stage_env(request))
         completed = subprocess.run(
             command,
             input=payload,
@@ -78,7 +78,7 @@ class ProcessStage(Stage):
         return stage_response_from_data(response_payload)
 
 
-def _build_stage_env(request: StageRequest) -> dict[str, str]:
+def build_stage_env(request: StageRequest) -> dict[str, str]:
     env: dict[str, str] = {}
     primary = request.resolved_credentials.get("primary_provider")
     if primary is not None:

@@ -132,7 +132,7 @@ export default {
         layerId: null,
     }),
     computed: {
-        ...mapGetters([
+        ...mapGetters("bmp", [
             "activeLayerIndex",
             "activeLayer",
         ]),
@@ -265,7 +265,7 @@ export default {
         this.handleBlur();
     },
     methods: {
-        ...mapMutations([
+        ...mapMutations("bmp", [
             "openDialog",
             "setActiveTool",
             "updateLayer",
@@ -282,6 +282,9 @@ export default {
             }
             const index = this.activeLayerIndex;
             const store = this.$store;
+            // standalone bitmappery는 root, embed(towa-app)는 bmp namespace로 모듈 등록.
+            // 자동 감지해서 prefix 결정.
+            const ns = store.state.bmp ? "bmp/" : "";
             const orgOpts = {
                 value      : this.text,
                 size       : this.size,
@@ -304,11 +307,11 @@ export default {
             }
             // hold a reference to the original layer rectangle as text updates alter its bounding box
             const { left, top, width, height } = this.activeLayer;
-            const commit = () => store.commit( "updateLayer", { index, opts: { name: newName, text: newOpts } });
+            const commit = () => store.commit( `${ns}updateLayer`, { index, opts: { name: newName, text: newOpts } });
             commit();
             enqueueState( `${propName}_${index}`, {
                 undo() {
-                    store.commit( "updateLayer", { index, opts: { left, top, width, height, name: orgName, text: orgOpts } });
+                    store.commit( `${ns}updateLayer`, { index, opts: { left, top, width, height, name: orgName, text: orgOpts } });
                 },
                 redo() {
                     commit();

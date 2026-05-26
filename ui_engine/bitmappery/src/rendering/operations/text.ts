@@ -79,7 +79,10 @@ function measureLines( lines: string[], text: Text, ctx: CanvasRenderingContext2
     if ( !lineHeight ) {
         lineHeight = textMetrics.actualBoundingBoxAscent + textMetrics.actualBoundingBoxDescent;
     }
-    const topOffset = textMetrics.actualBoundingBoxAscent;
+    // Safety padding: 한국어/일본어/이모지 글리프가 actualBoundingBoxAscent를 초과해
+    // 그려지는 경우(특히 첫 줄)에 canvas top 위로 잘리는 것을 방지. font size의 20%.
+    const topPadding = Math.ceil( text.size * 0.2 );
+    const topOffset = topPadding + textMetrics.actualBoundingBoxAscent;
     let top = 0;
 
     lines.forEach(( line, lineIndex ) => {
@@ -97,7 +100,7 @@ function measureLines( lines: string[], text: Text, ctx: CanvasRenderingContext2
     return {
         lines  : linesOut,
         width  : Math.ceil( width ),
-        height : Math.ceil( height )
+        height : Math.ceil( height + topPadding ),
     };
 }
 

@@ -81,7 +81,7 @@ export default {
         maintainRatio: true,
     }),
     computed: {
-        ...mapGetters([
+        ...mapGetters("bmp", [
             "activeDocument",
         ]),
         width() {
@@ -113,7 +113,7 @@ export default {
         });
     },
     methods: {
-        ...mapMutations([
+        ...mapMutations("bmp", [
             "closeModal",
         ]),
         async lockSync(): Promise<void> {

@@ -121,5 +121,5 @@ export const isDrawable = ( layer: Layer, store: Store<BitMapperyState> ): boole
 };
 
 export const isMaskable = ( layer: Layer, store: Store<BitMapperyState> ): boolean => {
-    return !!layer.mask && store.getters.activeLayerMask === layer.mask;
+    return !!layer.mask && store.getters["bmp/activeLayerMask"] === layer.mask;
 };

@@ -60,7 +60,7 @@ export default {
         this.retrieveFiles( pathToRetrieve );
     },
     methods: {
-        ...mapMutations([
+        ...mapMutations("bmp", [
             "setDropboxConnected",
         ]),
         /* base component overrides */

@@ -55,7 +55,7 @@ export const commitLayerEffectsAndTransforms = async (
     const newSource = cloneResized( snapshot, document.width, document.height );
     
     const commit = () => {
-        store.commit( "updateLayer", { index: layerIndex, opts: {
+        store.commit( "bmp/updateLayer", { index: layerIndex, opts: {
             filters: FiltersFactory.create({ blendMode }),
             transform: TransformFactory.create(),
             source: newSource,
@@ -68,15 +68,15 @@ export const commitLayerEffectsAndTransforms = async (
             maskY: 0,
         }, recreateRenderer: true });
 
-        if ( store.getters.activeTool === ToolTypes.DRAG ) {
-            store.commit( "setActiveTool", { tool: ToolTypes.DRAG });
+        if ( store.getters["bmp/activeTool"] === ToolTypes.DRAG ) {
+            store.commit( "bmp/setActiveTool", { tool: ToolTypes.DRAG });
         }
     };
     commit();
 
     enqueueState( `commit_layer_fx_${layerIndex}`, {
         undo() {
-            store.commit( "updateLayer", {
+            store.commit( "bmp/updateLayer", {
                 index: layerIndex,
                 opts: {
                     filters: { ...orgFilters },
@@ -86,8 +86,8 @@ export const commitLayerEffectsAndTransforms = async (
                     ...orgBounds,
                 }, recreateRenderer: true
             });
-            if ( store.getters.activeTool === ToolTypes.DRAG ) {
-                store.commit( "setActiveTool", { tool: ToolTypes.DRAG });
+            if ( store.getters["bmp/activeTool"] === ToolTypes.DRAG ) {
+                store.commit( "bmp/setActiveTool", { tool: ToolTypes.DRAG });
             }
         },
         redo: commit

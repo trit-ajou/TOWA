@@ -68,7 +68,7 @@ export default {
         MAX_BRUSH_SIZE,
     }),
     computed: {
-        ...mapGetters([
+        ...mapGetters("bmp", [
             "activeDocument",
             "activeLayer",
             "activeLayerMask",
@@ -103,7 +103,7 @@ export default {
         },
     },
     methods: {
-        ...mapMutations([
+        ...mapMutations("bmp", [
             "setToolOptionValue",
         ]),
         updateValue( option: string, value: any ): void {

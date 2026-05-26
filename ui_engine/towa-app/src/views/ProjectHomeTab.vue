@@ -4,8 +4,12 @@ import { useStore } from 'vuex'
 import { useRoute, useRouter } from 'vue-router'
 import type { EditMode } from '@/store/modules/editor'
 import type { PageStatus } from '@/types/page'
+import { useModal } from '@/composables/useModal'
 import ProjectDashboard from '@/components/project/ProjectDashboard.vue'
 import PageGrid from '@/components/project/PageGrid.vue'
+import BaseModal from '@/components/common/BaseModal.vue'
+import BaseButton from '@/components/common/BaseButton.vue'
+import { buildPageSnapshotFromFile } from '@/utils/page-from-file'
 
 defineOptions({ name: 'ProjectHomeTab' })
 
@@ -21,6 +25,42 @@ const lastEditMode = computed<EditMode>(() => store.getters['editor/lastEditMode
 const layout = computed(() => store.getters['editor/projectHomeLayout'])
 
 const statusFilter = ref<PageStatus | 'all'>('all')
+
+const deleteModal = useModal()
+const pageToDeleteId = ref<string | null>(null)
+
+const pageToDeleteIndex = computed(() => {
+  if (!pageToDeleteId.value) return null
+  const page = allPages.value.find((p: { id: string }) => p.id === pageToDeleteId.value)
+  return page?.index ?? null
+})
+
+function confirmDeletePage(pageId: string) {
+  pageToDeleteId.value = pageId
+  deleteModal.open()
+}
+
+async function deletePage() {
+  if (!pageToDeleteId.value) return
+  const pid = projectId.value
+  await store.dispatch('pages/removePage', { projectId: pid, pageId: pageToDeleteId.value })
+
+  const proj = project.value
+  if (proj) {
+    await store.dispatch('projects/update', {
+      ...proj,
+      pageCount: allPages.value.length,
+      updatedAt: new Date().toISOString(),
+    })
+  }
+
+  if (selectedPageId.value === pageToDeleteId.value) {
+    store.commit('editor/SET_SELECTED_PAGE', null)
+  }
+
+  deleteModal.close()
+  pageToDeleteId.value = null
+}
 
 const statusChips = [
   { value: 'all' as const, label: '전체' },
@@ -51,6 +91,23 @@ function selectAndEdit(pageId: string) {
 function selectAndDetail(pageId: string) {
   store.commit('editor/SET_SELECTED_PAGE', pageId)
   router.push(`/project/${projectId.value}/detail`)
+}
+
+async function addPages(files: File[]) {
+  const pid = projectId.value
+  for (const file of files) {
+    const pageIndex = allPages.value.length + 1
+    const snapshot = await buildPageSnapshotFromFile(file, pid, pageIndex)
+    await store.dispatch('pages/addPage', { projectId: pid, snapshot })
+  }
+  const proj = project.value
+  if (proj) {
+    await store.dispatch('projects/update', {
+      ...proj,
+      pageCount: allPages.value.length,
+      updatedAt: new Date().toISOString(),
+    })
+  }
 }
 </script>
 
@@ -89,8 +146,11 @@ function selectAndDetail(pageId: string) {
           <PageGrid
             :pages="filteredPages"
             :selected-page-id="selectedPageId"
+            :project-id="projectId"
             @open-edit="selectAndEdit"
             @open-detail="selectAndDetail"
+            @add-pages="addPages"
+            @delete-page="confirmDeletePage"
           />
         </div>
       </div>
@@ -128,10 +188,27 @@ function selectAndDetail(pageId: string) {
         <PageGrid
           :pages="filteredPages"
           :selected-page-id="selectedPageId"
+          :project-id="projectId"
           @open-edit="selectAndEdit"
           @open-detail="selectAndDetail"
+          @add-pages="addPages"
+          @delete-page="confirmDeletePage"
         />
       </div>
     </template>
   </main>
+
+  <BaseModal
+    title="페이지 삭제"
+    :open="deleteModal.isOpen.value"
+    @close="deleteModal.close()"
+  >
+    <p class="text-sm text-towa-text-muted">
+      <span class="font-medium text-towa-text">{{ pageToDeleteIndex }}페이지</span>를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.
+    </p>
+    <template #footer>
+      <BaseButton variant="secondary" size="sm" @click="deleteModal.close()">취소</BaseButton>
+      <BaseButton variant="danger" size="sm" @click="deletePage">삭제</BaseButton>
+    </template>
+  </BaseModal>
 </template>

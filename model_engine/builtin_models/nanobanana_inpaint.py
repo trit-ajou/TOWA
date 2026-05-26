@@ -1,13 +1,15 @@
 from __future__ import annotations
 
+import base64
 from datetime import datetime, timezone
 from io import BytesIO
 import json
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Any, Callable, Optional, Sequence
+from urllib import error, request
 from urllib.parse import urlparse
 
-from PIL import Image
+from PIL import Image, ImageChops, ImageFilter
 
 from ..adapters.callable import CallableModelAdapter
 from ..contracts.artifacts import ArtifactDescriptor, ArtifactStatus
@@ -25,8 +27,16 @@ from ..models.registry import ModelRegistry
 from ..storage import stage_run_slug, stage_transaction_dir
 
 
+ImageReference = tuple[bytes, str]
+GenerateEditFn = Callable[[Sequence[ImageReference], str, str, str], bytes]
+
 NANOBANANA_INPAINT_MODEL_ID = "builtin.nanobanana.inpaint"
 NANOBANANA_IMAGE_MODEL = "gemini-3.1-flash-image-preview"
+MINDLOGIC_INPAINT_MODEL_ID = "builtin.mindlogic.inpaint"
+MINDLOGIC_IMAGE_MODEL = "imagen-3.0-capability-001"
+MINDLOGIC_IMAGE_EDIT_BASE_URL = "https://factchat-cloud.mindlogic.ai/v1/api/google"
+MINDLOGIC_IMAGE_EDIT_PATH = "/models/edit-image"
+MINDLOGIC_IMAGE_EDIT_MODE = "EDIT_MODE_DEFAULT"
 NANOBANANA_DEFAULT_PROMPT = (
     "Use the provided manga page as the source image. "
     "Remove all visible source text, speech balloon text, and sound effects from the page. "
@@ -43,7 +53,7 @@ def build_nanobanana_inpaint_manifest() -> StageManifest:
         model_id=NANOBANANA_INPAINT_MODEL_ID,
         adapter_id="adapter.builtin.nanobanana.inpaint",
         stage_kind=StageKind.INPAINT,
-        required_artifact_kinds=["bitmap", "inpaint_tasks"],
+        required_artifact_kinds=["bitmap"],
         produced_artifact_kinds=["bitmap"],
         supported_modes=[ExecutionMode.LOCAL, ExecutionMode.SAAS],
         allowed_credential_sources=[
@@ -65,10 +75,46 @@ def build_nanobanana_inpaint_manifest() -> StageManifest:
     )
 
 
+def build_mindlogic_inpaint_manifest() -> StageManifest:
+    from ..contracts.credentials import BillingMode, CredentialSource
+
+    return StageManifest(
+        model_id=MINDLOGIC_INPAINT_MODEL_ID,
+        adapter_id="adapter.builtin.mindlogic.inpaint",
+        stage_kind=StageKind.INPAINT,
+        required_artifact_kinds=["bitmap"],
+        produced_artifact_kinds=["bitmap"],
+        supported_modes=[ExecutionMode.LOCAL, ExecutionMode.SAAS],
+        allowed_credential_sources=[
+            CredentialSource.USER_PERSONAL_PERSISTED,
+            CredentialSource.USER_PERSONAL_SESSION,
+            CredentialSource.PLATFORM_MANAGED,
+        ],
+        billing_modes=[BillingMode.USER_DIRECT, BillingMode.PLATFORM_CREDIT],
+        resource_profile=ResourceProfile(
+            cpu_threads=1,
+            memory_mb=1024,
+            gpu_required=False,
+            latency_tier="network",
+        ),
+        custom_model=False,
+        priority=50,
+        display_name="Mindlogic Image Edit Inpaint",
+        tags=["builtin", "mindlogic", "inpaint", "google-edit"],
+    )
+
+
 def build_nanobanana_inpaint_adapter() -> CallableModelAdapter:
     return CallableModelAdapter.from_import_path(
         build_nanobanana_inpaint_manifest(),
         import_path="model_engine.builtin_models.nanobanana_inpaint:nanobanana_inpaint_handler",
+    )
+
+
+def build_mindlogic_inpaint_adapter() -> CallableModelAdapter:
+    return CallableModelAdapter.from_import_path(
+        build_mindlogic_inpaint_manifest(),
+        import_path="model_engine.builtin_models.nanobanana_inpaint:mindlogic_inpaint_handler",
     )
 
 
@@ -77,32 +123,49 @@ def register_nanobanana_inpaint_model(registry: ModelRegistry) -> str:
     return NANOBANANA_INPAINT_MODEL_ID
 
 
+def register_mindlogic_inpaint_model(registry: ModelRegistry) -> str:
+    registry.register(build_mindlogic_inpaint_adapter())
+    return MINDLOGIC_INPAINT_MODEL_ID
+
+
 def nanobanana_inpaint_handler(request: StageRequest) -> StageResponse:
     return run_nanobanana_inpaint(request)
+
+
+def mindlogic_inpaint_handler(request: StageRequest) -> StageResponse:
+    return run_nanobanana_inpaint(
+        request,
+        generate_edit_fn=_generate_with_mindlogic_google_edit,
+        default_model_name=MINDLOGIC_IMAGE_MODEL,
+        provider_name="mindlogic",
+        engine_name="mindlogic_google_edit",
+    )
 
 
 def run_nanobanana_inpaint(
     request: StageRequest,
     *,
-    generate_edit_fn: Optional[
-        Callable[[bytes, str, str, str, str], bytes]
-    ] = None,
+    generate_edit_fn: Optional[GenerateEditFn] = None,
+    default_model_name: str = NANOBANANA_IMAGE_MODEL,
+    provider_name: str = "nanobanana",
+    engine_name: str = "nanobanana_vertex",
 ) -> StageResponse:
     started_at = datetime.now(timezone.utc)
-    tasks_artifact = _resolve_inpaint_tasks_artifact(request)
-    tasks_payload = inpaint_tasks_payload_from_mapping(
-        json.loads(_file_path_from_uri(tasks_artifact.uri).read_text(encoding="utf-8"))
-    )
-    if not tasks_payload.tasks:
-        raise ValueError("Nanobanana inpaint requires at least one inpaint task")
+    target_layer_id = str(request.stage_config.get("target_layer_id", "layer_inpainting"))
 
-    target_layer_id = tasks_payload.target_layer_id
-    if target_layer_id != "layer_inpainting":
-        raise ValueError("Nanobanana inpaint can only target layer_inpainting")
+    tasks_payload = _try_resolve_inpaint_tasks(request)
+    use_mask = tasks_payload is not None and len(tasks_payload.tasks) > 0
 
-    base_artifact = request.artifacts[tasks_payload.source_artifact_ref]
+    if use_mask:
+        base_artifact = request.artifacts[tasks_payload.source_artifact_ref]
+    else:
+        input_ref = str(request.stage_config.get("input_artifact_ref", ""))
+        if input_ref and input_ref in request.artifacts:
+            base_artifact = request.artifacts[input_ref]
+        else:
+            base_artifact = _resolve_first_bitmap_artifact(request)
+
     base_image = Image.open(_file_path_from_uri(base_artifact.uri)).convert("RGBA")
-    edited_image = _initial_inpainting_canvas(request, base_image, target_layer_id)
 
     generate_edit_fn = generate_edit_fn or _generate_with_nanobanana_vertex
     request_provider = request.resolved_credentials.get("primary_provider")
@@ -112,20 +175,16 @@ def run_nanobanana_inpaint(
     if not api_key:
         raise RuntimeError("Nanobanana inpaint requires an API key")
 
-    prompt_override = request.stage_config.get("prompt")
-    model_name = str(request.stage_config.get("model_name", NANOBANANA_IMAGE_MODEL))
-    prompt = str(prompt_override or NANOBANANA_DEFAULT_PROMPT)
+    model_name = str(request.stage_config.get("model_name", default_model_name))
+    base_prompt = _resolve_inpaint_prompt(request)
+    prompt = _build_inpaint_prompt(base_prompt, base_image.size)
     warnings: list[str] = []
 
     try:
-        for task in tasks_payload.tasks:
-            if task.target_layer_id != "layer_inpainting":
-                raise ValueError("Nanobanana inpaint task attempted to target a non-inpainting layer")
-
         page_bytes = _image_to_bytes(base_image, format_hint="PNG")
+        reference_images: list[ImageReference] = [(page_bytes, "image/png")]
         generated_bytes = generate_edit_fn(
-            page_bytes,
-            "image/png",
+            reference_images,
             prompt,
             model_name,
             api_key,
@@ -134,40 +193,72 @@ def run_nanobanana_inpaint(
         generated_page, resize_warning = _normalize_generated_page_size(generated_page, base_image.size)
         if resize_warning is not None:
             warnings.append(resize_warning)
-        provider_output_artifact = _write_provider_output_bitmap(request, generated_page)
-        composite_mask = _build_composite_mask(request, tasks_payload, base_image.size)
-        edited_image.paste(generated_page, (0, 0), composite_mask)
+        provider_output_artifact = _write_provider_output_bitmap(
+            request,
+            generated_page,
+            provider_name,
+        )
+
+        if use_mask:
+            edited_image = _initial_inpainting_canvas(request, base_image, target_layer_id)
+            composite_mask = _build_composite_mask(request, tasks_payload, base_image.size)
+            edited_image.paste(generated_page, (0, 0), composite_mask)
+            diff_metrics: dict[str, int | float | str] = {}
+        else:
+            edited_image, diff_metrics = _build_diff_overlay_image(
+                request,
+                base_image,
+                generated_page,
+                warnings,
+            )
     except Exception as exc:
         return _failed_response(
             request,
             started_at=started_at,
-            edited_image=edited_image,
+            edited_image=Image.new("RGBA", base_image.size, color=(0, 0, 0, 0)),
             tasks_payload=tasks_payload,
             model_name=model_name,
+            provider_name=provider_name,
             error=exc,
         )
 
     output_artifact = _write_inpainted_bitmap(request, edited_image, target_layer_id)
-    patches = _patches_for_inpainting_layer(request, output_artifact.artifact_ref, target_layer_id)
+    output_refs = [provider_output_artifact.artifact_ref, output_artifact.artifact_ref]
+    response_artifacts = {
+        provider_output_artifact.artifact_ref: provider_output_artifact,
+        output_artifact.artifact_ref: output_artifact,
+    }
+    patches = _patches_for_inpainting_layer(
+        request,
+        output_artifact.artifact_ref,
+        target_layer_id,
+        engine_name,
+    )
     finished_at = datetime.now(timezone.utc)
+    task_count = len(tasks_payload.tasks) if tasks_payload else 0
+    metrics = {
+        "provider": provider_name,
+        "model_name": model_name,
+        "task_count": task_count,
+        "target_layer_id": target_layer_id,
+        "provider_call_mode": "full_page_single_call",
+        "composite_mask_mode": _composite_mask_mode(request) if use_mask else "pixel_diff",
+        "provider_output_size": f"{generated_page.width}x{generated_page.height}",
+        "base_image_size": f"{base_image.width}x{base_image.height}",
+        "prompt_output_size": f"{base_image.width}x{base_image.height}",
+        "provider_output_resized": "yes" if resize_warning is not None else "no",
+        "provider_reference_image_count": 1,
+        "provider_mask_guide": "no",
+    }
+    metrics.update(diff_metrics)
     report = StageReport(
         stage_name=request.stage_name,
         stage_run_id=request.stage_run_id,
         status=StageStatus.SUCCEEDED,
         input_refs=sorted(request.artifacts.keys()),
-        output_refs=[provider_output_artifact.artifact_ref, output_artifact.artifact_ref],
+        output_refs=output_refs,
         warnings=warnings,
-        metrics={
-            "provider": "nanobanana",
-            "model_name": model_name,
-            "task_count": len(tasks_payload.tasks),
-            "target_layer_id": target_layer_id,
-            "provider_call_mode": "full_page_single_call",
-            "composite_mask_mode": "local_mask_only",
-            "provider_output_size": f"{generated_page.width}x{generated_page.height}",
-            "base_image_size": f"{base_image.width}x{base_image.height}",
-            "provider_output_resized": "yes" if resize_warning is not None else "no",
-        },
+        metrics=metrics,
         provider=request.credential_bindings.get("primary_provider"),
         started_at=started_at,
         finished_at=finished_at,
@@ -178,10 +269,7 @@ def run_nanobanana_inpaint(
         stage_run_id=request.stage_run_id,
         status=StageStatus.SUCCEEDED,
         patches=patches,
-        artifacts={
-            provider_output_artifact.artifact_ref: provider_output_artifact,
-            output_artifact.artifact_ref: output_artifact,
-        },
+        artifacts=response_artifacts,
         stage_report=report,
     )
 
@@ -199,6 +287,31 @@ def _resolve_inpaint_tasks_artifact(request: StageRequest) -> ArtifactDescriptor
     raise ValueError("Nanobanana inpaint requires an inpaint_tasks artifact")
 
 
+def _try_resolve_inpaint_tasks(request: StageRequest) -> Optional[object]:
+    """Resolve inpaint_tasks artifact if available, return None otherwise."""
+    try:
+        tasks_artifact = _resolve_inpaint_tasks_artifact(request)
+    except (ValueError, KeyError):
+        return None
+    return inpaint_tasks_payload_from_mapping(
+        json.loads(_file_path_from_uri(tasks_artifact.uri).read_text(encoding="utf-8"))
+    )
+
+
+def _resolve_inpaint_prompt(request: StageRequest) -> str:
+    prompt_override = request.stage_config.get("prompt")
+    if prompt_override:
+        return str(prompt_override)
+    return NANOBANANA_DEFAULT_PROMPT
+
+
+def _resolve_first_bitmap_artifact(request: StageRequest) -> ArtifactDescriptor:
+    for artifact in request.artifacts.values():
+        if artifact.kind == "bitmap":
+            return artifact
+    raise ValueError("Inpaint requires at least one bitmap artifact")
+
+
 def _file_path_from_uri(uri: str) -> Path:
     parsed = urlparse(uri)
     if parsed.scheme != "file":
@@ -213,8 +326,7 @@ def _image_to_bytes(image: Image.Image, *, format_hint: str) -> bytes:
 
 
 def _generate_with_nanobanana_vertex(
-    source_image_bytes: bytes,
-    source_mime_type: str,
+    reference_images: Sequence[ImageReference],
     prompt: str,
     model_name: str,
     api_key: str,
@@ -228,12 +340,14 @@ def _generate_with_nanobanana_vertex(
         ) from exc
 
     client = genai.Client(vertexai=True, api_key=api_key)
+    contents: list[object] = [
+        types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
+        for image_bytes, mime_type in reference_images
+    ]
+    contents.append(prompt)
     response = client.models.generate_content(
         model=model_name,
-        contents=[
-            types.Part.from_bytes(data=source_image_bytes, mime_type=source_mime_type),
-            prompt,
-        ],
+        contents=contents,
         config=types.GenerateContentConfig(response_modalities=["TEXT", "IMAGE"]),
     )
     response_texts: list[str] = []
@@ -277,19 +391,210 @@ def _image_part_to_png_bytes(part: object) -> bytes:
     raise RuntimeError("Nanobanana image part could not be converted into PNG bytes")
 
 
+def _generate_with_mindlogic_google_edit(
+    reference_images: Sequence[ImageReference],
+    prompt: str,
+    model_name: str,
+    api_key: str,
+) -> bytes:
+    payload = {
+        "model": model_name,
+        "prompt": prompt,
+        "reference_images": [
+            _build_mindlogic_reference_image_payload(
+                index=index,
+                image_bytes=image_bytes,
+                mime_type=mime_type,
+            )
+            for index, (image_bytes, mime_type) in enumerate(reference_images, start=1)
+        ],
+        "config": {
+            "edit_mode": MINDLOGIC_IMAGE_EDIT_MODE,
+            "number_of_images": 1,
+            "output_mime_type": "image/png",
+        },
+    }
+    endpoint = MINDLOGIC_IMAGE_EDIT_BASE_URL.rstrip("/") + MINDLOGIC_IMAGE_EDIT_PATH
+    body = json.dumps(payload).encode("utf-8")
+    req = request.Request(endpoint, data=body, method="POST")
+    req.add_header("Authorization", f"Bearer {api_key}")
+    req.add_header("Accept", "application/json")
+    req.add_header("Content-Type", "application/json")
+    req.add_header("User-Agent", "curl/8.7.1")
+    try:
+        with request.urlopen(req, timeout=180.0) as resp:
+            response_payload = json.loads(resp.read().decode("utf-8"))
+    except error.HTTPError as exc:
+        raw = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"Mindlogic image edit failed: HTTP {exc.code}: {raw}") from exc
+
+    image_bytes = _extract_mindlogic_image_bytes(response_payload)
+    if image_bytes is None:
+        keys = sorted(response_payload.keys()) if isinstance(response_payload, dict) else []
+        raise RuntimeError(f"Mindlogic image edit response did not include an image: keys={keys}")
+    return image_bytes
+
+
+def _build_mindlogic_reference_image_payload(
+    *,
+    index: int,
+    image_bytes: bytes,
+    mime_type: str,
+) -> dict[str, Any]:
+    return {
+        "reference_id": index,
+        "reference_type": "REFERENCE_TYPE_RAW",
+        "reference_image": {
+            "image_bytes": base64.b64encode(image_bytes).decode("ascii"),
+            "mime_type": mime_type,
+        },
+    }
+
+
+def _extract_mindlogic_image_bytes(payload: Any) -> Optional[bytes]:
+    if isinstance(payload, str):
+        return _decode_mindlogic_image_value(payload)
+    if isinstance(payload, list):
+        for item in payload:
+            image_bytes = _extract_mindlogic_image_bytes(item)
+            if image_bytes is not None:
+                return image_bytes
+        return None
+    if not isinstance(payload, dict):
+        return None
+
+    for key in (
+        "generated_images",
+        "data",
+        "images",
+        "output",
+        "image",
+        "image_bytes",
+        "url",
+        "b64_json",
+        "base64",
+        "image_url",
+    ):
+        value = payload.get(key)
+        image_bytes = _extract_mindlogic_image_bytes(value)
+        if image_bytes is not None:
+            return image_bytes
+    return None
+
+
+def _decode_mindlogic_image_value(value: str) -> Optional[bytes]:
+    if value.startswith("data:image/"):
+        _, encoded = value.split(",", 1)
+        return base64.b64decode(encoded)
+    if value.startswith("http://") or value.startswith("https://"):
+        with request.urlopen(value, timeout=180.0) as resp:
+            return resp.read()
+    try:
+        return base64.b64decode(value, validate=True)
+    except Exception:
+        return None
+
+
 def _build_composite_mask(
     request: StageRequest,
     tasks_payload: object,
     image_size: tuple[int, int],
 ) -> Image.Image:
+    mask_mode = _composite_mask_mode(request)
     composite_mask = Image.new("L", image_size, color=0)
     for task in getattr(tasks_payload, "tasks", []) or []:
+        if mask_mode == "expanded_bbox":
+            bbox = task.expanded_bbox
+            bbox_mask = Image.new("L", (bbox["width"], bbox["height"]), color=255)
+            composite_mask.paste(bbox_mask, (bbox["x"], bbox["y"]))
+            continue
+        if mask_mode != "mask_artifact":
+            raise ValueError(f"Unsupported output_mask_mode: {mask_mode}")
         mask_artifact = request.artifacts[task.mask_artifact_ref]
         mask_path = _file_path_from_uri(mask_artifact.uri)
         region_mask = Image.open(mask_path).convert("L")
         position = (task.expanded_bbox["x"], task.expanded_bbox["y"])
         composite_mask.paste(region_mask, position, region_mask)
     return composite_mask
+
+
+def _composite_mask_mode(request: StageRequest) -> str:
+    return str(request.stage_config.get("output_mask_mode", "mask_artifact"))
+
+
+def _build_inpaint_prompt(base_prompt: str, image_size: tuple[int, int]) -> str:
+    width, height = image_size
+    return (
+        f"{base_prompt}\n\n"
+        "Output constraint: preserve the exact source canvas size and aspect ratio. "
+        f"The output image must be exactly {width}x{height} pixels. "
+        "Do not crop, pad, rotate, stretch, zoom, or change the page scale."
+    )
+
+
+def _build_diff_overlay_image(
+    request: StageRequest,
+    base_image: Image.Image,
+    generated_page: Image.Image,
+    warnings: list[str],
+) -> tuple[Image.Image, dict[str, int | float | str]]:
+    threshold = int(request.stage_config.get("diff_threshold", 24))
+    dilate_radius = int(request.stage_config.get("diff_dilate_radius", 1))
+    large_ratio_threshold = float(
+        request.stage_config.get("diff_large_region_ratio_threshold", 0.35)
+    )
+    diff_mask = _build_pixel_diff_mask(
+        base_image,
+        generated_page,
+        threshold=threshold,
+        dilate_radius=dilate_radius,
+    )
+    edited_image = Image.new("RGBA", base_image.size, color=(0, 0, 0, 0))
+    diff_bbox = diff_mask.getbbox()
+    if diff_bbox is not None:
+        edited_image.paste(generated_page, (0, 0), diff_mask)
+
+    changed_pixels = diff_mask.histogram()[255]
+    total_pixels = max(base_image.width * base_image.height, 1)
+    changed_ratio = changed_pixels / total_pixels
+    if changed_ratio > large_ratio_threshold:
+        warnings.append(
+            "diff_overlay_large_changed_region: "
+            f"ratio={changed_ratio:.6f} threshold={large_ratio_threshold:.6f}"
+        )
+    return edited_image, {
+        "diff_threshold": threshold,
+        "diff_dilate_radius": dilate_radius,
+        "diff_changed_pixel_count": changed_pixels,
+        "diff_changed_pixel_ratio": round(changed_ratio, 6),
+        "diff_bbox": _bbox_to_metric(diff_bbox),
+    }
+
+
+def _build_pixel_diff_mask(
+    base_image: Image.Image,
+    generated_page: Image.Image,
+    *,
+    threshold: int,
+    dilate_radius: int,
+) -> Image.Image:
+    base_rgb = base_image.convert("RGB")
+    generated_rgb = generated_page.convert("RGB")
+    diff = ImageChops.difference(base_rgb, generated_rgb)
+    red_diff, green_diff, blue_diff = diff.split()
+    max_channel_diff = ImageChops.lighter(ImageChops.lighter(red_diff, green_diff), blue_diff)
+    thresholded = max_channel_diff.point(lambda value: 255 if value >= threshold else 0)
+    if dilate_radius <= 0:
+        return thresholded
+    kernel_size = dilate_radius * 2 + 1
+    return thresholded.filter(ImageFilter.MaxFilter(kernel_size))
+
+
+def _bbox_to_metric(bbox: tuple[int, int, int, int] | None) -> str:
+    if bbox is None:
+        return "none"
+    left, top, right, bottom = bbox
+    return f"{left},{top},{right},{bottom}"
 
 
 def _normalize_generated_page_size(
@@ -359,6 +664,7 @@ def _write_inpainted_bitmap(
 def _write_provider_output_bitmap(
     request: StageRequest,
     image: Image.Image,
+    provider_name: str = "nanobanana",
 ) -> ArtifactDescriptor:
     stage_dir = stage_transaction_dir(request)
     run_slug = stage_run_slug(request.stage_run_id)
@@ -377,7 +683,7 @@ def _write_provider_output_bitmap(
         height=image.height,
         byte_size=output_path.stat().st_size,
         producer_stage=request.stage_name,
-        metadata={"role": "provider_output_bitmap", "provider": "nanobanana"},
+        metadata={"role": "provider_output_bitmap", "provider": provider_name},
     )
 
 
@@ -385,6 +691,7 @@ def _patches_for_inpainting_layer(
     request: StageRequest,
     artifact_ref: str,
     target_layer_id: str,
+    engine_name: str,
 ) -> list[PatchOperation]:
     existing_layer = request.document.get_layer(target_layer_id)
     if existing_layer is None:
@@ -412,7 +719,7 @@ def _patches_for_inpainting_layer(
                 payload={
                     "key": "inpaint",
                     "value": {
-                        "engine": "nanobanana_vertex",
+                        "engine": engine_name,
                         "target_layer_id": target_layer_id,
                         "artifact_ref": artifact_ref,
                         "provider_output_role": "provider_output_bitmap",
@@ -431,7 +738,7 @@ def _patches_for_inpainting_layer(
             payload={
                 "key": "inpaint",
                 "value": {
-                    "engine": "nanobanana_vertex",
+                    "engine": engine_name,
                     "target_layer_id": target_layer_id,
                     "artifact_ref": artifact_ref,
                     "provider_output_role": "provider_output_bitmap",
@@ -446,6 +753,7 @@ def _failed_response(
     edited_image: Image.Image,
     tasks_payload: object,
     model_name: str,
+    provider_name: str,
     error: Exception,
 ) -> StageResponse:
     snapshot_artifacts = _write_failure_snapshot(
@@ -463,7 +771,7 @@ def _failed_response(
         output_refs=sorted(snapshot_artifacts.keys()),
         warnings=[],
         metrics={
-            "provider": "nanobanana",
+            "provider": provider_name,
             "model_name": model_name,
             "task_count": len(getattr(tasks_payload, "tasks", []) or []),
             "snapshot_retained": "yes",

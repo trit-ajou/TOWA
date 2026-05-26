@@ -50,4 +50,12 @@ class AdapterBackedStage(Stage):
         response.stage_report.metrics.setdefault("model_id", selection.manifest.model_id)
         response.stage_report.metrics.setdefault("adapter_id", selection.manifest.adapter_id)
         response.stage_report.metrics.setdefault("selection_reason", selection.reason)
+        response.stage_report.metrics.setdefault(
+            "execution_backend",
+            selection.manifest.execution_backend.value,
+        )
+        response.stage_report.metrics.setdefault(
+            "runtime_family",
+            selection.manifest.runtime_family,
+        )
         return response

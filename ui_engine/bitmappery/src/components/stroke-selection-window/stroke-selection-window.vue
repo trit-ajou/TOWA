@@ -85,7 +85,7 @@ export default {
         color: null,
     }),
     computed: {
-        ...mapGetters([
+        ...mapGetters("bmp", [
             "activeDocument",
             "activeLayer",
             "activeColor",
@@ -101,7 +101,7 @@ export default {
         focus( this.$refs.sizeInput );
     },
     methods: {
-        ...mapMutations([
+        ...mapMutations("bmp", [
             "closeModal",
         ]),
         stroke(): void {

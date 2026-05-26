@@ -10,9 +10,15 @@ from unittest.mock import patch
 from PIL import Image
 
 from model_engine.builtin_models.nanobanana_inpaint import (
+    MINDLOGIC_IMAGE_MODEL,
+    MINDLOGIC_INPAINT_MODEL_ID,
+    MINDLOGIC_IMAGE_EDIT_MODE,
+    NANOBANANA_DEFAULT_PROMPT,
     NANOBANANA_INPAINT_MODEL_ID,
+    _build_mindlogic_reference_image_payload,
     _missing_image_error,
     _image_part_to_png_bytes,
+    register_mindlogic_inpaint_model,
     register_nanobanana_inpaint_model,
     run_nanobanana_inpaint,
 )
@@ -125,6 +131,141 @@ class NanobananaInpaintTests(unittest.TestCase):
                 "preferred_model_id=builtin.nanobanana.inpaint",
                 response.stage_report.metrics["selection_reason"],
             )
+
+    def test_registry_runs_mindlogic_inpaint_with_shared_prompt(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            planning_response = run_mask_or_erase_planning(_planning_request(Path(tmpdir)))
+            registry = ModelRegistry()
+            register_mindlogic_inpaint_model(registry)
+            stage = AdapterBackedStage(
+                "inpaint",
+                stage_kind=StageKind.INPAINT,
+                registry=registry,
+                preferred_model_id=MINDLOGIC_INPAINT_MODEL_ID,
+                config={"provider": "mindlogic"},
+            )
+            captured: dict[str, str] = {}
+
+            def _capture_generate_edit(
+                reference_images: list[tuple[bytes, str]],
+                prompt: str,
+                model_name: str,
+                api_key: str,
+            ) -> bytes:
+                captured["reference_count"] = str(len(reference_images))
+                captured["source_mime_type"] = reference_images[0][1]
+                captured["prompt"] = prompt
+                captured["model_name"] = model_name
+                captured["api_key"] = api_key
+                return _fake_generate_edit(
+                    reference_images,
+                    prompt,
+                    model_name,
+                    api_key,
+                )
+
+            with patch(
+                "model_engine.builtin_models.nanobanana_inpaint._generate_with_mindlogic_google_edit",
+                side_effect=_capture_generate_edit,
+            ):
+                response = stage.run(
+                    _inpaint_request(
+                        Path(tmpdir),
+                        planning_response.artifacts,
+                        provider="mindlogic",
+                    )
+            )
+
+            self.assertEqual(StageStatus.SUCCEEDED, response.status)
+            self.assertIn(NANOBANANA_DEFAULT_PROMPT, captured["prompt"])
+            self.assertIn("exactly 10x10 pixels", captured["prompt"])
+            self.assertIn("Do not crop, pad, rotate, stretch, zoom", captured["prompt"])
+            self.assertEqual(MINDLOGIC_IMAGE_MODEL, captured["model_name"])
+            self.assertEqual("1", captured["reference_count"])
+            self.assertEqual("image/png", captured["source_mime_type"])
+            self.assertEqual("test-key", captured["api_key"])
+            self.assertEqual("mindlogic", response.stage_report.metrics["provider"])
+            self.assertEqual("10x10", response.stage_report.metrics["prompt_output_size"])
+            self.assertEqual(1, response.stage_report.metrics["provider_reference_image_count"])
+            self.assertEqual("no", response.stage_report.metrics["provider_mask_guide"])
+            self.assertEqual(MINDLOGIC_INPAINT_MODEL_ID, response.stage_report.metrics["model_id"])
+            self.assertEqual("mindlogic_google_edit", response.patches[1].payload["value"]["engine"])
+
+    def test_registry_runs_mindlogic_inpaint_with_bitmap_only(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace_dir = Path(tmpdir)
+            _write_base_image(workspace_dir / "page.png")
+            registry = ModelRegistry()
+            register_mindlogic_inpaint_model(registry)
+            stage = AdapterBackedStage(
+                "inpaint",
+                stage_kind=StageKind.INPAINT,
+                registry=registry,
+                preferred_model_id=MINDLOGIC_INPAINT_MODEL_ID,
+                config={"provider": "mindlogic"},
+            )
+
+            with patch(
+                "model_engine.builtin_models.nanobanana_inpaint._generate_with_mindlogic_google_edit",
+                side_effect=_fake_generate_edit,
+            ):
+                response = stage.run(
+                    _inpaint_request(
+                        workspace_dir,
+                        {},
+                        provider="mindlogic",
+                    )
+                )
+
+            self.assertEqual(StageStatus.SUCCEEDED, response.status)
+            self.assertEqual(MINDLOGIC_INPAINT_MODEL_ID, response.stage_report.metrics["model_id"])
+            self.assertEqual("0", str(response.stage_report.metrics["task_count"]))
+            self.assertEqual("pixel_diff", response.stage_report.metrics["composite_mask_mode"])
+            self.assertEqual("mindlogic_google_edit", response.patches[1].payload["value"]["engine"])
+
+    def test_mindlogic_edit_mode_uses_single_raw_reference(self) -> None:
+        payload = _build_mindlogic_reference_image_payload(
+            index=1,
+            image_bytes=b"raw-bytes",
+            mime_type="image/png",
+        )
+
+        self.assertEqual("EDIT_MODE_DEFAULT", MINDLOGIC_IMAGE_EDIT_MODE)
+        self.assertEqual("REFERENCE_TYPE_RAW", payload["reference_type"])
+        self.assertEqual("image/png", payload["reference_image"]["mime_type"])
+        self.assertIn("image_bytes", payload["reference_image"])
+        self.assertNotIn("image_bytes", {k: v for k, v in payload.items() if k != "reference_image"})
+
+    def test_bitmap_only_inpaint_writes_diff_overlay_for_ui_layer(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace_dir = Path(tmpdir)
+            _write_base_image(workspace_dir / "page.png")
+
+            response = run_nanobanana_inpaint(
+                _inpaint_request(workspace_dir, {}),
+                generate_edit_fn=_fake_generate_edit_partial,
+            )
+
+            self.assertEqual(StageStatus.SUCCEEDED, response.status)
+            self.assertEqual("pixel_diff", response.stage_report.metrics["composite_mask_mode"])
+            self.assertEqual("4,4,7,7", response.stage_report.metrics["diff_bbox"])
+            self.assertEqual(9, response.stage_report.metrics["diff_changed_pixel_count"])
+            bitmap_artifact = next(
+                descriptor
+                for descriptor in response.artifacts.values()
+                if descriptor.metadata.get("role") == "inpainting_layer_bitmap"
+            )
+            provider_artifact = next(
+                descriptor
+                for descriptor in response.artifacts.values()
+                if descriptor.metadata.get("role") == "provider_output_bitmap"
+            )
+            output_image = Image.open(Path(bitmap_artifact.uri.removeprefix("file://"))).convert("RGBA")
+            provider_image = Image.open(Path(provider_artifact.uri.removeprefix("file://"))).convert("RGBA")
+            self.assertEqual((0, 0, 0, 0), output_image.getpixel((0, 0)))
+            self.assertEqual((0, 255, 0, 255), output_image.getpixel((5, 5)))
+            self.assertEqual((0, 0, 255, 255), provider_image.getpixel((0, 0)))
+            self.assertEqual((0, 255, 0, 255), provider_image.getpixel((5, 5)))
 
     def test_nanobanana_inpaint_resizes_provider_output_to_base_size(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -289,6 +430,8 @@ def _planning_request(workspace_dir: Path) -> StageRequest:
 def _inpaint_request(
     workspace_dir: Path,
     planning_artifacts: dict[str, ArtifactDescriptor],
+    *,
+    provider: str = "nanobanana",
 ) -> StageRequest:
     artifacts = dict(planning_artifacts)
     image_path = workspace_dir / "page.png"
@@ -301,9 +444,9 @@ def _inpaint_request(
         height=10,
     )
     binding = CredentialBinding(
-        provider="nanobanana",
+        provider=provider,
         credential_source=CredentialSource.USER_PERSONAL_SESSION,
-        credential_id="session/nanobanana/active",
+        credential_id=f"session/{provider}/active",
         credential_version="session",
         billing_mode=BillingMode.USER_DIRECT,
     )
@@ -331,16 +474,15 @@ def _write_base_image(path: Path) -> None:
 
 
 def _fake_generate_edit(
-    source_image_bytes: bytes,
-    source_mime_type: str,
+    reference_images: list[tuple[bytes, str]],
     prompt: str,
     model_name: str,
     api_key: str,
 ) -> bytes:
-    _ = source_mime_type
     _ = prompt
     _ = model_name
     _ = api_key
+    source_image_bytes, _source_mime_type = reference_images[0]
     source_image = Image.open(BytesIO(source_image_bytes)).convert("RGBA")
     edited = Image.new("RGBA", source_image.size, color=(0, 255, 0, 255))
     buffer = BytesIO()
@@ -348,15 +490,30 @@ def _fake_generate_edit(
     return buffer.getvalue()
 
 
-def _failing_generate_edit(
-    source_image_bytes: bytes,
-    source_mime_type: str,
+def _fake_generate_edit_partial(
+    reference_images: list[tuple[bytes, str]],
     prompt: str,
     model_name: str,
     api_key: str,
 ) -> bytes:
-    _ = source_image_bytes
-    _ = source_mime_type
+    _ = prompt
+    _ = model_name
+    _ = api_key
+    source_image_bytes, _source_mime_type = reference_images[0]
+    edited = Image.open(BytesIO(source_image_bytes)).convert("RGBA")
+    edited.putpixel((5, 5), (0, 255, 0, 255))
+    buffer = BytesIO()
+    edited.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def _failing_generate_edit(
+    reference_images: list[tuple[bytes, str]],
+    prompt: str,
+    model_name: str,
+    api_key: str,
+) -> bytes:
+    _ = reference_images
     _ = prompt
     _ = model_name
     _ = api_key
@@ -364,14 +521,12 @@ def _failing_generate_edit(
 
 
 def _fake_generate_edit_resized(
-    source_image_bytes: bytes,
-    source_mime_type: str,
+    reference_images: list[tuple[bytes, str]],
     prompt: str,
     model_name: str,
     api_key: str,
 ) -> bytes:
-    _ = source_image_bytes
-    _ = source_mime_type
+    _ = reference_images
     _ = prompt
     _ = model_name
     _ = api_key

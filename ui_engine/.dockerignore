@@ -1,0 +1,11 @@
+.git
+bitmappery/node_modules/
+bitmappery/dist/
+bitmappery/dist-ssr/
+towa-app/node_modules/
+towa-app/dist/
+towa-app/dist-ssr/
+towa-app/.env
+towa-app/.env.local
+towa-app/.env.*.local
+.DS_Store

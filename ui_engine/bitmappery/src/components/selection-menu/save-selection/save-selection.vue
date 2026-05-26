@@ -70,7 +70,7 @@ export default {
         name: "",
     }),
     computed: {
-        ...mapGetters([
+        ...mapGetters("bmp", [
             "activeDocument",
         ]),
         isValid() {
@@ -81,7 +81,7 @@ export default {
         focus( this.$refs.nameInput );
     },
     methods: {
-        ...mapMutations([
+        ...mapMutations("bmp", [
             "closeModal",
             "saveSelection",
         ]),

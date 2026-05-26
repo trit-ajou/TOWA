@@ -29,18 +29,18 @@ import { type BitMapperyState } from "@/store";
 
 export const addLayer = ( store: Store<BitMapperyState>, layer: Layer, index: number ): void => {
     const commit = (): void => {
-        store.commit( "insertLayerAtIndex", { index, layer });
+        store.commit( "bmp/insertLayerAtIndex", { index, layer });
     };
     commit();
     
     // only on initial creation
     if ( layer.type === LayerTypes.LAYER_TEXT ) {
-        store.commit( "setActiveTool", { tool: ToolTypes.TEXT });
+        store.commit( "bmp/setActiveTool", { tool: ToolTypes.TEXT });
     }
 
     enqueueState( `layerAdd_${index}`, {
         undo(): void {
-            store.commit( "removeLayer", index );
+            store.commit( "bmp/removeLayer", index );
         },
         redo: commit,
     });

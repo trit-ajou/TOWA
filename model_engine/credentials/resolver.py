@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 from typing import Optional
 
+from ..config.runtime_config import load_runtime_config, runtime_config_value
 from ..contracts.credentials import BillingMode, CredentialBinding, CredentialSource, ResolvedCredential
 from ..contracts.stages import ExecutionMode, StageRuntimeContext
 
@@ -35,8 +36,14 @@ class DefaultCredentialResolver(CredentialResolver):
         *,
         environ: Optional[dict[str, str]] = None,
         credentials_file: Optional[str] = None,
+        runtime_config: Optional[dict[str, object]] = None,
     ) -> None:
         self._environ = environ if environ is not None else dict(os.environ)
+        self._runtime_config = (
+            runtime_config
+            if runtime_config is not None
+            else load_runtime_config(environ=self._environ)
+        )
         self._credentials_file = credentials_file or self._environ.get(
             "TOWA_CREDENTIALS_FILE",
             str(Path.home() / ".config" / "towa" / "model_engine" / "credentials.json"),
@@ -58,6 +65,9 @@ class DefaultCredentialResolver(CredentialResolver):
         return self._resolve_local_binding(provider, runtime_context)
 
     def _provider_for_stage(self, stage_name: str, stage_config: dict[str, object]) -> Optional[str]:
+        if bool(stage_config.get("skip_provider_resolution")):
+            return None
+
         explicit_provider = stage_config.get("provider")
         if isinstance(explicit_provider, str) and explicit_provider:
             return explicit_provider
@@ -73,13 +83,24 @@ class DefaultCredentialResolver(CredentialResolver):
         provider: str,
     ) -> tuple[dict[str, CredentialBinding], dict[str, ResolvedCredential]]:
         env_key = _platform_api_key_env(provider)
-        secret = self._environ.get(env_key)
+        secret = runtime_config_value(
+            self._runtime_config,
+            env_key,
+            aliases=_provider_api_key_aliases(provider),
+            environ=self._environ,
+        )
         if not secret:
             raise CredentialResolutionError(
                 f"Missing platform credential for provider={provider} env={env_key}"
             )
 
-        version = self._environ.get(_platform_version_env(provider), _today_version())
+        version = runtime_config_value(
+            self._runtime_config,
+            _platform_version_env(provider),
+            default=_today_version(),
+            aliases=_provider_version_aliases(provider),
+            environ=self._environ,
+        )
         binding = CredentialBinding(
             provider=provider,
             credential_source=CredentialSource.PLATFORM_MANAGED,
@@ -145,6 +166,23 @@ def _platform_api_key_env(provider: str) -> str:
 def _platform_version_env(provider: str) -> str:
     normalized = provider.upper().replace("-", "_")
     return f"TOWA_PLATFORM_PROVIDER_{normalized}_CREDENTIAL_VERSION"
+
+
+def _provider_api_key_aliases(provider: str) -> tuple[str, ...]:
+    normalized = provider.upper().replace("-", "_")
+    return (
+        f"TOWA_{normalized}_API_KEY",
+        f"{provider}_api_key",
+        f"inpaint.{provider}_api_key",
+        f"providers.{provider}.api_key",
+    )
+
+
+def _provider_version_aliases(provider: str) -> tuple[str, ...]:
+    return (
+        f"{provider}_credential_version",
+        f"providers.{provider}.credential_version",
+    )
 
 
 def _today_version() -> str:

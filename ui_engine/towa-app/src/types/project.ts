@@ -10,7 +10,7 @@ export interface ProjectConfig {
 export interface Project {
   id: string
   name: string
-  thumbnail: string
+  thumbnail?: string
   sourceLang: string
   targetLang: string
   pageCount: number

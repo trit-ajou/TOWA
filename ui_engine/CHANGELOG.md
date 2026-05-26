@@ -4,6 +4,224 @@
 
 ---
 
+## 2026-05-14
+
+### 10:27 — 페이지 전환 시 캔버스 가로 비율 깨짐 fix
+- 증상: 첫 진입 후 페이지 전환하면 canvas dimension이 fit-to-window 비율을 잃고 가로로 늘어남 (예: 583×875 → 1010×875). 페이지 placeholder가 화면 중앙에 작게 보이고 나머지가 빈 공간
+- 원인: `usePageLoader.loadPage`가 `store.commit('bmp/addNewDocument')` 직후 `window.dispatchEvent(new Event('resize'))`를 호출 → `bitmappery.vue` handleResize 트리거 → `setToolOptionValue(ZOOM, level=1)`으로 zoom 강제 reset → activeDocument watcher의 `calcIdealDimensions(true)`가 fit-to-window 값으로 재설정하기 직전에 캔버스가 비율 깨진 상태로 commit됨
+- `composables/usePageLoader.ts`: dispatchEvent 한 줄 제거. v-show false→true 토글 시점의 layout 재계산은 `views/ProjectView.vue:40-44`의 별도 watcher가 이미 같은 dispatchEvent를 호출하므로 잉여
+- 검증: Playwright로 5회 연속 페이지 전환 (2p→4p→6p→1p→7p) 시 canvas attr 583×875 유지 확인
+
+### 09:47 — 페이지 전환 시 캔버스 깜빡임 제거
+- 증상: 페이지 전환 시 1~2 프레임 동안 캔버스가 cleared 상태로 노출되어 CSS transparency 체커보드(흑백 격자)가 비치는 깜빡임
+- 진짜 원인 (Playwright element.width setter trap으로 확정): zCanvas의 `Canvas.setViewport`가 내부 `updateCanvasSize`에서 `element.width`를 재할당 → Canvas API spec상 ctx 자동 reset. `scaleCanvas`는 `zCanvas.setViewport(...)`를 먼저 호출하고 그 다음 `setDocumentScale → setDimensions`를 호출하므로 setViewport에서 이미 ctx가 cleared된 후 setDimensions wrap이 호출되면 backup이 비어있는 element를 복사하는 흐름
+- `bitmappery/src/rendering/actors/zoomable-canvas.ts`:
+  - `setViewport`와 `setDimensions`를 `_snapshotAndCall` 헬퍼로 wrap. element.width 변경 직전 픽셀을 임시 canvas에 백업 → super 호출 → identity transform으로 새 ctx에 복원. **setViewport도 wrap한 게 결정타**
+  - `render()` 가드: children 중 LayerRenderer(`.layer` 속성으로 식별)의 `_bitmap=null` 또는 `_bitmapReady=false`인 게 있으면 render skip. cacheEffects→setBitmap 비동기 파이프라인 동안 이전 frame 유지. GuideRenderer/InteractionPane 등은 가드에서 제외
+- `bitmappery/src/components/document-canvas/document-canvas.vue`:
+  - activeDocument watcher: 새 document swap 시 `flushRendererCache/flushBitmapCache/flushBlendedLayerCache/layerPool.clear` 4줄 제거. `createLayerRenderers`(line 498-507)가 이미 layer별 diff 처리를 갖춰 무차별 청소가 오히려 atomic swap을 깸. `renderState.reset()`만 유지
+  - `createLayerRenderers`: orphan layer cleanup을 `requestAnimationFrame×3` 뒤로 미룸. `renderer.dispose()` 호출 → `Sprite.dispose` → 부모 zCanvas의 `removeChild` 자동
+- towa-app 통합 레이어 (cloud 모드 큰 이미지 load 100ms+ 케이스 안전망):
+  - `components/common/PageTransitionOverlay.vue` 신규: Teleport + 100ms delay + lucide Loader2 spinner
+  - `composables/usePageLoader.ts`: 모듈 수준 `isPageSwitching` ref + `switchPage` try/finally + `loadPage` 직후 `nextTick + rAF×2` yield
+  - `views/ProjectView.vue`: overlay mount
+- 검증: Playwright로 5회 연속 페이지 전환 (3p→7p→1p→5p→2p) 시 canvas center pixel alpha 변화 0건, cleared frame 0개. `npx vue-tsc --noEmit` 통과
+
+### 09:21 — F5 후속 1단계: 텍스트 박스 보존 + 폰트 fresh 재렌더 + CJK 위 잘림 fix
+- bitmappery `Layer.meta.boxMode='fixed'` 분기 도입(`render-service.ts`). fixed 모드면 `replaceLayerSource` 우회 → `layer.left/top/width/height` 보존. native bitmappery 동작은 boxMode 미지정 시 그대로.
+- `font-service.loadGoogleFontDetailed` 신규: `document.fonts.load` API로 실제 폰트 로드 완료 보장 + `freshlyLoaded` flag 반환. 기존 `loadGoogleFont`는 호환 시그니처(`Promise<boolean>`) 유지.
+- `render-service.renderText` 반환을 `{ bitmap, fontFreshlyLoaded }`로 확장. `freshlyLoaded=true`이면 텍스트 캐시 무효화 + `requestAnimationFrame`으로 `cacheEffects` 한 번 더 트리거 → fallback 폰트 measure로 인한 잘림 회피.
+- `rendering/operations/text.ts:measureLines`에 위 안전 패딩(font size × 0.2) 추가. 한국어/일본어/이모지 글리프가 `actualBoundingBoxAscent`를 초과해 canvas top으로 잘리는 문제 fix. `lineHeight`는 그대로 두고 `topOffset`과 `height`에만 패딩 반영.
+- TOWA: `types/text-block.ts`에 `TextBoxMode` 타입 + `LayerTextMeta.boxMode`. `result-applier`/`dummy`/`EditorTab.addEmptyTextLayer` 모두 `boxMode: 'fixed'`. spec에 `meta.boxMode === 'fixed'` 검증.
+- 검증: `npx vue-tsc --noEmit` 통과, `npm test` 25 tests pass, 사용자 Chrome에서 박스 보존·CJK 위 잘림 해소 확인.
+- 후속: 텍스트박스 UX 개편(box-content 분리, 가로/세로 정렬, text-tool 통합 drag-resize·이동)은 별도 plan으로. 본 작업을 ui_engine으로 통합한 뒤 거기 베이스로 새 worktree에서 진행 예정.
+
+### 01:34 — TranslationPanel ↔ bitmappery 텍스트 layer 통합 (F5)
+- 데이터 중복 해소: bitmappery 텍스트 layer를 단일 source로. TOWA 측 TextBlock 메타 객체 제거.
+- bitmappery 코어 최소 침습:
+  - `Layer.meta?: Record<string, unknown>` 자유 metadata 필드 추가
+  - `LayerFactory.create`의 외부 `id` 주입 허용 + `serialize/deserialize`의 `id`·`meta` 포함 (id 영속화)
+  - `tool-options-text.vue`의 mutation commit을 namespace 자동 감지(`${ns}updateLayer`)로 변경 — standalone bitmappery와 towa-app embed 양쪽 지원. 미수정 시 embed 환경에서 unknown mutation 에러로 캔버스→panel sync 실패.
+- TOWA 측: `types/text-block.ts`를 `LayerTextMeta` 인터페이스로 대체(`blockId/original/status`). `Page.textBlocks` 필드 제거. `utils/text-layer.ts` 신규 (helper: `isTextLayer`, `getTextMeta`, `mergeTextMeta`).
+- UI: TranslationPanel/TextBlockItem이 layer를 직접 reactive 렌더링. Vue reactivity로 panel↔canvas 동기화 자동. 무한 루프 가드/source 플래그 불필요. `+` 버튼/휴지통 버튼으로 추가·삭제. EditorTab.selectLayer는 `bmp/setActiveLayerIndex` + 텍스트 layer일 때 `bmp/setActiveTool TEXT`까지 commit → tool-options-text 자동 활성화.
+- AI 적용: result-applier가 textBlock 객체를 만들지 않고 layer 직접 생성, `meta: { blockId, original, status }` 채움. replace_text_blocks 시 기존 텍스트 layer 인덱스 역순 제거. text layer width/height는 document 전체로 지정 (텍스트 잘림 회피 시도).
+- 백엔드 호환: service_engine `text_blocks: list[dict[str, Any]]` 자유 dict이므로 contract 코드 변경 없음. `towa-app/backend/real.ts`에서 textBlocks 직렬화 제거, `[]` 전송으로 호환.
+- 더미 데이터: text layer를 document에 함께 시드, width/height = doc 크기, layer name `텍스트 #NN` (prefix 잔재 제거).
+- 기존 저장 페이지 마이그레이션 없음 (프로토타이핑 단계).
+- 검증: `npx vue-tsc --noEmit` 통과, `npm test` 25 tests pass, `npm run build` 성공, Playwright로 panel↔canvas 텍스트 양방향 sync + 추가/삭제 + 활성화 동작 확인.
+- 한계: bitmappery 텍스트 layer 자체가 `replaceLayerSource`로 텍스트 bbox 크기로 layer 영역을 줄이고 left/top을 중앙 보정하는 모델이라, AI 검출 bbox 좌표가 렌더 후 무시되고 layer가 캔버스 중앙으로 이동함. 또한 텍스트가 측정 bbox보다 클 때 잘림 가능 (fallback 폰트 측정 등). F5 양방향 sync 본질 외 작업으로 별도 분리 필요.
+
+### 00:37 — bitmappery 키보드 단축키 가드 2종 (U6/B1, B2)
+- **U6/B1**: `towa-app/src/router/index.ts`에 `beforeEach` 가드 추가. `editor`·`detail-editor` 외 라우트 진입 시 `KeyboardService.setSuspended(true)` 호출해 캔버스가 안 보이는 라우트에서 C/V/Z 등 단축키 발사 차단
+- **B2**: `bitmappery/src/services/keyboard-service.ts` `handleKeyDown` 진입부에 `INPUT/TEXTAREA/SELECT/contentEditable` target 가드 블록 추가. 입력란에서 타이핑 시 단축키로 발사되던 버그 수정
+
+---
+
+## 2026-05-07
+
+### 15:52 — Landing/Login 풀페이지 + 라우터 가드 (manga panel 디자인)
+- 14:23에 박았던 LibraryView 인라인 미로그인 가드를 라우트/가드 구조로 정식화
+- 디자인 방향: "Manga panel × Editorial Brutalism" — 두꺼운 panel border + offset 그림자, halftone dot grid + 필름 그레인, marker highlight, 비대칭 grid + staggered 진입 애니메이션. 기존 dark/purple/pink 팔레트 유지
+- 폰트: Bricolage Grotesque (display, 영문) + Pretendard Variable (한글). `index.html`에 `<link>` 로딩(@import 순서 경고 회피, preconnect 포함)
+- `views/LandingView.vue` 신규 (`/`): Hero + 4단계 워크플로우(검출/지움/번역/식자 manga 패널) + AI/픽셀 split feature + Demo placeholder + CTA + Footer. 로그인 상태별 CTA 분기
+- `views/LoginView.vue` 신규 (`/login`): 좌측 브랜딩+미니 워크플로우 / 우측 form 스플릿. devLogin 후 `?redirect=` 또는 `/library`. 회원가입 placeholder
+- `router/index.ts`: 라우트 4개(`/`, `/login`, `/library`, `/project/:id`). `meta.requiresAuth` + `beforeEach` 가드로 cloud + 미로그인 시 `/login?redirect=...`으로 redirect
+- `app.css`: halftone/halftone-dense/grain/hatch/marker/panel-border 유틸 + 진입 애니메이션 4종(rise/fade/slide/pop) + delay-1~6 stagger + `prefers-reduced-motion` 존중
+- `views/LibraryView.vue`: 14:23의 인라인 미로그인 가드 제거 (라우터 가드로 대체)
+- `components/common/AppNavbar.vue`: 미로그인 메뉴 "로그인" 버튼 → `router.push('/login')`. LoginModal 자체는 SettingsModal `@open-login` 트리거 + 추후 세션 만료 overlay 용도로 보존
+
+### 14:23 — 라이브러리 미로그인 가드 + 새 프로젝트 추론모드 노출 제거
+- 증상 1: cloud 모드에서 로그인 안 한 상태인데 라이브러리 폴더 트리/UI가 노출됨. 폴더 클릭 시 인증 에러
+- 증상 2: 새 프로젝트 모달에 "추론 모드 (클라우드/로컬)" 라디오 노출. 모드 선택은 설정 메뉴(SettingsModal)에서만 다루는 게 맞음
+- `views/LibraryView.vue`: cloud 모드 + 미로그인 분기 추가. 화면 전체를 "로그인 필요" 안내 + 로그인 버튼 + LoginModal 트리거로 대체
+- `views/LibraryView.vue`: `isLoggedIn` watch 추가. 세션 중 로그인 성공 시 `projects/loadAll` 자동 호출 (main.ts 부팅 시 미로그인이라 로드 안 됐던 경우 보완)
+- `components/home/CreateProjectModal.vue`: 추론모드 라디오 UI 제거. `formData.inferenceMode`는 항상 'cloud' default로 유지 (type 호환)
+- 폴더 트리는 `library` store의 하드코드(주간연재/웹툰/단행본)라 미로그인 화면에서도 보이고 있었음 — 가드로 회피. 장기적으로 서버 source로 가야 함 (별도 작업)
+
+### 02:30 — ui-engine 컨테이너 빌드 에러 통합 fix
+- 증상: 서버에서 ui-engine 컨테이너가 빌드 통과 후 시작 직후 종료 또는 빌드 자체 실패. 결과 cloudflare 502
+- 시도 흐름 (3단계):
+  1차) `npm ci`가 lock sync 에러로 실패 → host(npm 11)에서 만든 lock이 incomplete. `npm ci --legacy-peer-deps` + lock 재생성으로 우회 시도 → 빌드는 통과했지만 컨테이너 시작 시 rollup 에러
+  2차) lock의 platform 매핑이 누락된 게 원인이라 판단. `npm ci` → `npm install --legacy-peer-deps` 변경 → 같은 rollup 에러 지속 (npm install도 lock을 일부 존중해서 platform 누락 보완 못 함)
+  3차) lock 파일 자체를 컨테이너에 안 가져가게 변경 → 빌드 시점 platform에 맞춘 fresh resolution → 모든 native binary 자동 설치. 해결.
+- `towa-app/Dockerfile`: `COPY towa-app/package.json ./` + `RUN npm install --legacy-peer-deps`. lock 미포함, --legacy-peer-deps는 프로젝트 npm convention
+- `towa-app/package-lock.json`: alpine x64 환경 기준으로 재생성 (호스트 dev 재현성 위해 유지)
+- `DEPLOY.md`: cron 등록 절차 명확화 (절대경로 사용 필수, `crontab -l`/log tail 확인법 추가)
+- 검증: 서버에서 `bash deploy.sh` 결과 ui-engine `Up`, `https://towa.live` 정상 접속
+
+## 2026-05-06
+
+### 17:55 — Cloudflare tunnel 기반 서버 배포 구성
+- 배포 모델 확정: 서버는 main 브랜치만 따라가는 인스턴스. cron 5분 폴링으로 자동 pull + rebuild
+- `deploy.sh` (monorepo 루트): `.env` 부트스트랩(없으면 `.env.deploy`에서 복사) + origin/main 변경 시 git pull + `docker compose up -d --build`. 1회 세팅도 같은 스크립트로 처리
+- `.env.deploy` (monorepo 루트, commit됨): cloud-mode 운영 프리셋. clone 후 별도 편집 불필요
+- `DEPLOY.md` (monorepo 루트): 서버 세팅(`git clone` + `deploy.sh` 한 번) + cloudflared ingress + 운영 가이드
+- `vite.config.ts`: `VITE_PUBLIC_HOST` 환경변수 있을 때만 cloudflare 모드(allowedHosts + wss HMR clientPort 443) 적용. 없으면 로컬 모드 (기존 동작 유지)
+- `.env.example`, `docker-compose.yml`: `VITE_PUBLIC_HOST` 슬롯 추가
+- 단일 도메인 분기 구조: `towa.live` → 5173, `api.towa.live` → 8000, `model.towa.live` → 8100. 모두 호스트 cloudflared가 ingress 처리
+- 도커 자체 구조 변경 없음 (코드 COPY 방식 유지: main push 시 이미지 재빌드로 반영)
+
+### 10:30 — 프로젝트 생성 시 페이지 업로드 누락 버그 수정
+- 증상: 프로젝트 생성 모달에서 파일을 첨부해 만들면 `project.pageCount`만 파일 수로 기록되고 실제 페이지는 업로드되지 않음. dashboard에 "Np"로 표시되지만 PageGrid는 비어있음
+- `utils/page-from-file.ts` 신규: `buildPageSnapshotFromFile(file, projectId, pageIndex)` — 썸네일 생성 + bitmappery DocumentFactory layerBlob 빌드 + PageSnapshot 반환
+- `views/LibraryView.vue`: `createProject`에 페이지 업로드 루프 추가, `pageCount`는 0으로 시작 후 업로드 완료 시점에 update
+- `views/ProjectHomeTab.vue`: 중복 로직(generateThumbnail/blobToCanvas/inline snapshot 빌드) 제거하고 `buildPageSnapshotFromFile` 재사용
+
+### 10:05 — Credit 잔액 UI 표시 + AI 호출 후 자동 갱신
+- `store/modules/auth.ts`: `refreshCredit` 액션 추가 — `getCurrentUser` 호출 후 `creditBalance` 갱신, localStorage도 동기화
+- `components/common/AppNavbar.vue`: 우상단에 크레딧 잔액 chip 추가 (cloud + 로그인 시), Coins 아이콘 + 잔액 + (예약 단위) 표시
+- `components/editor/AiToolbar.vue`: AI job 종료(성공/실패)마다 `auth/refreshCredit` dispatch
+
+### 09:46 — AI 도구 연동 (model_engine /v1/jobs 호출)
+- `composables/useAppBackend.ts` 추가 (AppBackend inject 헬퍼)
+- `main.ts`: `app.provide(APP_BACKEND_KEY, backend)` — AI 호출용 backend를 컴포넌트 트리에 노출
+- `views/ProjectView.vue`: 중앙 영역에 `#towa-top-toolbar` Teleport target 추가, 캔버스 위에 toolbar 슬롯 확보
+- `components/editor/AiToolbar.vue`: placeholder sleep 제거, 실제 `backend.aiJobs.createJob` + polling 연결. cloud/standalone 모드에 따라 `runtime_context.mode=saas|local` 자동 결정. 결과/에러를 toolbar 옆에 작은 status 텍스트로 표시
+- `views/EditorTab.vue`(③ 기본 편집), `views/DetailEditorTab.vue`(④ 상세 편집): AiToolbar를 `#towa-top-toolbar`로 Teleport 마운트
+- model_engine은 기본 PlaceholderJobExecutor로 동작 → API 호출/polling/auth/idempotency/error envelope 검증 가능, 실제 AI 결과는 후속 작업
+
+### 00:05 — 문서 정리 (Project_Plan, TODO, design docs)
+- `Project_Plan.md`: 7~8주차 완료 항목 추가, 남은 구현 사항 갱신 (F1/F2/F6 완료, F8 Electron + F9 cloud 통합 + F10 의존성 정리 추가), 9~12주차 계획 재정의
+- `TODO.md`: 다음 할 일을 우선순위 순으로 정리, 보고서/연구노트/main 머지 완료 항목 추가, Electron 추가
+- `docs/design-file-system.md`: FileAdapter 인터페이스를 7주차 snapshot 중심으로 갱신, ULID 도입 섹션 추가
+- `docs/ui_to_service.md`: 7주차 실 구현 반영 (분리 GET/PUT → snapshot multipart 통합)
+
+## 2026-04-28
+
+### (오전) — main 머지: ui_engine 8주차 작업 통합
+- `Merge ui_engine: Cloud mode integration and CRUD UI` 머지 커밋 생성 (`--no-ff`)
+- 11커밋 / 37파일 / +4955-736 변경 main에 반영
+- 포함 작업: FilesBackend SDK + CloudFileAdapter, auth 모듈, snapshot 인터페이스 리팩터링, 프로젝트/페이지 CRUD UI, ULID 도입, Docker 빌드 정비, zcanvas v5 pin, layer_blob MIME 정규화, IDB DataCloneError 수정
+
+## 2026-04-27
+
+### 15:24 — 프로젝트 생성 후 자동 이동 + 프로젝트 삭제 UI
+- LibraryView.vue: `createProject` async로 변경, 생성 완료 후 `/project/:id`로 자동 이동
+- ProjectCard.vue: hover 시 우측 상단에 삭제 버튼 표시 (Trash2 아이콘, `@click.stop`으로 카드 클릭과 분리), `BaseCard`에 `group` class 전달
+- ProjectGrid.vue: `deleteProject` emit 추가, `@delete`를 상위로 전달
+- LibraryView.vue: `confirmDeleteProject` / `deleteProject` 핸들러 추가, `BaseModal` + `BaseButton` 삭제 확인 모달 구현
+
+### 15:23 — 페이지 삭제 UI 구현
+- PageThumbnail.vue: hover overlay에 삭제 버튼 추가 (Trash2 아이콘, red-600 스타일), `delete` emit 정의
+- PageGrid.vue: `deletePage` emit 추가, PageThumbnail의 `@delete` 이벤트를 상위로 전달
+- ProjectHomeTab.vue: `confirmDeletePage` / `deletePage` 핸들러 추가, `useModal` + `BaseModal` + `BaseButton` 활용한 삭제 확인 모달 구현, vertical/horizontal 레이아웃 양쪽 PageGrid에 `@delete-page` 연결
+
+---
+
+## 2026-04-16
+
+### 00:17 — Cloud 모드 연동 (service_engine 파일 저장 API)
+- FilesBackend SDK 추가 (real: multipart HTTP + snake_case 변환, emulated: 메모리 stub)
+- FileAdapter를 snapshot 중심 인터페이스로 전면 리팩터링 (createPage/savePageSnapshot/getPageSnapshot)
+- LocalFileAdapter 재작성 (IDB 스키마 유지, delete 시 dense index reindex)
+- Vuex auth 모듈 신규 (sessionKey/user/creditBalance, localStorage 세션 복원)
+- 기존 LoginModal/AppNavbar/SettingsModal을 auth 스토어에 연결 (password→nickname)
+- CloudFileAdapter 신규 (backend.files.* 위임, ProjectDto↔ProjectRecord 변환)
+- main.ts에 deployment mode 분기 (standalone: seed+IDB, cloud: 세션 복원→서버 로드)
+- IDB DataCloneError 수정 (Vue reactive proxy → sanitize 헬퍼로 JSON 정규화)
+- mock HTTP 서버로 전 endpoint wire 검증 완료 (multipart 4파트, Bearer, snake_case)
+
+---
+
+## 2026-04-09
+
+### 10:03 — 파일 시스템 구현 (IndexedDB 기반)
+- IndexedDB 스키마 정의 (towa-db: projects, pages, page-images, page-layers, thumbnails, page-cache)
+- FileAdapter 인터페이스 + LocalFileAdapter 구현 (순수 저장소 CRUD)
+- usePageLoader composable (bitmappery ↔ FileAdapter 오케스트레이션)
+- useAutoSave composable (bitmappery history 감지 → debounce 30초 → 자동 저장)
+- PageCache 2계층 캐시 (메모리 LRU + IndexedDB LRU)
+- Store 모듈 전환: 더미 데이터 → IndexedDB 기반 (projects.ts, pages.ts)
+- 더미 데이터를 DB seed 함수로 전환 (첫 실행 시 자동 삽입)
+- 이미지 드래그앤드롭으로 페이지 추가 기능 (PageGrid)
+- 썸네일 자동 생성 (Canvas 축소 → Blob → IndexedDB)
+- 페이지 전환 시 switchPage (저장 → 해제 → 로드) 구현
+- types/page.ts: layers 필드 제거 (bitmappery 관할), thumbnail/originalImage optional
+- 신규 파일: file-adapter/ (db.ts, contracts.ts, local.ts, index.ts, page-cache.ts)
+- 신규 파일: composables/ (useFileAdapter.ts, usePageLoader.ts, useAutoSave.ts)
+
+### 00:53 — 화면 ③ translator 모드 + bitmappery 인스턴스 공유
+- bitmappery를 ProjectView(②③④ 공통 부모)에 배치 — ②에서 백그라운드 초기화, ③④에서 공유
+- ③↔④ 전환 시 캔버스 유지, setTowaMode()로 모드만 전환
+- EditorTab: DualCanvasView 제거 → bitmappery translator 캔버스 + TranslationPanel
+- DetailEditorTab: bitmappery import 제거 (ProjectView가 관리)
+- z-index 레이어링: bitmappery(z:0) + tab-layer(z:1, pointer-events passthrough)
+- 레이아웃 겹침 이슈 남아있음 (bitmappery UI 리디자인 시 해결)
+
+---
+
+## 2026-04-06
+
+### 09:51 — layer-renderer store proxy 적용
+- layer-renderer.ts의 getStore()가 namespace proxy 반환하도록 수정
+- getters.activeColor, commit("setActiveColor") 등 non-namespaced 접근 수정
+- clone/brush/eraser 도구의 캔버스 상호작용 정상화 확인
+
+### 09:26 — bitmappery 통합 버그 수정 (캔버스 + 아이콘 + 도구 초기화)
+- 중복 id="bitmappery-app" 제거 (DetailEditorTab ↔ bitmappery.vue 충돌)
+- $refs.app 접근을 created → mounted로 이동 (Vue 3 lifecycle 호환)
+- store-proxy.ts 신규: namespace 프록시 (KeyboardService, history-state-factory용)
+- Vite server.fs.allow 추가 (bitmappery asset 접근 허용)
+- bitmappery public assets → towa-app public symlink
+- 도구 아이콘 상대경로 → 절대경로 변경 (toolbox, tool-options-panel, layer-panel)
+- 상세 편집 탭 진입 시 자동 빈 문서 생성
+- document-canvas mounted에서 초기 document의 레이어 렌더러 + interaction pane 즉시 초기화
+
+### 01:31 — bitmappery → towa-app 통합 (Phase 1~4)
+- bitmappery Vuex store를 `bmp` namespace로 통합 (~60개 파일, 140+ mapper 수정)
+- feature flag 동적화: `setTowaMode('translator' | 'typesetter')` 런타임 모드 전환
+- `towa-mode-presets.ts` 신규 — 역자/식자 모드별 도구 프리셋
+- `UI_HEADER_MENU` flag 추가, header-menu v-if 제어
+- CSS 격리: `#app` → `#bitmappery-app`, `_global.scss` scope 축소
+- `_colors.scss` CSS custom property fallback 패턴 적용 (10개 색상 변수)
+- towa-app Vite: smartAliasResolver 플러그인 (bitmappery @/ ↔ towa-app @/ 분리)
+- towa-app에 bitmappery 의존성 설치 + i18n/FloatingVue/Buffer polyfill 등록
+- DetailEditorTab.vue: placeholder → bitmappery.vue 컴포넌트 삽입
+- towa-app 테마 → bitmappery CSS 변수 매핑 (accent, bg, text 등)
+- 양쪽 빌드 성공
+
+---
+
 ## 2026-03-22
 
 ## 2026-03-23

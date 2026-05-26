@@ -64,7 +64,7 @@ export const resizeCanvas = (
                 renderer.getBounds().top  += deltaY;
             }
         });
-        store.commit( "setActiveDocumentSize", { width, height });
+        store.commit( "bmp/setActiveDocumentSize", { width, height });
     };
     commit();
     
@@ -78,7 +78,7 @@ export const resizeCanvas = (
                     renderer.getBounds().top  -= deltaY;
                 }
             });
-            store.commit( "setActiveDocumentSize", { width: orgDocWidth, height: orgDocHeight });
+            store.commit( "bmp/setActiveDocumentSize", { width: orgDocWidth, height: orgDocHeight });
         },
         redo: commit,
     });

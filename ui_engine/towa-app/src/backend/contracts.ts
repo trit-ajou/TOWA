@@ -85,13 +85,25 @@ export interface TransportStageReport {
   [key: string]: unknown
 }
 
+export interface TransportPatchOperation {
+  op: string
+  payload: Record<string, unknown>
+  [key: string]: unknown
+}
+
+export interface TransportDocumentPatch {
+  patches: TransportPatchOperation[]
+  [key: string]: unknown
+}
+
 export interface AiJobCreateInput {
   schemaVersion?: string
   idempotencyKey: string
   operationKind: AiOperationKind
   requestRef: string
   document: TransportDocument
-  artifacts: Record<string, TransportArtifactDescriptor>
+  artifacts?: Record<string, TransportArtifactDescriptor>
+  primaryBitmap: Blob
   runtimeContext: TransportRuntimeContext
 }
 
@@ -111,6 +123,7 @@ export interface AiJobSnapshot {
   operationKind: AiOperationKind
   requestRef: string
   document: TransportDocument
+  documentPatch: TransportDocumentPatch
   artifacts: Record<string, TransportArtifactDescriptor>
   stageReports: TransportStageReport[]
   error: EngineError | null
@@ -124,16 +137,100 @@ export interface AuthBackend {
 export interface AiJobsBackend {
   createJob(input: AiJobCreateInput, options?: AuthRequestOptions): Promise<AiJobCreateResult>
   getJob(jobId: string, options?: AuthRequestOptions): Promise<AiJobSnapshot>
+  getArtifact(jobId: string, artifactRef: string, options?: AuthRequestOptions): Promise<Blob>
+}
+
+// --- Files backend (project/page storage, service_engine) ---
+
+export interface ProjectDto {
+  id: string
+  name: string
+  thumbnailUrl: string | null
+  sourceLang: string
+  targetLang: string
+  pageCount: number
+  status: string
+  folder: string
+  config: Record<string, unknown>
+  createdAt: string
+  updatedAt: string
+}
+
+export interface PageSummaryDto {
+  id: string
+  projectId: string
+  index: number
+  status: string
+  thumbnailUrl: string | null
+  updatedAt: string
+}
+
+export interface PageSnapshotMetaDto {
+  page: {
+    id: string
+    projectId: string
+    index: number
+    status: string
+  }
+}
+
+/** Full page snapshot payload (four multipart parts). */
+export interface PageSnapshotPayload {
+  metadata: PageSnapshotMetaDto
+  originalImage: Blob
+  layerBlob: Blob
+  thumbnail: Blob
+}
+
+export interface ProjectCreateInput {
+  id: string
+  name: string
+  sourceLang: string
+  targetLang: string
+  status?: string
+  folder?: string
+  config?: Record<string, unknown>
+  thumbnailUrl?: string | null
+}
+
+export type ProjectPatchInput = Partial<
+  Pick<
+    ProjectDto,
+    'name' | 'thumbnailUrl' | 'sourceLang' | 'targetLang' | 'status' | 'folder' | 'config'
+  >
+>
+
+export interface FilesBackend {
+  // Project CRUD
+  listProjects(options: AuthRequestOptions): Promise<ProjectDto[]>
+  getProject(projectId: string, options: AuthRequestOptions): Promise<ProjectDto>
+  createProject(input: ProjectCreateInput, options: AuthRequestOptions): Promise<ProjectDto>
+  updateProject(projectId: string, patch: ProjectPatchInput, options: AuthRequestOptions): Promise<ProjectDto>
+  deleteProject(projectId: string, options: AuthRequestOptions): Promise<void>
+
+  // Pages (summary list)
+  listPageSummaries(projectId: string, options: AuthRequestOptions): Promise<PageSummaryDto[]>
+
+  // Pages (full snapshot)
+  createPage(projectId: string, snapshot: PageSnapshotPayload, options: AuthRequestOptions): Promise<PageSummaryDto>
+  savePageSnapshot(pageId: string, snapshot: PageSnapshotPayload, options: AuthRequestOptions): Promise<PageSummaryDto>
+  getPageSnapshot(pageId: string, options: AuthRequestOptions): Promise<PageSnapshotPayload>
+  deletePage(pageId: string, options: AuthRequestOptions): Promise<void>
+
+  // Thumbnail (bearer-authed blob)
+  getPageThumbnail(pageId: string, options: AuthRequestOptions): Promise<Blob>
 }
 
 export interface AppBackend {
   auth: AuthBackend
   aiJobs: AiJobsBackend
+  files: FilesBackend
 }
 
 export interface AppBackendConfig {
   authMode: BackendAdapterMode
   aiMode: BackendAdapterMode
+  filesMode: BackendAdapterMode
   serviceEngineUrl: string
   modelEngineUrl: string
 }

@@ -51,10 +51,19 @@ services:
       APP_ENV: docker
       TOWA_SERVICE_ENGINE_URL: ${TOWA_SERVICE_ENGINE_URL:-http://service-engine:8000}
       TOWA_SERVICE_ENGINE_TIMEOUT_SECONDS: ${TOWA_SERVICE_ENGINE_TIMEOUT_SECONDS:-10}
+      TOWA_INPAINT_PROVIDER: ${TOWA_INPAINT_PROVIDER:-}
+      TOWA_INPAINT_MODEL_NAME: ${TOWA_INPAINT_MODEL_NAME:-}
       MODEL_ENGINE_CORS_ALLOW_ORIGINS: ${MODEL_ENGINE_CORS_ALLOW_ORIGINS:-http://localhost:5173}
+      TOWA_PLATFORM_PROVIDER_MINDLOGIC_API_KEY: ${TOWA_PLATFORM_PROVIDER_MINDLOGIC_API_KEY:-}
+      TOWA_PLATFORM_PROVIDER_NANOBANANA_API_KEY: ${TOWA_PLATFORM_PROVIDER_NANOBANANA_API_KEY:-}
+      TOWA_MODEL_ENGINE_STAGE_DUMP: ${TOWA_MODEL_ENGINE_STAGE_DUMP:-}
+      TOWA_MODEL_ENGINE_STAGE_DUMP_COPY_FILES: ${TOWA_MODEL_ENGINE_STAGE_DUMP_COPY_FILES:-}
     depends_on:
       service-engine:
         condition: service_healthy
+    volumes:
+      - ./model_engine/.runtime:/app/model_engine/.runtime
+      - ./model_engine/.cache/models:/cache/models
     ports:
       - "${MODEL_ENGINE_PORT:-8100}:8100"
     healthcheck:
@@ -71,14 +80,16 @@ services:
 
   ui-engine:
     build:
-      context: ./ui_engine/towa-app
-      dockerfile: Dockerfile
+      context: ./ui_engine
+      dockerfile: ./towa-app/Dockerfile
     environment:
       VITE_DEPLOYMENT_MODE: ${VITE_DEPLOYMENT_MODE:-cloud}
+      VITE_PUBLIC_HOST: ${VITE_PUBLIC_HOST:-}
       VITE_SERVICE_ENGINE_URL: ${VITE_SERVICE_ENGINE_URL:-http://localhost:8000}
       VITE_MODEL_ENGINE_URL: ${VITE_MODEL_ENGINE_URL:-http://localhost:8100}
       VITE_UI_AUTH_BACKEND: ${VITE_UI_AUTH_BACKEND:-emulated}
       VITE_UI_AI_BACKEND: ${VITE_UI_AI_BACKEND:-emulated}
+      VITE_UI_FILES_BACKEND: ${VITE_UI_FILES_BACKEND:-emulated}
     depends_on:
       service-engine:
         condition: service_healthy

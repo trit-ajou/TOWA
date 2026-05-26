@@ -96,10 +96,10 @@ export default {
         hasCloudStorage : supportsDropbox() || supportsGoogleDrive() || supportsS3(),
     }),
     computed: {
-        ...mapState([
+        ...mapState("bmp", [
             "storageType",
         ]),
-        ...mapGetters([
+        ...mapGetters("bmp", [
             "activeDocument",
         ]),
         isValid(): boolean {
@@ -151,13 +151,13 @@ export default {
         focus( this.$refs.nameInput );
     },
     methods: {
-        ...mapMutations([
+        ...mapMutations("bmp", [
             "closeModal",
             "setActiveDocumentName",
             "setLoading",
             "unsetLoading",
         ]),
-        ...mapActions([
+        ...mapActions("bmp", [
             "saveDocument",
         ]),
         async requestSave(): Promise<void> {

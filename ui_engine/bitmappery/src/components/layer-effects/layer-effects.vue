@@ -198,7 +198,7 @@ export default {
         internalValue: {} as Partial<Filters>,
     }),
     computed: {
-        ...mapGetters([
+        ...mapGetters("bmp", [
             "activeLayer",
             "activeLayerIndex",
         ]),
@@ -311,7 +311,7 @@ export default {
         KeyboardService.setListener( null );
     },
     methods: {
-        ...mapMutations([
+        ...mapMutations("bmp", [
             "closeModal",
             "setLayersMaximized",
             "updateLayer",

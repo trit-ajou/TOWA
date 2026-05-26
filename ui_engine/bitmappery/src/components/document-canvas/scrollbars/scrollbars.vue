@@ -118,7 +118,7 @@ export default {
         y: 0.5, // the "scrollTop" position, normalized 0 - 1 range
     }),
     computed: {
-        ...mapState([
+        ...mapState("bmp", [
             "windowSize",
         ]),
         horHandleStyle(): { left: string, width: string } {

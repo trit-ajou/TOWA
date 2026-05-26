@@ -51,12 +51,12 @@ export default {
         authUrl: "",
     }),
     computed: {
-        ...mapState([
+        ...mapState("bmp", [
             "dropboxConnected",
         ]),
     },
     methods: {
-        ...mapMutations([
+        ...mapMutations("bmp", [
             "openDialog",
             "openModal",
             "setLoading",

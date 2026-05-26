@@ -12,9 +12,17 @@
 
 ## 1. 이 문서의 역할
 
+`model_engine` 문서는 `docs/` 아래에 모은다.
+
 - `SPEC.md`: 제품/엔진 간 역할과 장기 아키텍처
-- `API_CONTRACT.md`: 현재 서비스 엔진과의 외부 wire contract
+- `../docs/http-contract.md`: 현재 구현 기준 canonical HTTP contract
 - `README.md`(이 문서): `model_engine` 내부 구현 명세
+- `TROUBLESHOOTING.md`: OCR/번역 실행 중 관측한 문제와 튜닝 기록
+- `SESSION_AND_CREDENTIAL_IMPLEMENTATION.md`: cloud/standalone 기준 세션, usage, provider credential 책임과 구현 포인트
+- `UI_MODEL_CONTRACT_DRAFT.md`: `UI engine <-> model engine` concrete contract 최소 합의안 draft
+- `INFERENCE_OUTPUT_SPEC.md`: 현재 구현 기준 model 추론 job의 출력 envelope, patch, artifact, stage report 명세
+- `SERVING_PLAN.md`: `API + Inference` 통합 서빙 컨테이너 전략과 단계별 구현 계획
+- `NEXT_SESSION_HANDOFF.md`: 다음 세션에서 바로 구현을 재개하기 위한 handoff 메모
 
 즉, 앞으로 `model_engine` 구현 판단은 이 README를 직접 기준으로 한다.
 
@@ -309,9 +317,13 @@ custom stage는 입력 포트를 조정할 수 있다.
 추가 규칙:
 
 - custom model의 등록 방식은 `CUSTOM_MODELS.md`를 따른다.
-- 현재 지원하는 custom adapter 타입은 `python_callable`, `http_api`다.
+- 현재 지원하는 custom adapter 타입은 `python_callable`, `http_api`, `container_worker`다.
 - custom model은 manifest JSON으로 registry에 로드된다.
 - built-in 모델과 custom 모델은 모두 `StageManifest + ModelAdapter` 계약으로 합류한다.
+- OCR capability의 공통 규격은 `OCR_CAPABILITY.md`를 source of truth로 본다.
+- capability와 runtime은 분리해서 본다.
+- custom model은 장기적으로 같은 Python 프로세스 import보다 격리 runtime 실행을 기본값으로 한다.
+- 같은 capability를 만족해도 runtime family가 다르면 별도 worker/image로 분리하는 쪽을 우선한다.
 
 ## 8. Stage I/O Schema
 
@@ -408,6 +420,7 @@ patch 포맷은 고정한다. stage 간 호환을 위해 자유형 patch는 허�
 - `set_layer_filters`
 - `set_document_selection`
 - `append_text_blocks`
+- `replace_text_blocks`
 - `set_stage_meta`
 - `attach_artifact`
 - `detach_artifact`
@@ -421,6 +434,7 @@ patch 포맷은 고정한다. stage 간 호환을 위해 자유형 patch는 허�
 - `set_layer_text`: text stage가 생산한 텍스트 payload를 반영한다.
 - `set_document_selection`: selection 관련 상태를 문서에 반영한다.
 - `append_text_blocks`: OCR/번역 결과를 stage 메타 또는 별도 overlay layer 준비 데이터로 추가한다.
+- `replace_text_blocks`: OCR stage가 현재 문서의 canonical text block 집합을 새 결과로 교체한다.
 - `set_stage_meta`: `document.stage_meta` 또는 pipeline 메타를 갱신한다.
 
 patch 공통 규칙:
@@ -985,6 +999,87 @@ selector는 최소한 아래를 기준으로 필터링해야 한다.
 - custom model도 built-in과 같은 patch/artifact/report 계약을 지켜야 한다.
 - 향후 실제 CRAFT, 나노바나나, 사용자 custom model은 모두 같은 registry 계층에 등록한다.
 
+### 14.8 Runtime Isolation Strategy
+
+custom model이 늘어날수록 가장 큰 문제는 capability contract보다 runtime 충돌이다.
+
+대표 사례:
+
+- 서로 다른 `torch` 버전
+- 서로 다른 `transformers` 버전
+- CUDA / cuDNN ABI 차이
+- Python minor version 차이
+- OpenCV / NumPy / system package 충돌
+
+따라서 앞으로는 아래를 기본 원칙으로 삼는다.
+
+- pipeline은 capability 기준으로 유지한다.
+- 모델은 manifest로 고르되, 실제 실행은 가능하면 격리된 runtime worker에서 수행한다.
+- stage 경계는 `StageRequest/StageResponse + artifact`로만 넘긴다.
+- in-memory object 공유를 전제로 여러 모델을 한 프로세스에 함께 올리지 않는다.
+
+권장 backend 계층:
+
+- `inprocess`
+  - built-in의 가벼운 pure-Python 또는 이미 검증된 최소 모델만 허용
+- `http_api`
+  - 가장 보수적이고 안전한 기본 선택지
+- `subprocess_ipc`
+  - 같은 머신의 별도 Python 환경 또는 별도 launcher에서 실행
+- `container_worker`
+  - GPU/CUDA/torch 계열 충돌을 가장 강하게 분리하는 방식
+  - 현재 baseline adapter가 구현되어 있다.
+
+권장 runtime family 예:
+
+- `craft-py310-cpu`
+- `manga-ocr-py310-cpu`
+- `gemini-http-light`
+- `custom-translation-cu124`
+- `diffusion-cu121`
+
+정책:
+
+- custom model은 `shared-runtime-safe`가 명확히 검증되지 않으면 같은 프로세스 실행을 기본값으로 잡지 않는다.
+- 모델마다 이미지 1개씩 만드는 대신, ABI와 의존성이 같은 것끼리 runtime family를 묶는다.
+- "모델을 플러그인으로 import"하는 것보다 "runtime worker를 호출"하는 쪽을 기본 설계로 본다.
+- 현재 `container_worker` baseline은 `docker run --rm -i + stdin/stdout JSON IPC + workspace/cache mount` 방식으로 동작한다.
+
+### 14.9 Stage Migration Policy
+
+모든 stage를 무조건 같은 방식으로 분리하지는 않는다. 기준은 "모델 의존성 충돌 가능성"과 "실행 성격"이다.
+
+worker 또는 remote backend로 우선 보내는 대상:
+
+- `text_detection`
+  - CRAFT 같은 모델 의존성이 무겁고 Python/runtime 제약이 크다.
+  - 장기 기본값은 `container_worker`.
+- `ocr`
+  - `manga-ocr`, PaddleOCR 등은 torch/transformers 충돌 가능성이 있다.
+  - 장기 기본값은 `container_worker`.
+- `translation`
+  - 외부 API 계열은 `http_api`, 로컬 대형 모델은 `container_worker`.
+  - 예: Vertex/OpenAI-compatible proxy는 `http_api` 계열, 로컬 대형 모델은 `container_worker`.
+- `inpaint`
+  - 외부 API 계열은 `http_api`, 로컬 diffusion 계열은 `container_worker`.
+
+in-process로 남겨도 되는 대상:
+
+- `mask_or_erase_planning`
+  - rule-based stage이고 dependency 충돌 위험이 작다.
+  - 당분간 `inprocess` 유지.
+
+조건부 대상:
+
+- `typesetting`
+  - 초기 pure-Python/layout 단계는 `inprocess` 가능
+  - 폰트/graphics/runtime stack이 무거워지면 `container_worker`로 이동
+- `postprocess`
+  - 단순 후처리는 `inprocess`
+  - upscaler/diffusion 같은 모델이 붙으면 `container_worker`
+
+즉 장기 방향은 "모든 모델 stage는 worker 또는 remote backend로, 순수 계획/조합 stage만 in-process로" 가져간다.
+
 ## 15. SaaS / Local 공통 규칙
 
 SaaS와 local의 차이는 인증/정산 레이어에만 있다.
@@ -1034,6 +1129,11 @@ SaaS와 local의 차이는 인증/정산 레이어에만 있다.
   - 로컬 추론 이미지
   - CRAFT 같은 built-in 모델 의존성을 담는다
   - 이후 OCR/local model/GPU 런타임도 이 계열에서 확장한다
+  - 단, 모든 custom model을 여기에 계속 합치지 않고 runtime family별 이미지로 분화하는 것을 우선한다
+
+- `docker-compose.runtime.yml`
+  - runtime family별 worker image를 정리하는 초안 파일
+  - orchestrator와 worker 이미지를 한꺼번에 관리할 때 기준으로 사용한다
 
 의존성 파일도 같은 원칙으로 분리한다.
 
@@ -1044,6 +1144,19 @@ SaaS와 local의 차이는 인증/정산 레이어에만 있다.
   - base 위에 CRAFT text detection 의존성을 추가
 
 즉 기본 개발 환경은 가볍게 유지하고, 실제 로컬 추론은 별도 inference 이미지로 확장한다.
+
+장기 방향:
+
+- CPU/GPU/torch/CUDA 조합이 다른 모델은 별도 runtime image로 분리한다.
+- custom model 기본 통합 방식은 "같은 이미지에 계속 의존성을 추가"가 아니라 "맞는 runtime family에 배치"다.
+
+현재 pipeline sample translation backend:
+
+- `openai_compatible`
+  - 기본 방식
+  - LM Studio, Ollama OpenAI-compatible endpoint, custom proxy를 대상으로 한다.
+- `vertex`
+  - Vertex Gemini 번역 adapter를 명시 선택할 때 사용한다.
 
 ## 18. Built-in Text Detection
 
@@ -1244,3 +1357,88 @@ v1에서는 planner를 규칙 기반으로 시작한다.
 - `text_regions_artifact_ref`
 - `padding`
 - `target_layer_id`
+
+## 20. Built-in Translation Strategy
+
+현재 built-in `translation` adapter는 두 경로를 지원한다.
+
+- 기본 로컬/개발 경로: OpenAI-compatible `/v1/chat/completions`
+  - 기본 base URL: `http://127.0.0.1:1234/v1`
+  - Docker Compose 기본 base URL: `http://host.docker.internal:1234/v1`
+  - 주 사용 대상: LM Studio, Ollama OpenAI-compatible endpoint, custom proxy
+  - provider name: `openai_compatible` (API key가 필요한 proxy일 때만 사용)
+  - Mindlogic API Gateway도 같은 경로로 사용한다:
+    - base URL: `https://factchat-cloud.mindlogic.ai/v1/gateway`
+    - model: `gemini-3.1-flash-lite-preview`
+    - API key: `TOWA_OPENAI_COMPATIBLE_API_KEY`
+    - Cloudflare 차단을 피하기 위해 adapter는 `Accept: application/json`, `User-Agent: curl/8.7.1` 헤더를 보낸다.
+- Vertex 경로:
+  - provider name: `translation_provider`
+  - runtime library: `google-genai`
+  - authentication: Vertex AI express mode API key 또는 동일 형식의 provider key를 credential binding으로 주입
+- raw key는 코드, patch, artifact, stage_report에 남기지 않는다
+
+입력 규칙:
+
+- 입력은 `DocumentIR.text_blocks`다.
+- `translation` stage는 OCR이 만든 `source_lang_text`를 읽고 `translated_text`만 채운다.
+- geometry, reading order, writing mode, region ref는 번역 stage에서 바꾸지 않는다.
+
+출력 규칙:
+
+- canonical artifact kind: `translated_text_blocks`
+- canonical patch: `replace_text_blocks`
+- stage meta key: `translation`
+
+기본 구현 결론:
+
+- built-in `translation` 기본 샘플 경로는 OpenAI-compatible adapter를 사용한다.
+- OpenAI-compatible 기본 모델 이름은 `local-model`이다.
+- Vertex 경로의 기본 모델 이름은 `gemini-3.1-flash-lite-preview`다.
+- 응답은 JSON으로 강제하고, `block_id -> translated_text` 매핑으로 다시 병합한다.
+- `block_id`가 빠진 응답은 입력 순서 fallback을 허용하되 warning을 남긴다.
+- 일부 block이 비면 stage는 `partial`로 기록할 수 있다.
+
+현재 보완된 점:
+
+- OCR 결과는 block별 호출이 아니라 page block 전체를 모아 한 번의 LLM 호출로 번역한다.
+- OpenAI-compatible backend는 LM Studio, Ollama OpenAI-compatible endpoint, custom proxy를 같은 contract로 받는다.
+- local runtime 값은 `env > .runtime/runtime_config.json > default` 우선순위로 해석한다.
+- Mindlogic API Gateway를 개발용 번역 backend로 쓸 때는 아래처럼 설정한다. 실제 key는 Git에 올리지 않는다.
+
+```json
+{
+  "TOWA_TRANSLATION_BACKEND": "openai_compatible",
+  "TOWA_TRANSLATION_MODEL_NAME": "gemini-3.1-flash-lite-preview",
+  "TOWA_OPENAI_COMPATIBLE_BASE_URL": "https://factchat-cloud.mindlogic.ai/v1/gateway",
+  "TOWA_OPENAI_COMPATIBLE_API_KEY": "YOUR_MINDLOGIC_API_KEY",
+  "TOWA_INPAINT_PROVIDER": "mindlogic",
+  "TOWA_MINDLOGIC_API_KEY": "YOUR_MINDLOGIC_API_KEY",
+  "inpaint": {
+    "provider": "mindlogic",
+    "mindlogic_api_key": "YOUR_MINDLOGIC_API_KEY"
+  }
+}
+```
+
+- OCR stage가 `style_hint.ocr_status=needs_review`, `ocr_warnings`, density/area/text length를 남기므로, 번역 전후 분석 기준점이 생겼다.
+
+현재 남아 있는 보완 항목:
+
+- provider별 strict structured output 강제 강화
+- fenced code block, prefix/suffix 설명문 등을 복구하는 JSON repair path 추가
+- `block_id` 누락 시 positional fallback 의존도 축소 또는 제거
+- OCR `needs_review`/warning 정보를 번역 prompt에 전달하는 경로 추가
+- block 수가 많은 페이지용 chunking 정책
+- timeout, `429`, `5xx`, local warm-up 지연에 대한 retry/backoff
+- glossary / term map / 이름 고정 번역 규칙
+- provider별 응답 shape 편차에 대한 compatibility 보강
+
+권장 `stage_config`:
+
+- `provider`
+- `base_url`
+- `model_name`
+- `source_language`
+- `target_language`
+- `temperature`

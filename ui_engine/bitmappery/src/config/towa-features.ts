@@ -4,7 +4,13 @@
  * bitmappery의 각 기능을 개별적으로 on/off 할 수 있는 feature flag 시스템.
  * false로 설정하면 해당 기능이 UI에서 숨겨지며, true로 되돌리면 재활성화됨.
  * 코드 삭제 없이 비활성화하는 방식.
+ *
+ * 모드 시스템: setTowaMode()로 translator/typesetter 모드 전환 시
+ * 모드별 프리셋이 override로 적용됨. (towa-mode-presets.ts 참조)
  */
+import { ref } from "vue";
+import type { TowaMode } from "./towa-mode-presets";
+
 export const TOWA_FEATURES = {
     // ── 도구 (Tools) ──
     TOOL_MOVE: true,
@@ -63,6 +69,7 @@ export const TOWA_FEATURES = {
     VIEW_ANTIALIAS: true,
     VIEW_PIXEL_GRID: true,
     UI_PREFERENCES: true,
+    UI_HEADER_MENU: true,
 
     // ── 기타 ──
     FONT_GOOGLE_FONTS: true,
@@ -71,4 +78,13 @@ export const TOWA_FEATURES = {
 
 export type FeatureKey = keyof typeof TOWA_FEATURES;
 
-export const isFeatureEnabled = ( key: FeatureKey ): boolean => TOWA_FEATURES[ key ];
+// reactive override for mode-based feature toggling
+const modeOverrides = ref<Partial<Record<FeatureKey, boolean>>>({});
+
+export const isFeatureEnabled = ( key: FeatureKey ): boolean => {
+    return modeOverrides.value[ key ] ?? TOWA_FEATURES[ key ];
+};
+
+export const setModeOverrides = ( overrides: Partial<Record<FeatureKey, boolean>> ): void => {
+    modeOverrides.value = overrides;
+};

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import asdict
 from datetime import datetime, timezone
 import inspect
 import json
@@ -12,7 +13,7 @@ from PIL import Image
 
 from ..adapters.callable import CallableModelAdapter
 from ..contracts.artifacts import ArtifactDescriptor
-from ..contracts.document_ir import Point
+from ..contracts.document_ir import Point, TextBlock
 from ..contracts.models import ResourceProfile, StageKind, StageManifest
 from ..contracts.patches import PatchOperation
 from ..contracts.stages import (
@@ -41,7 +42,7 @@ def build_craft_text_detection_manifest() -> StageManifest:
         stage_kind=StageKind.TEXT_DETECTION,
         required_artifact_kinds=["bitmap"],
         produced_artifact_kinds=["text_regions"],
-        supported_modes=[ExecutionMode.LOCAL],
+        supported_modes=[ExecutionMode.LOCAL, ExecutionMode.SAAS],
         resource_profile=ResourceProfile(
             cpu_threads=2,
             memory_mb=2048,
@@ -123,24 +124,36 @@ def run_craft_text_detection(
         started_at=started_at,
         finished_at=finished_at,
     )
+    patches: list[PatchOperation] = []
+    if _should_emit_text_blocks(stage_config):
+        blocks = _text_blocks_from_regions(payload.regions)
+        patches.append(
+            PatchOperation(
+                op="replace_text_blocks",
+                payload={"text_blocks": [asdict(block) for block in blocks]},
+            )
+        )
+
+    patches.append(
+        PatchOperation(
+            op="set_stage_meta",
+            payload={
+                "key": "text_detection",
+                "value": {
+                    "engine": "craft",
+                    "artifact_ref": artifact_descriptor.artifact_ref,
+                    "region_count": len(payload.regions),
+                },
+            },
+        )
+    )
+
     return StageResponse(
         schema_version=request.schema_version,
         stage_name=request.stage_name,
         stage_run_id=request.stage_run_id,
         status=StageStatus.SUCCEEDED,
-        patches=[
-            PatchOperation(
-                op="set_stage_meta",
-                payload={
-                    "key": "text_detection",
-                    "value": {
-                        "engine": "craft",
-                        "artifact_ref": artifact_descriptor.artifact_ref,
-                        "region_count": len(payload.regions),
-                    },
-                },
-            )
-        ],
+        patches=patches,
         artifacts={artifact_descriptor.artifact_ref: artifact_descriptor},
         stage_report=report,
     )
@@ -208,6 +221,27 @@ def _normalize_text_regions(
             )
         )
     return regions
+
+
+def _should_emit_text_blocks(stage_config: dict[str, object]) -> bool:
+    return stage_config.get("emit_text_blocks") is True
+
+
+def _text_blocks_from_regions(regions: list[TextRegion]) -> list[TextBlock]:
+    blocks: list[TextBlock] = []
+    for index, region in enumerate(regions):
+        blocks.append(
+            TextBlock(
+                block_id=f"block_{index + 1:04d}",
+                source_lang_text="",
+                translated_text="",
+                polygon=list(region.polygon),
+                bbox=dict(region.bbox),
+                reading_order=region.reading_order if region.reading_order is not None else index,
+                source_region_ref=region.region_id,
+            )
+        )
+    return blocks
 
 
 def _normalize_polygon(raw_polygon: object) -> list[Point]:

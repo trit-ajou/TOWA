@@ -24,7 +24,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Run built-in CRAFT text detection on a sample image.")
     parser.add_argument(
         "--image",
-        default="model_engine/samples/images/sample_page.webp",
+        default="model_engine/samples/dlsite/sample.jpg",
         help="Path to the input image file.",
     )
     parser.add_argument(

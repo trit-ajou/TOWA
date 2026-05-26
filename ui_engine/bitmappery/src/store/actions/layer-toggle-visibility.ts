@@ -29,12 +29,12 @@ import type { BitMapperyState } from "@/store";
  * @param {Number} index index of layer to toggle visibility of
  */
 export const toggleLayerVisibility = ( store: Store<BitMapperyState>, index: number ): void => {
-    const originalVisibility = store.getters.layers[ index ].visible;
-    const commit = () => store.commit( "updateLayer", { index, opts: { visible: !originalVisibility } });
+    const originalVisibility = store.getters["bmp/layers"][ index ].visible;
+    const commit = () => store.commit( "bmp/updateLayer", { index, opts: { visible: !originalVisibility } });
     commit();
     enqueueState( `layerVisibility_${index}`, {
         undo() {
-            store.commit( "updateLayer", { index, opts: { visible: originalVisibility } });
+            store.commit( "bmp/updateLayer", { index, opts: { visible: originalVisibility } });
         },
         redo: commit,
     });

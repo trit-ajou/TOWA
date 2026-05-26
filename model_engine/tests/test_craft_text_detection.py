@@ -60,6 +60,49 @@ class CraftTextDetectionTests(unittest.TestCase):
                 response.patches[0].payload["value"],
             )
 
+    def test_run_craft_text_detection_can_emit_text_blocks_patch(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            image_path = _write_sample_image(Path(tmpdir) / "page.png")
+            request = _stage_request(Path(tmpdir), image_path, emit_text_blocks=True)
+
+            response = run_craft_text_detection(
+                request,
+                detect_text_fn=_fake_detect_text,
+            )
+
+            self.assertEqual(
+                ["replace_text_blocks", "set_stage_meta"],
+                [patch.op.value for patch in response.patches],
+            )
+            blocks = response.patches[0].payload["text_blocks"]
+            self.assertEqual(2, len(blocks))
+            self.assertEqual("block_0001", blocks[0]["block_id"])
+            self.assertEqual("", blocks[0]["source_lang_text"])
+            self.assertEqual("", blocks[0]["translated_text"])
+            self.assertEqual(
+                {"x": 1.0, "y": 1.0, "width": 9.0, "height": 5.0},
+                blocks[0]["bbox"],
+            )
+            self.assertEqual(
+                [
+                    {"x": 1.0, "y": 1.0},
+                    {"x": 10.0, "y": 1.0},
+                    {"x": 10.0, "y": 6.0},
+                    {"x": 1.0, "y": 6.0},
+                ],
+                blocks[0]["polygon"],
+            )
+            self.assertEqual(0, blocks[0]["reading_order"])
+            self.assertEqual("region_0001", blocks[0]["source_region_ref"])
+            self.assertEqual(
+                {
+                    "engine": "craft",
+                    "artifact_ref": next(iter(response.artifacts)),
+                    "region_count": 2,
+                },
+                response.patches[1].payload["value"],
+            )
+
     def test_registry_runs_builtin_craft_stage(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             image_path = _write_sample_image(Path(tmpdir) / "page.png")
@@ -91,8 +134,35 @@ class CraftTextDetectionTests(unittest.TestCase):
             artifact_path = Path(artifact.uri.removeprefix("file://"))
             self.assertIn("/transactions/pipe_craft_test/text_detection/", artifact_path.as_posix())
 
+    def test_registry_accepts_builtin_craft_stage_in_saas_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            image_path = _write_sample_image(Path(tmpdir) / "page.png")
+            registry = ModelRegistry()
+            register_craft_text_detection_model(registry)
 
-def _stage_request(workspace_dir: Path, image_path: Path) -> StageRequest:
+            selection = registry.select_for_request(
+                stage_kind=StageKind.TEXT_DETECTION,
+                request=_stage_request(
+                    Path(tmpdir),
+                    image_path,
+                    mode=ExecutionMode.SAAS,
+                ),
+                preferred_model_id=CRAFT_TEXT_DETECTION_MODEL_ID,
+            )
+
+            self.assertEqual(CRAFT_TEXT_DETECTION_MODEL_ID, selection.manifest.model_id)
+
+
+def _stage_request(
+    workspace_dir: Path,
+    image_path: Path,
+    *,
+    mode: ExecutionMode = ExecutionMode.LOCAL,
+    emit_text_blocks: bool = False,
+) -> StageRequest:
+    stage_config = {"input_artifact_ref": "artifact://sample/input_bitmap"}
+    if emit_text_blocks:
+        stage_config["emit_text_blocks"] = True
     return StageRequest(
         schema_version="v1",
         pipeline_id="pipe_craft_test",
@@ -110,9 +180,9 @@ def _stage_request(workspace_dir: Path, image_path: Path) -> StageRequest:
                 height=24,
             )
         },
-        stage_config={"input_artifact_ref": "artifact://sample/input_bitmap"},
+        stage_config=stage_config,
         runtime_context=StageRuntimeContext(
-            mode=ExecutionMode.LOCAL,
+            mode=mode,
             workspace_uri=workspace_dir.resolve().as_uri(),
         ),
     )

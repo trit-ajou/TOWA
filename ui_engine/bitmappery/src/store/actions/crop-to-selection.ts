@@ -38,8 +38,8 @@ export const cropToSelection = ( store: Store<BitMapperyState>, activeDocument: 
     const { left, top, width, height } = selectionToRectangle( selection );
 
     const commit = async (): Promise<void> => {
-        await store.commit( "cropActiveDocumentContent", { left, top, width, height });
-        store.commit( "setActiveDocumentSize", {
+        await store.commit( "bmp/cropActiveDocumentContent", { left, top, width, height });
+        store.commit( "bmp/setActiveDocumentSize", {
             width  : Math.min( currentSize.width  - left, width ),
             height : Math.min( currentSize.height - top,  height )
         });
@@ -49,7 +49,7 @@ export const cropToSelection = ( store: Store<BitMapperyState>, activeDocument: 
     enqueueState( "crop", {
         async undo(): Promise<void> {
             restoreFromClone( activeDocument, orgContent );
-            store.commit( "setActiveDocumentSize", currentSize );
+            store.commit( "bmp/setActiveDocumentSize", currentSize );
             getCanvasInstance()?.interactionPane.setSelection( selection, false );
         },
         redo: commit

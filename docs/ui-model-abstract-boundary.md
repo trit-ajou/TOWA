@@ -3,6 +3,9 @@
 이번 단계에서는 `UI engine <-> model engine` 상세 wire shape를 고정하지 않는다.
 대신 두 엔진이 반드시 지켜야 할 추상 invariant만 고정한다.
 
+현재 저장소의 실제 구현 가이드는 [ui-model-implementation.md](ui-model-implementation.md)에 정리한다.
+그 문서는 "현재 구현을 어떻게 맞출 것인가"를 다루고, 이 문서는 "무엇을 지금 고정하고 무엇을 미루는가"를 다룬다.
+
 ## Fixed Invariants
 
 - `UI engine`이 `model engine`에 직접 AI 작업을 요청한다

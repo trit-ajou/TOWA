@@ -61,6 +61,50 @@ class ZoomableCanvas extends canvas {
         this._frMul = 1 / ( 1000 / this.getFrameRate() ); // TODO: can be removed after update to zCanvas 6+
     }
 
+    /**
+     * Both setViewport and setDimensions route through the base's
+     * updateCanvasSize which reassigns element.width/.height. Any such
+     * assignment resets the 2D context, exposing the canvas CSS checkerboard
+     * for one frame. We wrap both calls in a snapshot+restore so the previous
+     * frame's pixels survive the resize until LayerRenderer children draw
+     * themselves at the new dimensions in the next render pass.
+     */
+    setViewport( aWidth: number, aHeight: number ): void {
+        this._snapshotAndCall(() => {
+            // @ts-expect-error base method signature comes from zCanvas JS source
+            super.setViewport( aWidth, aHeight );
+        });
+    }
+
+    setDimensions( width: number, height: number, setAsPreferredDimensions = true, optImmediate = false ): void {
+        this._snapshotAndCall(() => {
+            // @ts-expect-error base method signature comes from zCanvas JS source
+            super.setDimensions( width, height, setAsPreferredDimensions, optImmediate );
+        });
+    }
+
+    private _snapshotAndCall( call: () => void ): void {
+        const element = this.getElement();
+        let snapshot: HTMLCanvasElement | null = null;
+
+        if ( element.width > 0 && element.height > 0 ) {
+            snapshot = document.createElement( "canvas" );
+            snapshot.width  = element.width;
+            snapshot.height = element.height;
+            snapshot.getContext( "2d" )?.drawImage( element, 0, 0 );
+        }
+
+        call();
+
+        if ( snapshot ) {
+            const ctx = this.getCanvasContext();
+            ctx.save();
+            ctx.setTransform( 1, 0, 0, 1, 0, 0 );
+            ctx.drawImage( snapshot, 0, 0, element.width, element.height );
+            ctx.restore();
+        }
+    }
+
     setDocumentScale( targetWidth: number, targetHeight: number, scale: number, zoom: number, activeDocument: Document = null ): void {
         const { left, top, width, height } = this._viewport;
 
@@ -92,7 +136,7 @@ class ZoomableCanvas extends canvas {
     }
 
     getActiveDocument(): Document {
-        return this.store.getters.activeDocument;
+        return this.store.getters["bmp/activeDocument"];
     }
 
     setInteractive( isInteractive: boolean ): void {
@@ -158,6 +202,22 @@ class ZoomableCanvas extends canvas {
             // console.info("no render. pending:" + renderState.pending + " lock:" + this.locked);
             this.locked = false;
             return this.requestDeferredRender( true );
+        }
+
+        // Hold the previous frame as long as any LayerRenderer child has not finished
+        // preparing its bitmap. Without this guard the ctx.clearRect below would run
+        // against renderers whose drawBitmap is gated on _bitmapReady=false, exposing
+        // the canvas CSS checkerboard for the duration of the asynchronous cacheEffects
+        // pipeline. We only inspect children that look like LayerRenderer (have a
+        // `layer` property); guides and the interaction pane never carry a bitmap.
+        for ( let i = 0; i < this._children.length; ++i ) {
+            const child = this._children[ i ] as any;
+            if ( !child.layer ) {
+                continue;
+            }
+            if ( !child.getBitmap || !child.getBitmap() || child._bitmapReady === false ) {
+                return this.requestDeferredRender( true );
+            }
         }
 
         // in case a resize was requested execute it now as we will

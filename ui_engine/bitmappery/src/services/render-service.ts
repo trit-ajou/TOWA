@@ -33,7 +33,7 @@ import { getLayerCache, setLayerCache } from "@/rendering/cache/bitmap-cache";
 import type { RenderCache } from "@/rendering/cache/bitmap-cache";
 import { maskImage } from "@/rendering/operations/masking";
 import { renderMultiLineText } from "@/rendering/operations/text";
-import { loadGoogleFont } from "@/services/font-service";
+import { loadGoogleFont, loadGoogleFontDetailed } from "@/services/font-service";
 import FilterWorker from "@/workers/filter.worker?worker";
 import wasmUrl from "@/wasm/bin/filters.wasm?url";
 
@@ -82,14 +82,25 @@ export const renderEffectsForLayer = async ( layer: Layer, useCaching = true ): 
 
     // step 1. render layer source contents
 
+    let scheduleFontRerender = false;
     if ( layer.type === LayerTypes.LAYER_TEXT && layer.text.value ) {
         let textBitmap;
         if ( cached?.textBitmap && isTextEqual( layer.text, cached.text )) {
             //console.info( "reading rendered text from cache" );
             textBitmap = cached.textBitmap;
         } else {
-            textBitmap = await renderText( layer );
-            replaceLayerSource( layer, textBitmap );
+            const renderResult = await renderText( layer );
+            textBitmap = renderResult.bitmap;
+            scheduleFontRerender = renderResult.fontFreshlyLoaded;
+            const meta = layer.meta as Record<string, unknown> | undefined;
+            if ( meta?.boxMode === "fixed" ) {
+                // TOWA-style 텍스트 layer: layer.left/top/width/height 보존, source만 교체.
+                // (AI bbox 좌표/크기를 다음 렌더 사이클에도 유지)
+                layer.source = textBitmap;
+            } else {
+                // native bitmappery 동작: layer를 텍스트 크기로 축소 + 중앙 보정.
+                replaceLayerSource( layer, textBitmap );
+            }
             //console.info( "writing rendered text to cache" );
             cacheToSet.text = { ...layer.text };
             cacheToSet.textBitmap = textBitmap;
@@ -153,6 +164,20 @@ export const renderEffectsForLayer = async ( layer: Layer, useCaching = true ): 
     // Layer model remains unaffected by this
     renderer.setBitmap( cvs, width, height );
     renderer.invalidate();
+
+    // 폰트가 이번 사이클에 처음 로드됐다면, 이전 measure는 fallback 폰트로 한 결과일 수
+    // 있으므로 정확한 폰트로 한 번 더 그림. cacheEffects는 자체적으로 debounce 되어 있음.
+    if ( scheduleFontRerender ) {
+        // 캐시 무효화: 동일 text로 비교되면 캐시된 (잘못된) textBitmap을 재사용해버리므로
+        // text 캐시를 비워 강제 재측정.
+        if ( useCaching ) {
+            const stale = getLayerCache( layer ) ?? {};
+            setLayerCache( layer, { ...stale, text: undefined, textBitmap: undefined } as RenderCache );
+        }
+        requestAnimationFrame(() => {
+            renderer.cacheEffects();
+        });
+    }
 };
 
 /* internal methods */
@@ -209,11 +234,13 @@ function handleWorkerMessage({ data }: MessageEvent ): void {
     }
 }
 
-const renderText = async ( layer: Layer ): Promise<HTMLCanvasElement> => {
+const renderText = async ( layer: Layer ): Promise<{ bitmap: HTMLCanvasElement; fontFreshlyLoaded: boolean }> => {
     const { text } = layer;
     let font = text.font;
+    let fontFreshlyLoaded = false;
     try {
-        await loadGoogleFont( font ); // lazily loads font file upon first request
+        const r = await loadGoogleFontDetailed( font );
+        fontFreshlyLoaded = r.freshlyLoaded;
     } catch {
         font = "Arial"; // fall back to universally available Arial
     }
@@ -224,7 +251,7 @@ const renderText = async ( layer: Layer ): Promise<HTMLCanvasElement> => {
     //ctx.fillStyle = "rgba(255,0,0,.5)";
     //ctx.fillRect( 0, 0, cvs.width, cvs.height );
 
-    return cvs;
+    return { bitmap: cvs, fontFreshlyLoaded };
 };
 
 const renderMask = ( layer: Layer, ctx: CanvasRenderingContext2D, sourceBitmap: HTMLCanvasElement, width: number, height: number ): void => {

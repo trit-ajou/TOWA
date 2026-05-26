@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { Page } from '@/types/page'
-import { Edit3, Paintbrush } from 'lucide-vue-next'
+import { Edit3, Paintbrush, Trash2 } from 'lucide-vue-next'
 
 const props = defineProps<{
   page: Page
@@ -11,6 +11,7 @@ const props = defineProps<{
 defineEmits<{
   openEdit: []
   openDetail: []
+  delete: []
 }>()
 
 const statusConfig = computed(() => {
@@ -31,10 +32,14 @@ const statusConfig = computed(() => {
   >
     <div class="relative aspect-[2/3] bg-towa-bg overflow-hidden">
       <img
+        v-if="page.thumbnail"
         :src="page.thumbnail"
         :alt="`페이지 ${page.index}`"
         class="w-full h-full object-cover"
       />
+      <div v-else class="w-full h-full flex items-center justify-center text-towa-text-muted text-sm">
+        {{ page.index }}p
+      </div>
       <span
         class="absolute top-2 right-2 text-[10px] font-medium text-white px-1.5 py-0.5 rounded-full"
         :class="statusConfig.color"
@@ -57,6 +62,13 @@ const statusConfig = computed(() => {
         >
           <Paintbrush :size="12" />
           상세 편집
+        </button>
+        <button
+          class="w-28 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md bg-red-600/80 text-white text-xs font-medium hover:bg-red-600 transition-colors"
+          @click.stop="$emit('delete')"
+        >
+          <Trash2 :size="12" />
+          삭제
         </button>
       </div>
     </div>

@@ -8,11 +8,13 @@
 - [service-engine-boundary.md](service-engine-boundary.md)
 - [project-page-storage-boundary.md](project-page-storage-boundary.md)
 - [ui-model-abstract-boundary.md](ui-model-abstract-boundary.md)
+- [ui-model-implementation.md](ui-model-implementation.md)
 
 주의:
 
 - `auth`, `usage`, `project/page snapshot`은 현재 구현된 contract다.
 - `UI -> model`, `model -> UI`의 상세 payload/result shape는 이번 단계에서 canonical wire contract로 고정하지 않는다.
+- 현재 저장소 구현을 UI 팀이 맞추기 위한 guide는 [ui-model-implementation.md](ui-model-implementation.md)에 정리한다.
 
 ## Scope
 
@@ -819,6 +821,27 @@ Authorization: Bearer <session_key>   # cloud only
   "status": "succeeded",
   "operation_kind": "translate",
   "request_ref": "project/p1/page/001",
+  "document_patch": {
+    "patches": [
+      {
+        "op": "replace_text_blocks",
+        "target": {},
+        "payload": {
+          "text_blocks": []
+        }
+      },
+      {
+        "op": "set_stage_meta",
+        "target": {},
+        "payload": {
+          "key": "translation",
+          "value": {
+            "status": "done"
+          }
+        }
+      }
+    ]
+  },
   "document": {
     "id": "doc_page_001",
     "name": "page-001",
@@ -894,6 +917,12 @@ terminal state:
 - `inpaint` -> `text_detection`, `mask_or_erase_planning`, `inpaint`
 - `translate` -> `text_detection`, `ocr`, `translation`
 - `pipeline` -> 명시된 pipeline config에 따름
+
+`detect` 성공 응답 규칙:
+
+- CRAFT `text_detection`은 `text_regions` artifact를 생성한다.
+- 외부 `detect` 작업에서는 같은 결과를 UI merge용 `replace_text_blocks` patch로도 반환한다.
+- 내부 pipeline의 `translate`/`inpaint` 선행 검출 단계는 빈 text block patch를 만들지 않고, downstream stage용 `text_regions` artifact만 만든다.
 
 현재 구현 상태:
 
