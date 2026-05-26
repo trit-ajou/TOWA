@@ -17,11 +17,18 @@ FastAPI 기반 `service_engine` 초안입니다.
 - `POST /usage/jobs/{job_id}/capture`
 - `POST /usage/jobs/{job_id}/release`
 - `GET /usage/jobs/{job_id}`
+- `GET /api/v1/folders`
+- `POST /api/v1/folders`
+- `PATCH /api/v1/folders/{folder_id}`
+- `DELETE /api/v1/folders/{folder_id}`
+- `POST /api/v1/folders/{folder_id}/restore`
+- `GET /api/v1/trash`
 - `POST /api/v1/projects`
 - `GET /api/v1/projects`
 - `GET /api/v1/projects/{project_id}`
 - `PATCH /api/v1/projects/{project_id}`
 - `DELETE /api/v1/projects/{project_id}`
+- `POST /api/v1/projects/{project_id}/restore`
 - `GET /api/v1/projects/{project_id}/pages`
 - `POST /api/v1/projects/{project_id}/pages`
 - `GET /api/v1/pages/{page_id}/snapshot`
@@ -31,7 +38,7 @@ FastAPI 기반 `service_engine` 초안입니다.
 
 합의된 v1 target boundary:
 
-- cloud `project` metadata persistence
+- cloud `folder/project` metadata persistence
 - cloud `page summary` 조회
 - cloud `page snapshot` save/load/delete
 
