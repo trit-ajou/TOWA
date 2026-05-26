@@ -2,13 +2,15 @@
 import { computed, ref } from 'vue'
 import { useStore } from 'vuex'
 import { useRouter } from 'vue-router'
-import { Folder, FolderOpen, Clock, Trash2, FolderPlus } from 'lucide-vue-next'
+import { Folder as FolderIcon, FolderOpen, Clock, Trash2, FolderPlus } from 'lucide-vue-next'
 import SearchBar from '@/components/common/SearchBar.vue'
 import BaseButton from '@/components/common/BaseButton.vue'
 import BaseModal from '@/components/common/BaseModal.vue'
 import FolderTreeNode from '@/components/home/FolderTreeNode.vue'
+import MoveToFolderModal from '@/components/home/MoveToFolderModal.vue'
 import { useModal } from '@/composables/useModal'
-import type { FolderNode } from '@/types/folder'
+import type { Folder, FolderNode } from '@/types/folder'
+import type { Project } from '@/types/project'
 import { validateFolderNameSyntax, MAX_FOLDER_DEPTH } from '@/types/folder'
 
 const store = useStore()
@@ -180,6 +182,61 @@ async function deleteFolder(mode: 'empty' | 'cascade-trash' | 'reparent') {
 function goToTrash() {
   router.push('/trash')
 }
+
+// --- Move folder modal ---
+
+const moveModal = useModal()
+const moveTargetId = ref<string | null>(null)
+const moveTarget = computed<Folder | null>(() =>
+  moveTargetId.value ? (store.getters['folders/byId'](moveTargetId.value) as Folder | undefined) ?? null : null,
+)
+const moveDisabledIds = computed<Set<string>>(() => {
+  if (!moveTargetId.value) return new Set()
+  const descIds = (store.getters['folders/descendantIds'] as (id: string) => string[])(moveTargetId.value)
+  return new Set([moveTargetId.value, ...descIds])
+})
+
+function openMoveFolderModal(folderId: string) {
+  moveTargetId.value = folderId
+  closeMenu()
+  moveModal.open()
+}
+
+async function submitMoveFolder(parentId: string | null) {
+  if (!moveTargetId.value) return
+  try {
+    await store.dispatch('folders/move', { id: moveTargetId.value, parentId })
+    moveModal.close()
+    moveTargetId.value = null
+  } catch (e) {
+    console.warn('[folders/move]', e)
+  }
+}
+
+// --- Drag & drop handlers (project → folder) ---
+
+async function moveProjectTo(folderId: string | null, projectId: string) {
+  const project = store.getters['projects/byId'](projectId) as Project | undefined
+  if (!project) return
+  if ((project.folderId ?? null) === folderId) return
+  try {
+    await store.dispatch('projects/update', { ...project, folderId })
+  } catch (e) {
+    console.warn('[projects/update folder]', e)
+  }
+}
+
+function onRootDragOver(ev: DragEvent) {
+  if (!ev.dataTransfer) return
+  if (Array.from(ev.dataTransfer.types).includes('application/x-towa-project-id')) {
+    ev.dataTransfer.dropEffect = 'move'
+  }
+}
+function onRootDrop(ev: DragEvent) {
+  const id = ev.dataTransfer?.getData('application/x-towa-project-id')
+  if (!id) return
+  moveProjectTo(null, id)
+}
 </script>
 
 <template>
@@ -223,16 +280,18 @@ function goToTrash() {
         </button>
       </div>
 
-      <!-- Root -->
+      <!-- Root (drop target for moving to root) -->
       <button
         class="w-full text-left text-sm px-2.5 py-1.5 rounded transition-colors flex items-center gap-1.5 mb-0.5"
         :class="currentFolderId === null
           ? 'bg-towa-accent/15 text-towa-accent'
           : 'text-towa-text-muted hover:text-towa-text hover:bg-towa-surface-light'"
         @click="navigateToFolder(null)"
+        @dragover.prevent="onRootDragOver"
+        @drop.prevent="onRootDrop"
       >
         <FolderOpen v-if="currentFolderId === null" :size="14" />
-        <Folder v-else :size="14" />
+        <FolderIcon v-else :size="14" />
         전체
       </button>
 
@@ -250,6 +309,8 @@ function goToTrash() {
           @create-child="openCreateModal"
           @rename="openRenameModal"
           @delete="openDeleteDialog"
+          @move="openMoveFolderModal"
+          @drop-project="moveProjectTo"
         />
       </template>
     </div>
@@ -298,6 +359,17 @@ function goToTrash() {
         <BaseButton variant="primary" size="sm" @click="submitRename">변경</BaseButton>
       </template>
     </BaseModal>
+
+    <!-- Move folder modal -->
+    <MoveToFolderModal
+      v-if="moveTarget"
+      :open="moveModal.isOpen.value"
+      :current-folder-id="moveTarget.parentId"
+      :item-name="moveTarget.name"
+      :disabled-ids="moveDisabledIds"
+      @close="moveModal.close()"
+      @submit="submitMoveFolder"
+    />
 
     <!-- Delete dialog -->
     <BaseModal :open="deleteModal.isOpen.value" title="폴더 삭제" @close="deleteModal.close()">

@@ -19,7 +19,21 @@ const emit = defineEmits<{
   createChild: [parentId: string]
   rename: [folderId: string]
   delete: [folderId: string]
+  move: [folderId: string]
+  dropProject: [folderId: string, projectId: string]
 }>()
+
+function onDragOver(ev: DragEvent) {
+  if (!ev.dataTransfer) return
+  if (Array.from(ev.dataTransfer.types).includes('application/x-towa-project-id')) {
+    ev.dataTransfer.dropEffect = 'move'
+  }
+}
+function onDrop(ev: DragEvent) {
+  const projectId = ev.dataTransfer?.getData('application/x-towa-project-id')
+  if (!projectId) return
+  emit('dropProject', props.folder.id, projectId)
+}
 
 const isOpen = computed(() => props.expanded.has(props.folder.id))
 const isActive = computed(() => props.currentFolderId === props.folder.id)
@@ -36,6 +50,8 @@ const indentPx = computed(() => `${8 + props.level * 12}px`)
       class="flex items-center group rounded"
       :class="isActive ? 'bg-towa-accent/15' : 'hover:bg-towa-surface-light'"
       :style="{ paddingLeft: indentPx }"
+      @dragover.prevent="onDragOver"
+      @drop.prevent="onDrop"
     >
       <button
         v-if="hasChildren"
@@ -86,6 +102,12 @@ const indentPx = computed(() => `${8 + props.level * 12}px`)
         <Pencil :size="12" /> 이름 변경
       </button>
       <button
+        class="w-full text-left px-3 py-1.5 hover:bg-towa-surface text-towa-text-muted hover:text-towa-text flex items-center gap-1.5"
+        @click="emit('move', folder.id)"
+      >
+        <Folder :size="12" /> 다른 폴더로 이동
+      </button>
+      <button
         class="w-full text-left px-3 py-1.5 hover:bg-towa-surface text-red-400 hover:text-red-300 flex items-center gap-1.5"
         @click="emit('delete', folder.id)"
       >
@@ -109,6 +131,8 @@ const indentPx = computed(() => `${8 + props.level * 12}px`)
         @create-child="(id) => emit('createChild', id)"
         @rename="(id) => emit('rename', id)"
         @delete="(id) => emit('delete', id)"
+        @move="(id) => emit('move', id)"
+        @drop-project="(fid, pid) => emit('dropProject', fid, pid)"
       />
     </template>
   </div>

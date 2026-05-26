@@ -11,6 +11,7 @@ import { buildPageSnapshotFromFile } from '@/utils/page-from-file'
 import HomeSidebar from '@/components/home/HomeSidebar.vue'
 import ProjectGrid from '@/components/home/ProjectGrid.vue'
 import CreateProjectModal from '@/components/home/CreateProjectModal.vue'
+import MoveToFolderModal from '@/components/home/MoveToFolderModal.vue'
 import BaseModal from '@/components/common/BaseModal.vue'
 import BaseButton from '@/components/common/BaseButton.vue'
 
@@ -18,7 +19,9 @@ const store = useStore()
 const router = useRouter()
 const createModal = useModal()
 const deleteModal = useModal()
+const moveModal = useModal()
 const projectToDelete = ref<Project | null>(null)
+const projectToMove = ref<Project | null>(null)
 
 const currentFolderId = computed<string | null>(() => store.getters['library/currentFolderId'])
 const statusFilter = computed<ProjectStatus | 'all'>(() => store.getters['library/statusFilter'])
@@ -146,6 +149,25 @@ async function deleteProject() {
   deleteModal.close()
   projectToDelete.value = null
 }
+
+function openMoveModal(project: Project) {
+  projectToMove.value = project
+  moveModal.open()
+}
+
+async function submitMove(folderId: string | null) {
+  if (!projectToMove.value) return
+  await store.dispatch('projects/update', { ...projectToMove.value, folderId })
+  moveModal.close()
+  projectToMove.value = null
+}
+
+async function onDropOnFolder(folderId: string, projectId: string) {
+  const project = store.getters['projects/byId'](projectId) as Project | undefined
+  if (!project) return
+  if ((project.folderId ?? null) === folderId) return
+  await store.dispatch('projects/update', { ...project, folderId })
+}
 </script>
 
 <template>
@@ -181,6 +203,8 @@ async function deleteProject() {
         @create="createModal.open()"
         @open-folder="navigateToFolder"
         @delete-project="confirmDeleteProject"
+        @move-project="openMoveModal"
+        @drop-on-folder="onDropOnFolder"
       />
     </main>
 
@@ -204,5 +228,14 @@ async function deleteProject() {
         <BaseButton variant="danger" size="sm" @click="deleteProject">삭제</BaseButton>
       </template>
     </BaseModal>
+
+    <MoveToFolderModal
+      v-if="projectToMove"
+      :open="moveModal.isOpen.value"
+      :current-folder-id="projectToMove.folderId ?? null"
+      :item-name="projectToMove.name"
+      @close="moveModal.close()"
+      @submit="submitMove"
+    />
   </div>
 </template>
