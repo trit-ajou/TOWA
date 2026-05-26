@@ -145,6 +145,9 @@ class ZoomableCanvas extends canvas {
         let newViewportLeft: number, newViewportTop: number;
         let elementOffsetX: number, elementOffsetY: number;
 
+        // 캔버스가 viewport보다 크면 anchor 유지(클릭 위치 고정), 작으면 centered로 snap.
+        // 사용자 직관: 캔버스가 화면에 다 들어오면 가운데 정렬이 자연스러움.
+        // 줌인 상태에서 자유 이동이 필요하면 Space+드래그 pan 도구 사용.
         if ( this._width >= vpW ) {
             elementOffsetX = 0;
             newViewportLeft = anchor
@@ -152,9 +155,7 @@ class ZoomableCanvas extends canvas {
                 : ( this._width - vpW ) * worldRatioX;
         } else {
             newViewportLeft = 0;
-            elementOffsetX = anchor
-                ? focalX * vpW - worldRatioX * this._width
-                : ( vpW - this._width ) / 2; // centered when smaller than viewport
+            elementOffsetX = ( vpW - this._width ) / 2;
         }
         if ( this._height >= vpH ) {
             elementOffsetY = 0;
@@ -163,9 +164,7 @@ class ZoomableCanvas extends canvas {
                 : ( this._height - vpH ) * worldRatioY;
         } else {
             newViewportTop = 0;
-            elementOffsetY = anchor
-                ? focalY * vpH - worldRatioY * this._height
-                : ( vpH - this._height ) / 2;
+            elementOffsetY = ( vpH - this._height ) / 2;
         }
 
         this.panViewport( fastRound( newViewportLeft ), fastRound( newViewportTop ), true );
