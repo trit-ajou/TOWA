@@ -337,7 +337,11 @@ export default {
         },
         cacheContainerSize(): void {
             containerSize = this.$el.parentNode?.getBoundingClientRect();
-            containerSize.height -= HEADER_HEIGHT;
+            // TOWA: header-menu가 비활성화된 모드에서는 component__header가 v-if로 사라져
+            // 실제 차지하는 공간이 없음. HEADER_HEIGHT을 빼면 캔버스가 그만큼 짧아져 빈 영역이 남음.
+            if ( isFeatureEnabled( "UI_HEADER_MENU" )) {
+                containerSize.height -= HEADER_HEIGHT;
+            }
 
             if ( mobileView ) {
                 containerSize.height -= 40; // collapsed options panel height
