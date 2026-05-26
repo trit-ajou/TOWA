@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -17,7 +17,7 @@ class ProjectCreateRequest(BaseModel):
     source_lang: str
     target_lang: str
     status: ProjectStatus
-    folder: str = ""
+    folder_id: str | None = None
     config: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -29,7 +29,7 @@ class ProjectPatchRequest(BaseModel):
     source_lang: str | None = None
     target_lang: str | None = None
     status: ProjectStatus | None = None
-    folder: str | None = None
+    folder_id: str | None = None
     config: dict[str, Any] | None = None
 
 
@@ -43,10 +43,12 @@ class ProjectResponse(BaseModel):
     target_lang: str
     page_count: int
     status: ProjectStatus
-    folder: str
+    folder_id: str | None
+    folder_path: str | None
     config: dict[str, Any]
     created_at: datetime
     updated_at: datetime
+    deleted_at: datetime | None
 
 
 class ProjectListResponse(BaseModel):
@@ -60,6 +62,58 @@ class ProjectDeleteResponse(BaseModel):
 
     deleted: bool
     project_id: str
+
+
+class FolderCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    parent_id: str | None = None
+
+
+class FolderPatchRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = None
+    parent_id: str | None = None
+
+
+class FolderResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    name: str
+    parent_id: str | None
+    path: str
+    created_at: datetime
+    updated_at: datetime
+    deleted_at: datetime | None
+
+
+class FolderListResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    items: list[FolderResponse]
+
+
+class FolderDeleteResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    deleted: bool
+    folder_id: str
+
+
+class TrashItemResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    type: Literal["folder", "project"]
+    item: FolderResponse | ProjectResponse
+
+
+class TrashListResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    items: list[TrashItemResponse]
 
 
 class PageSnapshotPageMetadata(BaseModel):

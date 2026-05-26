@@ -57,7 +57,8 @@ UI의 `deployment mode=standalone`은 model의 `runtime_context.mode=local`에 �
 | Caller | Target | Endpoints |
 | --- | --- | --- |
 | `UI engine` | `service engine` | `POST /auth/dev/login`, `GET /auth/me` |
-| `UI engine` | `service engine` | `POST /api/v1/projects`, `GET /api/v1/projects`, `GET /api/v1/projects/{project_id}`, `PATCH /api/v1/projects/{project_id}`, `DELETE /api/v1/projects/{project_id}` |
+| `UI engine` | `service engine` | `GET /api/v1/folders`, `POST /api/v1/folders`, `PATCH /api/v1/folders/{folder_id}`, `DELETE /api/v1/folders/{folder_id}`, `POST /api/v1/folders/{folder_id}/restore`, `GET /api/v1/trash` |
+| `UI engine` | `service engine` | `POST /api/v1/projects`, `GET /api/v1/projects`, `GET /api/v1/projects/{project_id}`, `PATCH /api/v1/projects/{project_id}`, `DELETE /api/v1/projects/{project_id}`, `POST /api/v1/projects/{project_id}/restore` |
 | `UI engine` | `service engine` | `GET /api/v1/projects/{project_id}/pages`, `POST /api/v1/projects/{project_id}/pages`, `GET /api/v1/pages/{page_id}/snapshot`, `PUT /api/v1/pages/{page_id}/snapshot`, `DELETE /api/v1/pages/{page_id}`, `GET /api/v1/pages/{page_id}/thumbnail` |
 | `model engine` | `service engine` | `POST /usage/jobs`, `POST /usage/jobs/{job_id}/capture`, `POST /usage/jobs/{job_id}/release`, `GET /usage/jobs/{job_id}` |
 | `UI engine` | `model engine` | `GET /healthz`, `POST /v1/jobs`, `GET /v1/jobs/{job_id}` |
@@ -162,6 +163,9 @@ project:{project_id}:page:{page_id}:op:{operation_kind}:v:{attempt_or_revision}
   - `usage_conflict`
   - `missing_credit_account`
   - `concurrent_update_conflict`
+  - `bad_request`
+  - `folder_not_found`
+  - `folder_conflict`
   - `project_not_found`
   - `page_not_found`
   - `project_conflict`
@@ -322,10 +326,45 @@ Authorization: Bearer <session_key>
 
 - 다른 유저 job이면 `404 usage_job_not_found`다
 
-### Project Metadata
+### Folder And Project Metadata
 
-서비스는 project 메타에서 `config`를 opaque JSON으로 저장한다.
-`page_count`는 서버가 pages 개수 기준으로 산출하는 read-only 필드다.
+서비스는 library folder를 entity로 저장한다.
+project는 `folder_id`로 folder를 참조하고, `folder_path`는 표시용 derived field다.
+
+#### Folder Object
+
+```json
+{
+  "id": "uuid",
+  "name": "점프",
+  "parent_id": "uuid-or-null",
+  "path": "주간연재/점프",
+  "created_at": "2026-05-26T00:00:00Z",
+  "updated_at": "2026-05-26T00:00:00Z",
+  "deleted_at": null
+}
+```
+
+규칙:
+
+- folder id는 service가 생성한 UUID다
+- 같은 부모 아래 같은 이름의 live folder는 `409 folder_conflict`다
+- folder name은 1~100자이며 빈 문자열, `/`, `\`, 제어문자를 거부한다
+- backend는 tree depth 제한을 두지 않는다
+
+#### Folder Endpoints
+
+- `GET /api/v1/folders`: live folder flat list. `search` query가 있으면 name 부분일치 검색
+- `POST /api/v1/folders`: `{ "name": "점프", "parent_id": null }`
+- `PATCH /api/v1/folders/{folder_id}`: `{ "name"?: string, "parent_id"?: string | null }`
+- `DELETE /api/v1/folders/{folder_id}`: 빈 live folder만 trash 이동
+- `DELETE /api/v1/folders/{folder_id}?cascade=trash`: subtree folder/project를 같은 `deleted_at`으로 trash 이동
+- `DELETE /api/v1/folders/{folder_id}?reparent=true`: 자식을 부모 folder로 승격 후 대상 folder만 trash 이동
+- `POST /api/v1/folders/{folder_id}/restore`: trashed subtree restore
+- `DELETE /api/v1/folders/{folder_id}?permanent=true`: trashed subtree hard delete
+
+`cascade`, `reparent`, `permanent`는 상호 배타다.
+cycle move와 live item permanent delete는 `400 bad_request`다.
 
 #### Project Object
 
@@ -338,7 +377,8 @@ Authorization: Bearer <session_key>
   "target_lang": "ko",
   "page_count": 19,
   "status": "in-progress",
-  "folder": "주간연재/점프",
+  "folder_id": "uuid-or-null",
+  "folder_path": "주간연재/점프",
   "config": {
     "auto_detect": true,
     "auto_inpaint": true,
@@ -346,7 +386,8 @@ Authorization: Bearer <session_key>
     "inference_mode": "cloud"
   },
   "created_at": "2026-04-15T00:00:00Z",
-  "updated_at": "2026-04-15T00:00:00Z"
+  "updated_at": "2026-04-15T00:00:00Z",
+  "deleted_at": null
 }
 ```
 
@@ -361,7 +402,7 @@ Authorization: Bearer <session_key>
   "source_lang": "ja",
   "target_lang": "ko",
   "status": "todo",
-  "folder": "주간연재/점프",
+  "folder_id": "uuid-or-null",
   "config": {
     "auto_detect": true,
     "auto_inpaint": true,
@@ -380,50 +421,38 @@ Authorization: Bearer <session_key>
 - `page_count`는 요청에 받지 않는다
 - `thumbnail_url`은 nullable이다
 - `thumbnail_url`은 UI가 선택한 대표 cover 값이며 service는 opaque string으로 저장/반환한다
+- root project는 `folder_id=null`, `folder_path=null`이다
 
-#### `GET /api/v1/projects`
+#### Project Endpoints
 
-응답:
+- `GET /api/v1/projects`: live project list
+- `GET /api/v1/projects/{project_id}`: live project detail
+- `PATCH /api/v1/projects/{project_id}`: `name`, `thumbnail_url`, `source_lang`, `target_lang`, `status`, `folder_id`, `config` 부분 갱신
+- `DELETE /api/v1/projects/{project_id}`: live project trash 이동, 응답은 deleted Project Object
+- `POST /api/v1/projects/{project_id}/restore`: trashed project restore. parent folder가 deleted 상태면 root로 복구
+- `DELETE /api/v1/projects/{project_id}?permanent=true`: trashed project hard delete
 
-```json
-{
-  "items": [Project Object...]
-}
-```
-
-#### `GET /api/v1/projects/{project_id}`
-
-응답은 Project Object다.
-
-#### `PATCH /api/v1/projects/{project_id}`
-
-부분 갱신 가능 필드:
-
-- `name`
-- `thumbnail_url`
-- `source_lang`
-- `target_lang`
-- `status`
-- `folder`
-- `config`
-
-응답은 갱신된 Project Object다.
-
-#### `DELETE /api/v1/projects/{project_id}`
+#### `GET /api/v1/trash`
 
 응답:
 
 ```json
 {
-  "deleted": true,
-  "project_id": "proj_001"
+  "items": [
+    {
+      "type": "folder",
+      "item": Folder Object
+    },
+    {
+      "type": "project",
+      "item": Project Object
+    }
+  ]
 }
 ```
 
-규칙:
-
-- hard delete다
-- 관련 page와 snapshot binary도 함께 제거된다
+기본 folder/project/page 조회 API는 `deleted_at IS NULL` 항목만 반환한다.
+휴지통 metadata는 `GET /api/v1/trash`가 제공한다.
 
 ### Page Summary
 
