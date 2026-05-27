@@ -51,6 +51,17 @@ tail -f ~/TOWA/deploy.log     # 5분 단위로 실행 로그 누적되는지 확
 
 `.env` 값을 다르게 쓰고 싶으면 `.env`를 직접 수정. `.env.deploy`는 이후 다시 안 건드림.
 
+### 백엔드 모드 일괄 전환
+
+`VITE_UI_BACKEND_MODE`(real / emulated)는 여러 env 파일에 흩어져 있어서 토글 스크립트로 한 번에 갱신:
+
+```bash
+./scripts/set-backend-mode.sh real       # 배포·실제 엔진 호출
+./scripts/set-backend-mode.sh emulated   # 오프라인 UI 개발 (in-memory mock)
+```
+
+`real`이면 `VITE_UI_AUTH_BACKEND=emulated` 같은 개별 override가 남아 있어도 startup에서 throw — silent mock 드리프트 방지.
+
 ## Cloudflare Tunnel 설정 (호스트에 cloudflared 이미 설치됨 가정)
 
 Cloudflare Zero Trust 대시보드 → Networks → Tunnels → 사용 중인 터널 선택 → **Public Hostname** 탭에서:

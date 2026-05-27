@@ -215,6 +215,10 @@ package-lock.json
 node_modules/
 .env.local
 
+# deploy.sh stuck-rebuild marker (server-side, written when a build attempt leaves
+# services down; prevents 5-min cron rebuild loop until SHA advances or marker removed)
+.deploy-stuck-at-sha
+
 # Local poster/reference artifacts generated during assistant sessions
 /output/poster_reference/
 /tmp/render_poster_pdfs.py

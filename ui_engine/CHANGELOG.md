@@ -4,6 +4,20 @@
 
 ---
 
+## 2026-05-28
+
+### 00:13 — backend mode 단일 master switch + AND-gate (#28)
+- 배경: `VITE_UI_AUTH_BACKEND` / `VITE_UI_AI_BACKEND` / `VITE_UI_FILES_BACKEND`가 root `.env`·`.env.local`·`towa-app/.env`에 분산. 배포 .env가 emulated로 남아 있어 production이 mock에 머무는 silent drift 발생
+- `ui_engine/towa-app/src/backend/index.ts`: master switch `VITE_UI_BACKEND_MODE` 도입. AND-gate semantics — master=real이면 어떤 per-domain `emulated` override도 startup throw. master=emulated일 때만 per-domain override 유효 (`real`로 일부 도메인만 실제 엔진과 붙여보기 가능). `real`/`emulated` 외 값은 strict parse로 throw
+- `docker-compose.yml` ui-engine: `VITE_UI_BACKEND_MODE` 추가, per-domain 변수는 빈 default로 passthrough만
+- `.env.deploy` 부활 (root, tracked): `VITE_UI_BACKEND_MODE=real`로 production default 명시. `deploy.sh` fallback 다시 동작
+- `scripts/set-backend-mode.sh real|emulated`: root `.env`/`.env.local`/`.env.deploy`/`towa-app/.env` 일괄 갱신
+- `DEPLOY.md`, `towa-app/src/backend/README.md`, `towa-app/.env.example`, `smoke/rest/README.md` 갱신
+- `deploy.sh`: 같은 SHA에서 build 후 service down이면 `.deploy-stuck-at-sha` marker 남기고 다음 cron부터 rebuild skip — silent 5분 rebuild loop 방지. SHA 진행되면 marker 자동 해제. 실패 서비스 로그를 자동 dump
+- `set-backend-mode.sh real` 실행 시 per-domain `=emulated` 잔존 line이 있으면 warning + 위치 출력 (자동 수정은 안 함; throw 의도는 유지)
+- `parseBackendMode`/`resolveDomainMode`를 pure function으로 export, `backend-mode.spec.ts` 15 케이스 추가 (master×per-domain 8 조합 + invalid 케이스)
+- 검증: dev 서버 + docker container 양쪽 — (1) master=real → boot OK (2) master=real + AI=emulated → throw 메시지 정확히 출력 (3) master=emulated + AI=real → boot OK. `.env.deploy → .env` fallback도 별도 clone 환경에서 확인. vitest 15/15 통과
+
 ## 2026-05-26
 
 ### 00:36 — 홈 라우팅 개편: 로그인 시 라이브러리 직행 (#20)
