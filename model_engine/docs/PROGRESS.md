@@ -34,6 +34,7 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 
 최근 추가된 wiring:
 
+- API `inpaint` job을 `text_detection -> mask_or_erase_planning -> inpaint` 3단계로 되돌렸다. i2i provider 호출에는 여전히 원본 bitmap 한 장만 보내고, 생성된 `inpaint_tasks` 마스크는 최종 `inpainting_layer_bitmap` 합성에만 사용해 마스크 영역은 불투명, 나머지는 투명하게 UI로 전달한다.
 - Mindlogic inpaint provider 호출을 prod 기준 Google edit endpoint로 정렬했다. 기본 model은 `imagen-3.0-capability-001`, endpoint는 `/v1/api/google/models/edit-image`, payload는 `reference_images[].reference_image.image_bytes` base64 + `config.edit_mode=EDIT_MODE_DEFAULT`를 사용한다.
 - bitmap-only inpaint 경로의 UI용 `inpainting_layer_bitmap`은 provider full-page output 전체가 아니라 원본과 provider output의 pixel diff overlay만 담는다. provider raw output은 계속 `provider_output_bitmap` artifact로 별도 보존한다.
 - `service_engine` client/errors/models 패키지 추가
@@ -71,7 +72,7 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - 공통 stage artifact dump 기능 추가. `TOWA_MODEL_ENGINE_STAGE_DUMP=1` 또는 `runtime_context.metadata.stage_artifact_dump=true`일 때 각 stage transaction 아래 `stage_artifact_dump/`를 만들고 `stage_request.json`, `stage_response.json`, `artifacts_before.json`, `artifacts_after.json`, `document_after.json`을 저장한다. 기본값으로 `file://` artifact는 `files/input`, `files/output` 아래 hardlink/copy하며, `TOWA_MODEL_ENGINE_STAGE_DUMP_COPY_FILES=0` 또는 metadata `stage_artifact_dump_copy_files=false`로 바이너리 복사를 끌 수 있다. dump JSON은 credential/session/token 계열 값을 redaction한다.
 - bitmap-only inpaint 경로의 UI용 `inpainting_layer_bitmap`은 provider full-page output과 원본의 pixel diff overlay를 전달한다. 전체 provider 결과는 debug용 `provider_output_bitmap` artifact로 함께 남긴다.
 - Mindlogic/Nanobanana inpaint provider 호출 prompt에 입력 bitmap의 실제 canvas 크기를 동적으로 추가한다. 예를 들어 UI에서 받은 source bitmap이 `1333x750`이면 provider prompt에 output이 정확히 `1333x750 pixels`이고 crop/pad/stretch/scale 변경을 하면 안 된다는 제약을 붙인다. stage report에는 `prompt_output_size`를 남긴다.
-- API `inpaint` job은 e2e 재검증을 위해 `inpaint` 단일 stage로 실행한다. UI에는 provider full-page output을 `inpainting_layer_bitmap`으로 그대로 반환하고, provider 결과도 debug용 `provider_output_bitmap`으로 남긴다.
+- API `inpaint` job은 다시 `text_detection -> mask_or_erase_planning -> inpaint` 3단계로 실행한다. UI에는 provider full-page output 전체가 아니라 마스크/diff 합성 결과인 `inpainting_layer_bitmap`을 반환하고, provider 결과도 debug용 `provider_output_bitmap`으로 남긴다.
 - Mindlogic inpaint provider 호출은 Google edit/Imagen endpoint `/v1/api/google/models/edit-image`의 `imagen-3.0-capability-001` 경로를 기본으로 사용한다. raw 원본 bitmap 1장을 `reference_images`에 넣고 stage report에는 `provider_reference_image_count=1`, `provider_mask_guide=no`, mask 없는 경로에서는 `composite_mask_mode=pixel_diff`를 남긴다.
 
 ## 2026-05-26 Mindlogic inpaint 장애 기록
@@ -162,16 +163,15 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 
 변경 후:
 
-- `inpaint` 요청 시 `inpaint` 1단계만 실행
-- 프롬프트가 이미 "모든 텍스트를 찾아서 지워라"고 지시하므로 CRAFT 검출이 불필요
-- provider에 원본 이미지 전체를 보내고, provider 결과를 그대로 `layer_inpainting`으로 사용
-- `inpaint_tasks` artifact가 있으면(기존 마스크 기반 경로) 여전히 마스크 합성 fallback으로 동작
+- 이 단순화는 이후 되돌렸다. 현재 `inpaint` 요청은 `text_detection(CRAFT) -> mask_or_erase_planning -> inpaint` 3단계로 실행한다.
+- provider에는 원본 이미지 전체만 보내고 마스크는 보내지 않는다. 생성된 `inpaint_tasks`는 최종 `layer_inpainting` 합성에만 사용한다.
+- `inpaint_tasks` artifact가 있으면 마스크 영역만 합성하고, 없으면 bitmap-only pixel diff overlay fallback으로 동작한다.
 - `builtin.nanobanana.inpaint`, `builtin.mindlogic.inpaint` manifest의 필수 artifact를 `bitmap`으로 맞춰 UI 단독 inpaint 요청에서도 registry selection이 통과하도록 수정
 
 효과:
 
-- CRAFT 모델 로딩/추론 시간 생략 → 인페인트 속도 개선
-- 파이프라인 단계 감소로 실패 지점 감소
+- UI에 전달되는 `inpainting_layer_bitmap`은 마스크 영역만 불투명하고 나머지는 투명하게 유지된다.
+- provider output 전체는 debug용 `provider_output_bitmap` artifact로만 남긴다.
 
 ### 3. 임시 변경 (커밋 미포함)
 
@@ -507,8 +507,8 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - 기본 `ModelJobManager` executor를 placeholder에서 orchestrator 기반 executor로 전환
 - `detect`는 built-in `CRAFT text_detection` stage 조합 사용
 - `translate`는 `text_detection -> ocr -> translation` 조합 사용
-- `inpaint`는 e2e 재검증을 위해 `inpaint` 단일 stage 조합 사용
-- planner 함수는 직접 stage 테스트와 샘플 경로에서 계속 재사용 가능하도록 유지
+- `inpaint`는 `text_detection -> mask_or_erase_planning -> inpaint` 조합 사용
+- planner 함수는 API job, 직접 stage 테스트, 샘플 경로에서 재사용 가능하도록 유지
 
 비고:
 

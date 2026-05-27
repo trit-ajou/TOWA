@@ -131,13 +131,16 @@ class OrchestratedJobExecutorTests(unittest.TestCase):
                 result.document.stage_meta["translation"]["engine"],
             )
 
-    def test_inpaint_job_runs_single_e2e_inpaint_stage(self) -> None:
+    def test_inpaint_job_detects_mask_then_returns_masked_inpaint_layer(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             request = _job_request(Path(tmpdir), operation_kind="inpaint")
             request.runtime_context.metadata["inpaint_provider"] = "nanobanana"
             executor = OrchestratedJobExecutor()
 
             with patch(
+                "model_engine.builtin_models.craft_text_detection._detect_with_craft",
+                side_effect=_fake_detect_text,
+            ), patch(
                 "model_engine.builtin_models.nanobanana_inpaint._generate_with_nanobanana_vertex",
                 side_effect=_fake_generate_green_page,
             ):
@@ -145,11 +148,11 @@ class OrchestratedJobExecutorTests(unittest.TestCase):
 
             self.assertEqual(ModelJobStatus.SUCCEEDED, result.status)
             self.assertEqual(
-                ["inpaint"],
+                ["text_detection", "mask_or_erase_planning", "inpaint"],
                 [report.stage_name for report in result.stage_reports],
             )
             self.assertEqual(
-                "pixel_diff",
+                "mask_artifact",
                 result.stage_reports[-1].metrics["composite_mask_mode"],
             )
             bitmap_artifact = next(
@@ -159,7 +162,7 @@ class OrchestratedJobExecutorTests(unittest.TestCase):
             )
             output_image = Image.open(Path(bitmap_artifact.uri.removeprefix("file://"))).convert("RGBA")
             self.assertEqual((0, 255, 0, 255), output_image.getpixel((5, 5)))
-            self.assertEqual((0, 255, 0, 255), output_image.getpixel((40, 0)))
+            self.assertEqual((0, 0, 0, 0), output_image.getpixel((40, 0)))
 
     def test_model_job_manager_defaults_to_orchestrated_executor(self) -> None:
         manager = ModelJobManager()
