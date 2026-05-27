@@ -202,7 +202,15 @@ def run_nanobanana_inpaint(
         )
 
         diff_metrics: dict[str, str | int | float] = {}
+        cleanup_metrics: dict[str, str | int | float] = {}
         if use_mask:
+            generated_page, cleanup_metrics, cleanup_warning = _cleanup_generated_text_regions(
+                request,
+                generated_page,
+                tasks_payload,
+            )
+            if cleanup_warning is not None:
+                warnings.append(cleanup_warning)
             edited_image = _initial_inpainting_canvas(request, base_image, target_layer_id)
             composite_mask = _build_composite_mask(request, tasks_payload, base_image.size)
             edited_image.paste(generated_page, (0, 0), composite_mask)
@@ -254,8 +262,10 @@ def run_nanobanana_inpaint(
         "provider_output_resized": "yes" if resize_warning is not None else "no",
         "provider_reference_image_count": 1,
         "provider_mask_guide": "no",
+        "output_mask_dilate_radius": _output_mask_dilate_radius(request),
     }
     metrics.update(diff_metrics)
+    metrics.update(cleanup_metrics)
     report = StageReport(
         stage_name=request.stage_name,
         stage_run_id=request.stage_run_id,
@@ -538,7 +548,70 @@ def _build_composite_mask(
         region_mask = Image.open(mask_path).convert("L")
         position = (task.expanded_bbox["x"], task.expanded_bbox["y"])
         composite_mask.paste(region_mask, position, region_mask)
+    dilate_radius = _output_mask_dilate_radius(request)
+    if dilate_radius > 0:
+        composite_mask = composite_mask.filter(ImageFilter.MaxFilter(dilate_radius * 2 + 1))
     return composite_mask
+
+
+def _output_mask_dilate_radius(request: StageRequest) -> int:
+    return int(request.stage_config.get("output_mask_dilate_radius", 0))
+
+
+def _cleanup_generated_text_regions(
+    request: StageRequest,
+    generated_page: Image.Image,
+    tasks_payload: object,
+) -> tuple[Image.Image, dict[str, str | int | float], Optional[str]]:
+    if not bool(request.stage_config.get("local_text_cleanup", True)):
+        return generated_page, {"local_text_cleanup": "disabled"}, None
+
+    cleanup_mask = _build_text_cleanup_mask(request, tasks_payload, generated_page.size)
+    mask_pixel_count = generated_page.width * generated_page.height - cleanup_mask.histogram()[0]
+    metrics: dict[str, str | int | float] = {
+        "local_text_cleanup": "opencv_inpaint",
+        "cleanup_mask_pixel_count": mask_pixel_count,
+    }
+    if mask_pixel_count <= 0:
+        metrics["local_text_cleanup"] = "empty_mask"
+        return generated_page, metrics, None
+
+    dilate_radius = int(request.stage_config.get("cleanup_text_mask_dilate_radius", 2))
+    inpaint_radius = float(request.stage_config.get("cleanup_inpaint_radius", 3.0))
+    if dilate_radius > 0:
+        cleanup_mask = cleanup_mask.filter(ImageFilter.MaxFilter(dilate_radius * 2 + 1))
+    metrics["cleanup_text_mask_dilate_radius"] = dilate_radius
+    metrics["cleanup_inpaint_radius"] = inpaint_radius
+
+    try:
+        import cv2  # type: ignore[import-not-found]
+        import numpy as np
+    except Exception as exc:  # pragma: no cover - exercised only in stripped runtime images
+        metrics["local_text_cleanup"] = "unavailable"
+        return generated_page, metrics, f"local_text_cleanup_unavailable: {type(exc).__name__}: {exc}"
+
+    rgba = generated_page.convert("RGBA")
+    rgb = np.array(rgba.convert("RGB"))
+    mask = np.array(cleanup_mask.convert("L"))
+    cleaned_rgb = cv2.inpaint(rgb, mask, inpaint_radius, cv2.INPAINT_TELEA)
+    cleaned = Image.fromarray(cleaned_rgb, mode="RGB").convert("RGBA")
+    cleaned.putalpha(rgba.getchannel("A"))
+    return cleaned, metrics, None
+
+
+def _build_text_cleanup_mask(
+    request: StageRequest,
+    tasks_payload: object,
+    image_size: tuple[int, int],
+) -> Image.Image:
+    cleanup_mask = Image.new("L", image_size, color=0)
+    for task in getattr(tasks_payload, "tasks", []) or []:
+        mask_artifact = request.artifacts[task.mask_artifact_ref]
+        mask_path = _file_path_from_uri(mask_artifact.uri)
+        region_mask = Image.open(mask_path).convert("L")
+        position = (task.expanded_bbox["x"], task.expanded_bbox["y"])
+        cleanup_mask.paste(region_mask, position, region_mask)
+    return cleanup_mask
 
 
 def _composite_mask_mode(request: StageRequest) -> str:
