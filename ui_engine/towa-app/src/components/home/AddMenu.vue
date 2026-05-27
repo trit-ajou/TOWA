@@ -1,7 +1,29 @@
 <script setup lang="ts">
-import { ref, onBeforeUnmount } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import { Plus, FilePlus, FolderPlus } from 'lucide-vue-next'
 import BaseCard from '@/components/common/BaseCard.vue'
+
+// --- Module-level single-open state ---
+// Multiple AddMenu instances share this; only one popover can be open at a time.
+type OwnerId = symbol
+const openOwner = ref<OwnerId | null>(null)
+const popX = ref(0)
+const popY = ref(0)
+let docListenerInstalled = false
+
+function installDocListener() {
+  if (docListenerInstalled) return
+  docListenerInstalled = true
+  window.addEventListener('click', (ev) => {
+    if (openOwner.value == null) return
+    const target = ev.target as HTMLElement | null
+    // Keep the popover open if the click landed on either the trigger or the popover itself.
+    if (target?.closest('[data-add-menu-trigger]')) return
+    if (target?.closest('[data-add-menu-popover]')) return
+    openOwner.value = null
+  })
+}
+installDocListener()
 
 const emit = defineEmits<{
   createProject: []
@@ -9,51 +31,47 @@ const emit = defineEmits<{
 }>()
 
 defineProps<{
-  /** Render variant. tile = grid card; toolbar = pill button; icon-button = small +. */
   variant?: 'icon-button' | 'tile' | 'toolbar'
   label?: string
 }>()
 
-const open = ref(false)
-const popX = ref(0)
-const popY = ref(0)
+const myId: OwnerId = Symbol('add-menu')
+const open = computed(() => openOwner.value === myId)
 
 function openAtEvent(ev: MouseEvent) {
-  ev.stopPropagation()
   popX.value = ev.clientX
   popY.value = ev.clientY
-  open.value = true
+  openOwner.value = myId
 }
 
 function openAtElement(ev: Event) {
-  ev.stopPropagation()
   const el = ev.currentTarget as HTMLElement
   const rect = el.getBoundingClientRect()
   popX.value = rect.right
   popY.value = rect.bottom + 4
-  open.value = true
+  openOwner.value = myId
 }
 
-function close() { open.value = false }
-
-function onDocClick(ev: MouseEvent) {
-  if (!open.value) return
-  const target = ev.target as HTMLElement | null
-  if (target?.closest('[data-add-popover]')) return
-  close()
-}
-window.addEventListener('click', onDocClick)
-onBeforeUnmount(() => window.removeEventListener('click', onDocClick))
+function close() { openOwner.value = null }
 
 function pick(action: 'createProject' | 'createFolder') {
   close()
   emit(action)
 }
+
+onBeforeUnmount(() => {
+  if (open.value) close()
+})
 </script>
 
 <template>
   <!-- Tile: matches FolderCard/ProjectCard size, single + glyph -->
-  <BaseCard v-if="variant === 'tile'" hoverable @click="openAtEvent($event)">
+  <BaseCard
+    v-if="variant === 'tile'"
+    hoverable
+    data-add-menu-trigger
+    @click="openAtEvent($event)"
+  >
     <div class="aspect-[3/4] flex items-center justify-center text-towa-text-muted hover:text-towa-accent transition-colors">
       <Plus :size="40" />
     </div>
@@ -65,6 +83,7 @@ function pick(action: 'createProject' | 'createFolder') {
   <!-- Toolbar: pill button -->
   <button
     v-else-if="variant === 'toolbar'"
+    data-add-menu-trigger
     class="flex items-center gap-1 px-3 py-1.5 rounded-md bg-towa-accent text-white text-sm font-medium hover:bg-towa-accent-hover transition-colors"
     @click="openAtElement($event)"
   >
@@ -75,6 +94,7 @@ function pick(action: 'createProject' | 'createFolder') {
   <!-- icon-button (sidebar): small + -->
   <button
     v-else
+    data-add-menu-trigger
     class="p-1 text-towa-text-muted hover:text-towa-accent rounded transition-colors"
     :title="label ?? '추가'"
     @click="openAtElement($event)"
@@ -82,14 +102,13 @@ function pick(action: 'createProject' | 'createFolder') {
     <Plus :size="14" />
   </button>
 
-  <!-- Popover (teleported to viewport by fixed positioning) -->
+  <!-- Popover, teleported to body -->
   <Teleport to="body">
     <div
       v-if="open"
-      data-add-popover
+      data-add-menu-popover
       class="fixed bg-towa-surface-light border border-towa-border rounded shadow-lg py-1 text-xs z-50 min-w-[140px]"
       :style="{ left: popX + 'px', top: popY + 'px', transform: 'translate(-50%, 4px)' }"
-      @click.stop
     >
       <button
         class="w-full text-left px-3 py-1.5 hover:bg-towa-surface text-towa-text-muted hover:text-towa-text flex items-center gap-1.5"
