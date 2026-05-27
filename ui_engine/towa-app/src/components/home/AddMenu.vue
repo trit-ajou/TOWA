@@ -1,29 +1,16 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeUnmount } from 'vue'
 import { Plus, FilePlus, FolderPlus } from 'lucide-vue-next'
 import BaseCard from '@/components/common/BaseCard.vue'
+import {
+  openOwner,
+  popX,
+  popY,
+  installAddMenuDocListener,
+  type AddMenuOwnerId,
+} from './add-menu-state'
 
-// --- Module-level single-open state ---
-// Multiple AddMenu instances share this; only one popover can be open at a time.
-type OwnerId = symbol
-const openOwner = ref<OwnerId | null>(null)
-const popX = ref(0)
-const popY = ref(0)
-let docListenerInstalled = false
-
-function installDocListener() {
-  if (docListenerInstalled) return
-  docListenerInstalled = true
-  window.addEventListener('click', (ev) => {
-    if (openOwner.value == null) return
-    const target = ev.target as HTMLElement | null
-    // Keep the popover open if the click landed on either the trigger or the popover itself.
-    if (target?.closest('[data-add-menu-trigger]')) return
-    if (target?.closest('[data-add-menu-popover]')) return
-    openOwner.value = null
-  })
-}
-installDocListener()
+installAddMenuDocListener()
 
 const emit = defineEmits<{
   createProject: []
@@ -35,7 +22,7 @@ defineProps<{
   label?: string
 }>()
 
-const myId: OwnerId = Symbol('add-menu')
+const myId: AddMenuOwnerId = Symbol('add-menu')
 const open = computed(() => openOwner.value === myId)
 
 function openAtEvent(ev: MouseEvent) {
