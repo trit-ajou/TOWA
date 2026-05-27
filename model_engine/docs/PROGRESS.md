@@ -38,6 +38,7 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - API `inpaint`의 최종 합성은 `output_mask_mode=mask_artifact`와 `output_mask_dilate_radius=2`를 사용한다. `expanded_bbox`는 글자를 잘 덮지만 휴대폰 화면 같은 비말풍선 영역을 과하게 덮어서, 기본 UI alpha는 CRAFT text mask 주변의 작은 dilation까지만 사용한다.
 - Nanobanana/Mindlogic 공통 인페인트 prompt는 “보존”보다 “기존 글자 완전 제거”가 우선임을 명시하도록 강화했다. 남은 glyph/stroke/ghost text를 허용하지 않고, 제거 영역은 말풍선 내부/종이톤/스크린톤/배경 텍스처로 채우게 한다.
 - provider가 작은 글자를 그대로 복사하는 경우가 있어, mask 기반 inpaint 경로에서는 provider raw output을 보존한 뒤 UI용 합성 전에 CRAFT text mask를 OpenCV Telea inpaint로 한 번 더 정리한다. metrics에는 `local_text_cleanup`, `cleanup_mask_pixel_count`, `cleanup_text_mask_dilate_radius`, `cleanup_inpaint_radius`를 남긴다.
+- 현재 인페인트 상태와 라이브 확인 결과는 `docs/INPAINT_TEXT_REMOVAL_STATUS.md`에 별도 정리했다. provider에는 원본 페이지 1장만 보내고, UI용 `inpainting_layer_bitmap`만 text region mask 주변으로 투명 합성한다.
 - Mindlogic inpaint provider 호출을 prod 기준 Google edit endpoint로 정렬했다. 기본 model은 `imagen-3.0-capability-001`, endpoint는 `/v1/api/google/models/edit-image`, payload는 `reference_images[].reference_image.image_bytes` base64 + `config.edit_mode=EDIT_MODE_DEFAULT`를 사용한다.
 - bitmap-only inpaint 경로의 UI용 `inpainting_layer_bitmap`은 provider full-page output 전체가 아니라 원본과 provider output의 pixel diff overlay만 담는다. provider raw output은 계속 `provider_output_bitmap` artifact로 별도 보존한다.
 - `service_engine` client/errors/models 패키지 추가
