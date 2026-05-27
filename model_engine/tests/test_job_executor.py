@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib
 from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
@@ -131,7 +132,7 @@ class OrchestratedJobExecutorTests(unittest.TestCase):
                 result.document.stage_meta["translation"]["engine"],
             )
 
-    def test_inpaint_job_runs_detection_planning_then_bbox_limited_inpaint(self) -> None:
+    def test_inpaint_job_detects_mask_then_returns_masked_inpaint_layer(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             request = _job_request(Path(tmpdir), operation_kind="inpaint")
             request.runtime_context.metadata["inpaint_provider"] = "nanobanana"
@@ -152,8 +153,17 @@ class OrchestratedJobExecutorTests(unittest.TestCase):
                 [report.stage_name for report in result.stage_reports],
             )
             self.assertEqual(
-                "expanded_bbox",
+                "mask_artifact",
                 result.stage_reports[-1].metrics["composite_mask_mode"],
+            )
+            self.assertEqual(2, result.stage_reports[-1].metrics["output_mask_dilate_radius"])
+            self.assertEqual(
+                "opencv_inpaint" if _opencv_available() else "unavailable",
+                result.stage_reports[-1].metrics["local_text_cleanup"],
+            )
+            self.assertGreater(
+                result.stage_reports[-1].metrics["cleanup_mask_pixel_count"],
+                0,
             )
             bitmap_artifact = next(
                 descriptor
@@ -162,6 +172,7 @@ class OrchestratedJobExecutorTests(unittest.TestCase):
             )
             output_image = Image.open(Path(bitmap_artifact.uri.removeprefix("file://"))).convert("RGBA")
             self.assertEqual((0, 255, 0, 255), output_image.getpixel((5, 5)))
+            self.assertEqual((0, 255, 0, 255), output_image.getpixel((2, 5)))
             self.assertEqual((0, 0, 0, 0), output_image.getpixel((40, 0)))
 
     def test_model_job_manager_defaults_to_orchestrated_executor(self) -> None:
@@ -409,6 +420,15 @@ def _fake_generate_green_page(
     buffer = BytesIO()
     edited.save(buffer, format="PNG")
     return buffer.getvalue()
+
+
+def _opencv_available() -> bool:
+    try:
+        importlib.import_module("cv2")
+        importlib.import_module("numpy")
+    except Exception:
+        return False
+    return True
 
 
 class _RecordingInputArtifactStage(Stage):

@@ -45,13 +45,19 @@ from ..contracts.artifacts import ArtifactDescriptor
 from ..contracts.document_ir import DocumentIR
 from ..contracts.models import StageKind
 from ..contracts.patches import PatchOperation
-from ..contracts.stages import ExecutionMode, StageReport, StageRuntimeContext, StageStatus
+from ..contracts.stages import (
+    ExecutionMode,
+    StageReport,
+    StageRequest,
+    StageResponse,
+    StageRuntimeContext,
+    StageStatus,
+)
 from ..ipc.serde import document_from_data, document_to_data, patch_to_data, stage_report_to_data
 from ..logging_utils import log_event, log_exception
 from ..models import ModelRegistry
 from ..orchestrator import PipelineOrchestrator
 from ..stages import AdapterBackedStage, Stage, run_mask_or_erase_planning
-from ..stages.base import Stage as StageProtocol
 from .service_bridge import (
     ServiceEngineBridgeClient,
     ServiceEngineHTTPError,
@@ -256,6 +262,31 @@ class OrchestratedJobExecutor(JobExecutor):
             stage_reports=result.stage_reports,
             error=_error_from_stage_reports(result.stage_reports),
         )
+
+
+class FunctionStage(Stage):
+    """Wrap deterministic planner handlers so API jobs can compose them with model stages."""
+
+    def __init__(
+        self,
+        stage_name: str,
+        handler: Callable[[StageRequest], StageResponse],
+        *,
+        config: dict[str, object] | None = None,
+    ) -> None:
+        self._stage_name = stage_name
+        self._handler = handler
+        self._config = dict(config or {})
+
+    @property
+    def stage_name(self) -> str:
+        return self._stage_name
+
+    def stage_config(self) -> dict[str, object]:
+        return dict(self._config)
+
+    def run(self, request: StageRequest) -> StageResponse:
+        return self._handler(request)
 
 
 class ModelJobManager:
@@ -880,31 +911,6 @@ def _server_job_workspace_path(job_id: str) -> Path:
     return path.resolve()
 
 
-class _FunctionStage(StageProtocol):
-    """Wrap planner-like stage functions so the executor can compose them uniformly."""
-
-    def __init__(
-        self,
-        stage_name: str,
-        handler: Callable[[Any], Any],
-        *,
-        config: dict[str, object] | None = None,
-    ) -> None:
-        self._stage_name = stage_name
-        self._handler = handler
-        self._config = dict(config or {})
-
-    @property
-    def stage_name(self) -> str:
-        return self._stage_name
-
-    def stage_config(self) -> dict[str, object]:
-        return dict(self._config)
-
-    def run(self, request: Any) -> Any:
-        return self._handler(request)
-
-
 def _build_builtin_registry() -> ModelRegistry:
     registry = ModelRegistry()
     register_craft_text_detection_model(registry)
@@ -996,7 +1002,7 @@ def _build_operation_stages(
                 preferred_model_id=CRAFT_TEXT_DETECTION_MODEL_ID,
                 config=common_detection_config,
             ),
-            _FunctionStage(
+            FunctionStage(
                 "mask_or_erase_planning",
                 run_mask_or_erase_planning,
                 config={
@@ -1013,7 +1019,8 @@ def _build_operation_stages(
                 config={
                     "input_artifact_ref": input_artifact_ref,
                     "target_layer_id": "layer_inpainting",
-                    "output_mask_mode": "expanded_bbox",
+                    "output_mask_mode": "mask_artifact",
+                    "output_mask_dilate_radius": 2,
                     **_inpaint_provider_config_from_runtime(request.runtime_context),
                 },
             ),

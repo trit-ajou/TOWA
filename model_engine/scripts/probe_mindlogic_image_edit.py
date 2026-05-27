@@ -12,8 +12,8 @@ from typing import Any
 from urllib import error, parse, request
 
 
-DEFAULT_BASE_URL = "https://factchat-cloud.mindlogic.ai/v1/gateway"
-DEFAULT_MODEL = "gemini-2.5-flash-image"
+DEFAULT_BASE_URL = "https://factchat-cloud.mindlogic.ai/v1/api/google"
+DEFAULT_MODEL = "imagen-3.0-capability-001"
 DEFAULT_GOOGLE_EDIT_BASE_URL = "https://factchat-cloud.mindlogic.ai/v1/api/google"
 DEFAULT_GOOGLE_EDIT_MODEL = "imagen-3.0-capability-001"
 DEFAULT_PROMPT = (
@@ -45,11 +45,11 @@ def main() -> int:
     parser.add_argument(
         "--base-url",
         default=DEFAULT_BASE_URL,
-        help="Mindlogic Gateway base URL.",
+        help="Mindlogic image API base URL.",
     )
     parser.add_argument(
         "--endpoint-path",
-        default="/images/generate/",
+        default="/models/edit-image",
         help="Endpoint path appended to --base-url.",
     )
     parser.add_argument(
@@ -60,7 +60,7 @@ def main() -> int:
     parser.add_argument(
         "--payload-format",
         choices=["gateway-generate", "google-edit"],
-        default="gateway-generate",
+        default="google-edit",
         help="Request payload shape.",
     )
     parser.add_argument(
@@ -72,7 +72,7 @@ def main() -> int:
         "--image-field",
         choices=["image", "images", "input_image", "reference_images"],
         default="image",
-        help="Payload field used for the input image. Change this if the gateway schema differs.",
+        help="Payload field used for gateway-generate input images.",
     )
     parser.add_argument(
         "--image-value",
@@ -82,7 +82,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--edit-mode",
-        default="EDIT_MODE_INPAINT_REMOVAL",
+        default="EDIT_MODE_DEFAULT",
         help="Google edit config.edit_mode when --payload-format=google-edit.",
     )
     parser.add_argument(
