@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 import { useStore } from 'vuex'
 import { useRouter } from 'vue-router'
 import type { Project, ProjectStatus } from '@/types/project'
-import type { FolderNode } from '@/types/folder'
+import type { Folder, FolderNode } from '@/types/folder'
 import type { PreviewItem } from '@/components/home/FolderCard.vue'
 import { useModal } from '@/composables/useModal'
 import { createUlid } from '@/utils/ulid'
@@ -11,19 +11,46 @@ import { buildPageSnapshotFromFile } from '@/utils/page-from-file'
 import HomeSidebar from '@/components/home/HomeSidebar.vue'
 import ProjectGrid from '@/components/home/ProjectGrid.vue'
 import CreateProjectModal from '@/components/home/CreateProjectModal.vue'
+import MoveToFolderModal from '@/components/home/MoveToFolderModal.vue'
+import AddMenu from '@/components/home/AddMenu.vue'
 import BaseModal from '@/components/common/BaseModal.vue'
 import BaseButton from '@/components/common/BaseButton.vue'
+import { ChevronLeft } from 'lucide-vue-next'
 
 const store = useStore()
 const router = useRouter()
 const createModal = useModal()
 const deleteModal = useModal()
+const moveModal = useModal()
 const projectToDelete = ref<Project | null>(null)
+const projectToMove = ref<Project | null>(null)
 
-const currentPath = computed<string[]>(() => store.getters['library/currentPath'])
+interface SidebarApi {
+  openCreateModal: (parentId: string | null) => void
+  openRenameModal: (folderId: string) => void
+  openDeleteDialog: (folderId: string) => void
+  openMoveFolderModal: (folderId: string) => void
+}
+const sidebar = ref<SidebarApi | null>(null)
+
+function onFolderCreateChild(folderId: string) { sidebar.value?.openCreateModal(folderId) }
+function onFolderRename(folderId: string) { sidebar.value?.openRenameModal(folderId) }
+function onFolderMove(folderId: string) { sidebar.value?.openMoveFolderModal(folderId) }
+function onFolderDelete(folderId: string) { sidebar.value?.openDeleteDialog(folderId) }
+
+const currentFolderId = computed<string | null>(() => store.getters['library/currentFolderId'])
 const statusFilter = computed<ProjectStatus | 'all'>(() => store.getters['library/statusFilter'])
-const subfolders = computed<FolderNode[]>(() => store.getters['library/currentSubfolders'])
-const folderPathStr = computed(() => currentPath.value.join('/') || null)
+const searchQuery = computed<string>(() => store.getters['library/searchQuery'])
+
+const allProjects = computed<Project[]>(() => store.getters['projects/all'])
+const allFolders = computed<Folder[]>(() => store.getters['folders/all'])
+const childrenOf = computed(() => store.getters['folders/childrenOf'] as (parentId: string | null) => Folder[])
+const currentFolder = computed<Folder | undefined>(() =>
+  currentFolderId.value ? (store.getters['folders/byId'](currentFolderId.value) as Folder | undefined) : undefined,
+)
+const folderPath = computed<string>(() =>
+  currentFolderId.value ? (store.getters['folders/pathOf'](currentFolderId.value) as string) : '',
+)
 
 const statusOptions = [
   { value: 'all' as const, label: '전체' },
@@ -36,60 +63,44 @@ function setStatusFilter(filter: ProjectStatus | 'all') {
   store.commit('library/SET_STATUS_FILTER', filter)
 }
 
-const allProjects = computed<Project[]>(() => store.getters['projects/all'])
+const subfolders = computed<FolderNode[]>(() =>
+  childrenOf.value(currentFolderId.value).map((f) => ({
+    id: f.id,
+    name: f.name,
+    parentId: f.parentId,
+    children: childrenOf.value(f.id).map((c) => ({ id: c.id, name: c.name, parentId: c.parentId, children: [] })),
+  })),
+)
 
-// Only projects whose folder EXACTLY matches current path
-const projectsHere = computed(() => {
-  const path = folderPathStr.value
-  let filtered: Project[]
-
-  if (!path) {
-    filtered = allProjects.value.filter((p) => !p.folder)
-  } else {
-    filtered = allProjects.value.filter((p) => p.folder === path)
-  }
-
-  if (statusFilter.value !== 'all') {
-    filtered = filtered.filter((p) => p.status === statusFilter.value)
-  }
-
-  return filtered
+const projectsHere = computed<Project[]>(() => {
+  let list = allProjects.value.filter((p) => (p.folderId ?? null) === currentFolderId.value)
+  if (statusFilter.value !== 'all') list = list.filter((p) => p.status === statusFilter.value)
+  const q = searchQuery.value.trim().toLowerCase()
+  if (q) list = list.filter((p) => p.name.toLowerCase().includes(q))
+  return list
 })
 
-// Preview: direct children only (subfolders first, then direct projects), max 4
 const folderPreviews = computed(() => {
   const previews: Record<string, { count: number; items: PreviewItem[] }> = {}
-  const basePath = folderPathStr.value
-
   for (const folder of subfolders.value) {
-    const subPath = basePath ? `${basePath}/${folder.name}` : folder.name
     const items: PreviewItem[] = []
-
-    // Add child subfolders first
     for (const child of folder.children) {
       items.push({ type: 'folder', name: child.name })
     }
-
-    // Add direct projects in this folder (exact match)
-    const directProjects = allProjects.value.filter((p) => p.folder === subPath)
+    const directProjects = allProjects.value.filter((p) => p.folderId === folder.id)
     for (const proj of directProjects) {
       items.push({ type: 'project', name: proj.name, thumbnail: proj.thumbnail })
     }
-
-    // Total count = subfolders + direct projects
-    const totalCount = folder.children.length + directProjects.length
-
-    previews[folder.name] = {
-      count: totalCount,
+    previews[folder.id] = {
+      count: folder.children.length + directProjects.length,
       items: items.slice(0, 4),
     }
   }
-
   return previews
 })
 
-function navigateToFolder(folderName: string) {
-  store.commit('library/NAVIGATE_INTO', folderName)
+function navigateToFolder(folderId: string | null) {
+  store.commit('library/SET_CURRENT_FOLDER', folderId)
 }
 
 function selectProject(project: Project) {
@@ -111,7 +122,9 @@ async function createProject(form: { name: string; sourceLang: string; targetLan
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     status: 'todo',
-    folder: folderPathStr.value ?? '',
+    folderId: currentFolderId.value,
+    folderPath: folderPath.value || null,
+    deletedAt: null,
     config: {
       autoDetect: form.autoDetect,
       autoInpaint: form.autoInpaint,
@@ -151,26 +164,75 @@ async function deleteProject() {
   deleteModal.close()
   projectToDelete.value = null
 }
+
+function openMoveModal(project: Project) {
+  projectToMove.value = project
+  moveModal.open()
+}
+
+async function submitMove(folderId: string | null) {
+  if (!projectToMove.value) return
+  await store.dispatch('projects/update', { ...projectToMove.value, folderId })
+  moveModal.close()
+  projectToMove.value = null
+}
+
+async function onDropOnFolder(folderId: string, projectId: string) {
+  const project = store.getters['projects/byId'](projectId) as Project | undefined
+  if (!project) return
+  if ((project.folderId ?? null) === folderId) return
+  await store.dispatch('projects/update', { ...project, folderId })
+}
+
+function goToParent() {
+  const cur = currentFolder.value
+  store.commit('library/SET_CURRENT_FOLDER', cur?.parentId ?? null)
+}
+
+/** + 메뉴 → 새 폴더: 현재 위치(currentFolderId)에 만든다. 사이드바 모달 재사용. */
+function startCreateFolderHere() {
+  sidebar.value?.openCreateModal(currentFolderId.value)
+}
 </script>
 
 <template>
   <div class="flex h-[calc(100vh-48px)]">
-    <HomeSidebar />
+    <HomeSidebar ref="sidebar" @create-project-requested="createModal.open()" />
     <main class="flex-1 p-6 overflow-y-auto">
-      <!-- Status filter chips -->
-      <div class="flex items-center justify-end mb-4">
-        <div class="flex items-center gap-1 bg-towa-surface rounded-lg p-0.5">
+      <!-- Breadcrumb + Status filter chips + Add menu -->
+      <div class="flex items-center justify-between mb-4">
+        <div class="flex items-center gap-2 text-sm text-towa-text-muted">
           <button
-            v-for="opt in statusOptions"
-            :key="opt.value"
-            class="px-2.5 py-1 text-xs rounded-md transition-colors"
-            :class="statusFilter === opt.value
-              ? 'bg-towa-surface-light text-towa-text font-medium'
-              : 'text-towa-text-muted hover:text-towa-text'"
-            @click="setStatusFilter(opt.value)"
+            v-if="currentFolder"
+            class="p-1 rounded hover:bg-towa-surface hover:text-towa-text transition-colors"
+            :title="currentFolder.parentId ? '상위 폴더로' : '루트로'"
+            @click="goToParent"
           >
-            {{ opt.label }}
+            <ChevronLeft :size="16" />
           </button>
+          <span v-if="currentFolder">{{ folderPath }}</span>
+          <span v-else>전체</span>
+        </div>
+        <div class="flex items-center gap-3">
+          <div class="flex items-center gap-1 bg-towa-surface rounded-lg p-0.5">
+            <button
+              v-for="opt in statusOptions"
+              :key="opt.value"
+              class="px-2.5 py-1 text-xs rounded-md transition-colors"
+              :class="statusFilter === opt.value
+                ? 'bg-towa-surface-light text-towa-text font-medium'
+                : 'text-towa-text-muted hover:text-towa-text'"
+              @click="setStatusFilter(opt.value)"
+            >
+              {{ opt.label }}
+            </button>
+          </div>
+          <AddMenu
+            variant="toolbar"
+            label="추가"
+            @create-project="createModal.open()"
+            @create-folder="startCreateFolderHere"
+          />
         </div>
       </div>
 
@@ -179,9 +241,16 @@ async function deleteProject() {
         :subfolders="subfolders"
         :folder-previews="folderPreviews"
         @select="selectProject"
-        @create="createModal.open()"
+        @create-project="createModal.open()"
+        @create-folder="startCreateFolderHere"
         @open-folder="navigateToFolder"
         @delete-project="confirmDeleteProject"
+        @move-project="openMoveModal"
+        @drop-on-folder="onDropOnFolder"
+        @folder-create-child="onFolderCreateChild"
+        @folder-rename="onFolderRename"
+        @folder-move="onFolderMove"
+        @folder-delete="onFolderDelete"
       />
     </main>
 
@@ -198,12 +267,21 @@ async function deleteProject() {
     >
       <p class="text-sm text-towa-text-muted">
         <span class="font-medium text-towa-text">{{ projectToDelete?.name }}</span>
-        프로젝트를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.
+        프로젝트를 휴지통으로 옮깁니다.
       </p>
       <template #footer>
         <BaseButton variant="secondary" size="sm" @click="deleteModal.close()">취소</BaseButton>
         <BaseButton variant="danger" size="sm" @click="deleteProject">삭제</BaseButton>
       </template>
     </BaseModal>
+
+    <MoveToFolderModal
+      v-if="projectToMove"
+      :open="moveModal.isOpen.value"
+      :current-folder-id="projectToMove.folderId ?? null"
+      :item-name="projectToMove.name"
+      @close="moveModal.close()"
+      @submit="submitMove"
+    />
   </div>
 </template>

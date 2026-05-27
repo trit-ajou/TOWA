@@ -42,8 +42,10 @@ export function createAppBackend(
   }
 }
 
+// Default 'real' to keep behavior consistent with cloud-only deployment after #37.
+// Explicit VITE_UI_*_BACKEND=emulated still works for offline mock mode.
 function toBackendMode(value: string | undefined): BackendAdapterMode {
-  return value === 'real' ? 'real' : 'emulated'
+  return value === 'emulated' ? 'emulated' : 'real'
 }
 
 export * from './contracts'

@@ -1,5 +1,13 @@
-import { getDB, type ProjectRecord, type PageRecord } from './db'
-import type { FileAdapter, PageSummary, PageSnapshot } from './contracts'
+import { getDB, type ProjectRecord, type PageRecord, type FolderRecord } from './db'
+import type { DeleteFolderMode, FileAdapter, PageSummary, PageSnapshot, TrashEntry } from './contracts'
+
+function notImplementedInLocal(name: string): Error {
+  return new Error(
+    `LocalFileAdapter does not implement ${name}. ` +
+    'Standalone mode is disabled until LocalFileManager lands with Electron (see #37). ' +
+    'Use VITE_DEPLOYMENT_MODE=cloud.',
+  )
+}
 
 /**
  * Vue reactive Proxy는 IndexedDB의 structuredClone이 복제하지 못함
@@ -73,6 +81,34 @@ export class LocalFileAdapter implements FileAdapter {
     await tx.done
     // 프로젝트 삭제
     await db.delete('projects', id)
+  }
+
+  async restoreProject(_id: string): Promise<ProjectRecord> {
+    throw notImplementedInLocal('restoreProject')
+  }
+  async permanentlyDeleteProject(_id: string): Promise<void> {
+    throw notImplementedInLocal('permanentlyDeleteProject')
+  }
+  async listFolders(_params?: { search?: string }): Promise<FolderRecord[]> {
+    throw notImplementedInLocal('listFolders')
+  }
+  async createFolder(_input: { name: string; parentId: string | null }): Promise<FolderRecord> {
+    throw notImplementedInLocal('createFolder')
+  }
+  async updateFolder(_id: string, _patch: { name?: string; parentId?: string | null }): Promise<FolderRecord> {
+    throw notImplementedInLocal('updateFolder')
+  }
+  async deleteFolder(_id: string, _mode: DeleteFolderMode): Promise<void> {
+    throw notImplementedInLocal('deleteFolder')
+  }
+  async restoreFolder(_id: string): Promise<FolderRecord> {
+    throw notImplementedInLocal('restoreFolder')
+  }
+  async permanentlyDeleteFolder(_id: string): Promise<void> {
+    throw notImplementedInLocal('permanentlyDeleteFolder')
+  }
+  async listTrash(): Promise<TrashEntry[]> {
+    throw notImplementedInLocal('listTrash')
   }
 
   // --- Pages (summary list) ---

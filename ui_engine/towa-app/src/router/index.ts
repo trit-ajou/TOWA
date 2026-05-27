@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import LandingView from '@/views/LandingView.vue'
 import LoginView from '@/views/LoginView.vue'
 import LibraryView from '@/views/LibraryView.vue'
+import TrashView from '@/views/TrashView.vue'
 import ProjectView from '@/views/ProjectView.vue'
 import ProjectHomeTab from '@/views/ProjectHomeTab.vue'
 import EditorTab from '@/views/EditorTab.vue'
@@ -29,6 +30,12 @@ const router = createRouter({
       path: '/library',
       name: 'library',
       component: LibraryView,
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/trash',
+      name: 'trash',
+      component: TrashView,
       meta: { requiresAuth: true },
     },
     {
