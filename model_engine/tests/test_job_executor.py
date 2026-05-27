@@ -152,7 +152,7 @@ class OrchestratedJobExecutorTests(unittest.TestCase):
                 [report.stage_name for report in result.stage_reports],
             )
             self.assertEqual(
-                "mask_artifact",
+                "expanded_bbox",
                 result.stage_reports[-1].metrics["composite_mask_mode"],
             )
             bitmap_artifact = next(
@@ -162,6 +162,7 @@ class OrchestratedJobExecutorTests(unittest.TestCase):
             )
             output_image = Image.open(Path(bitmap_artifact.uri.removeprefix("file://"))).convert("RGBA")
             self.assertEqual((0, 255, 0, 255), output_image.getpixel((5, 5)))
+            self.assertEqual((0, 255, 0, 255), output_image.getpixel((30, 5)))
             self.assertEqual((0, 0, 0, 0), output_image.getpixel((40, 0)))
 
     def test_model_job_manager_defaults_to_orchestrated_executor(self) -> None:

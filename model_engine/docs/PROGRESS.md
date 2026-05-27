@@ -35,6 +35,8 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 최근 추가된 wiring:
 
 - API `inpaint` job을 `text_detection -> mask_or_erase_planning -> inpaint` 3단계로 되돌렸다. i2i provider 호출에는 여전히 원본 bitmap 한 장만 보내고, 생성된 `inpaint_tasks` 마스크는 최종 `inpainting_layer_bitmap` 합성에만 사용해 마스크 영역은 불투명, 나머지는 투명하게 UI로 전달한다.
+- API `inpaint`의 최종 합성은 `output_mask_mode=expanded_bbox`를 사용한다. CRAFT polygon만 얇게 합성하면 원본 글자 획이 남을 수 있어서, provider가 만든 깨끗한 말풍선/배경 영역이 원본 텍스트를 확실히 덮도록 expanded bbox를 UI 레이어 alpha로 사용한다.
+- Nanobanana/Mindlogic 공통 인페인트 prompt는 “보존”보다 “기존 글자 완전 제거”가 우선임을 명시하도록 강화했다. 남은 glyph/stroke/ghost text를 허용하지 않고, 제거 영역은 말풍선 내부/종이톤/스크린톤/배경 텍스처로 채우게 한다.
 - Mindlogic inpaint provider 호출을 prod 기준 Google edit endpoint로 정렬했다. 기본 model은 `imagen-3.0-capability-001`, endpoint는 `/v1/api/google/models/edit-image`, payload는 `reference_images[].reference_image.image_bytes` base64 + `config.edit_mode=EDIT_MODE_DEFAULT`를 사용한다.
 - bitmap-only inpaint 경로의 UI용 `inpainting_layer_bitmap`은 provider full-page output 전체가 아니라 원본과 provider output의 pixel diff overlay만 담는다. provider raw output은 계속 `provider_output_bitmap` artifact로 별도 보존한다.
 - `service_engine` client/errors/models 패키지 추가

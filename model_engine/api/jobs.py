@@ -1019,6 +1019,7 @@ def _build_operation_stages(
                 config={
                     "input_artifact_ref": input_artifact_ref,
                     "target_layer_id": "layer_inpainting",
+                    "output_mask_mode": "expanded_bbox",
                     **_inpaint_provider_config_from_runtime(request.runtime_context),
                 },
             ),

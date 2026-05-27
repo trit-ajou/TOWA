@@ -38,10 +38,13 @@ MINDLOGIC_GOOGLE_EDIT_BASE_URL = "https://factchat-cloud.mindlogic.ai/v1/api/goo
 MINDLOGIC_GOOGLE_EDIT_PATH = "/models/edit-image"
 NANOBANANA_DEFAULT_PROMPT = (
     "Use the provided manga page as the source image. "
-    "Remove all visible source text, speech balloon text, and sound effects from the page. "
-    "Reconstruct the underlying manga background, lineart, screentones, and balloon interiors naturally. "
-    "Do not add any new text. Preserve composition, character art, panel borders, and the rest of the page "
-    "as faithfully as possible."
+    "The primary objective is to erase existing lettering completely. "
+    "Remove every visible source text glyph, speech balloon text, caption, handwritten mark, and sound effect. "
+    "Leave no readable characters, no text strokes, and no ghosted remnants. "
+    "Fill removed text areas with clean balloon interiors, paper tone, screentone, lineart, or background texture "
+    "that matches the surrounding artwork. Do not add any new text or symbols. "
+    "Preserve composition, character art, panel borders, and the rest of the page as faithfully as possible, "
+    "but if preservation conflicts with removing text, text removal wins."
 )
 
 
