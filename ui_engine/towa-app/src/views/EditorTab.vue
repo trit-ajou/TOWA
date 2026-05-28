@@ -165,9 +165,10 @@ function goToNextPage() {
 function onKeydown(e: KeyboardEvent) {
   const tag = (e.target as HTMLElement).tagName
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
-  if (e.key === 'q' || e.key === 'Q' || e.key === 'ㅂ' || e.code === 'KeyQ') {
+  if (e.ctrlKey || e.metaKey || e.altKey) return
+  if (e.code === 'ArrowLeft') {
     e.preventDefault(); goToPrevPage()
-  } else if (e.key === 'w' || e.key === 'W' || e.key === 'ㅈ' || e.code === 'KeyW') {
+  } else if (e.code === 'ArrowRight') {
     e.preventDefault(); goToNextPage()
   }
 }
