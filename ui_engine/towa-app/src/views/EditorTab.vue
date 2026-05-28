@@ -54,6 +54,21 @@ watch(
   { immediate: true },
 )
 
+// Deselect text layer when leaving the text tool. The bitmappery active-layer
+// outline (mint border) would otherwise persist on the text layer's full-doc
+// canvas, which is visually noisy in 편집 화면. 상세 편집 화면(DetailEditorTab)
+// is unaffected — this watcher lives in EditorTab only.
+const activeTool = computed<string | null>(() => store.getters['bmp/activeTool'] ?? null)
+watch(activeTool, (next, prev) => {
+  if (prev === ToolTypes.TEXT && next !== ToolTypes.TEXT) {
+    const layer = store.getters['bmp/activeLayer'] as Layer | undefined
+    if (layer && isTextLayer(layer)) {
+      store.commit('bmp/setActiveLayerIndex', -1)
+      store.commit('editor/SELECT_LAYER', null)
+    }
+  }
+})
+
 watch(selectedPageId, async (newId, oldId) => {
   if (!newId || newId === oldId || switching.value) return
   switching.value = true
