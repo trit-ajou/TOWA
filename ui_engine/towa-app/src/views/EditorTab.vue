@@ -6,7 +6,8 @@ import { usePageLoader } from '@/composables/usePageLoader'
 import { useAutoSave } from '@/composables/useAutoSave'
 import PageSidePanel from '@/components/editor/PageSidePanel.vue'
 import TranslationPanel from '@/components/editor/TranslationPanel.vue'
-import AiToolbar from '@/components/editor/AiToolbar.vue'
+import CanvasToolbox from '@/components/editor/CanvasToolbox.vue'
+import ZoomToolHandler from '@/components/editor/ZoomToolHandler.vue'
 import { isTextLayer, mergeTextMeta } from '@/utils/text-layer'
 import type { Layer, Text } from '@bitmappery/definitions/document'
 import { LayerTypes } from '@bitmappery/definitions/layer-types'
@@ -171,8 +172,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 
 <template>
   <div>
-    <Teleport to="#towa-top-toolbar" defer>
-      <AiToolbar />
+    <Teleport to="#towa-canvas-area" defer>
+      <ZoomToolHandler />
+      <CanvasToolbox />
     </Teleport>
 
     <Teleport to="#towa-left-panel" defer>

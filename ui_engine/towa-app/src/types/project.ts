@@ -17,6 +17,11 @@ export interface Project {
   createdAt: string
   updatedAt: string
   status: ProjectStatus
-  folder: string
+  /** FK → folders.id. null = 루트. (See issue #33 spec.) */
+  folderId: string | null
+  /** Derived path string for display, e.g. "주간연재/점프". Computed on read. */
+  folderPath?: string | null
+  /** Soft delete timestamp; null = active, ISO string = in trash. */
+  deletedAt: string | null
   config: ProjectConfig
 }

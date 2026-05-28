@@ -2,9 +2,9 @@
 import type { Project } from '@/types/project'
 import type { FolderNode } from '@/types/folder'
 import type { PreviewItem } from './FolderCard.vue'
-import { Plus } from 'lucide-vue-next'
 import ProjectCard from './ProjectCard.vue'
 import FolderCard from './FolderCard.vue'
+import AddMenu from './AddMenu.vue'
 
 defineProps<{
   projects: Project[]
@@ -12,43 +12,71 @@ defineProps<{
   folderPreviews: Record<string, { count: number; items: PreviewItem[] }>
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   select: [project: Project]
-  create: []
-  openFolder: [folderName: string]
+  createProject: []
+  createFolder: []
+  openFolder: [folderId: string]
   deleteProject: [project: Project]
+  moveProject: [project: Project]
+  dropOnFolder: [folderId: string, projectId: string]
+  folderCreateChild: [folderId: string]
+  folderRename: [folderId: string]
+  folderMove: [folderId: string]
+  folderDelete: [folderId: string]
 }>()
+
+function onDragOver(ev: DragEvent) {
+  if (!ev.dataTransfer) return
+  if (Array.from(ev.dataTransfer.types).includes('application/x-towa-project-id')) {
+    ev.dataTransfer.dropEffect = 'move'
+  }
+}
+
+function onDropOnFolder(ev: DragEvent, folderId: string) {
+  const id = ev.dataTransfer?.getData('application/x-towa-project-id')
+  if (!id) return
+  emit('dropOnFolder', folderId, id)
+}
 </script>
 
 <template>
   <div class="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-4">
-    <!-- Create new project -->
+    <!-- Subfolders (drop target) -->
     <div
-      class="bg-towa-surface border-2 border-dashed border-towa-border rounded-lg flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-towa-accent hover:text-towa-accent text-towa-text-muted transition-colors overflow-hidden"
-    >
-      <div class="aspect-[3/4] flex flex-col items-center justify-center gap-2 w-full" @click="$emit('create')">
-        <Plus :size="32" />
-        <span class="text-sm font-medium">새 프로젝트</span>
-      </div>
-    </div>
-
-    <!-- Subfolders -->
-    <FolderCard
       v-for="folder in subfolders"
       :key="folder.id"
-      :name="folder.name"
-      :item-count="folderPreviews[folder.name]?.count ?? 0"
-      :preview-items="folderPreviews[folder.name]?.items ?? []"
-      @click="$emit('openFolder', folder.name)"
-    />
+      @dragover.prevent="onDragOver"
+      @drop.prevent="(ev) => onDropOnFolder(ev, folder.id)"
+    >
+      <FolderCard
+        :name="folder.name"
+        :item-count="folderPreviews[folder.id]?.count ?? 0"
+        :preview-items="folderPreviews[folder.id]?.items ?? []"
+        @click="emit('openFolder', folder.id)"
+        @create-child="emit('folderCreateChild', folder.id)"
+        @rename="emit('folderRename', folder.id)"
+        @move="emit('folderMove', folder.id)"
+        @delete="emit('folderDelete', folder.id)"
+      />
+    </div>
 
     <!-- Project cards -->
     <ProjectCard
       v-for="project in projects"
       :key="project.id"
       :project="project"
-      @click="$emit('select', project)"
-      @delete="$emit('deleteProject', project)"
+      @click="emit('select', project)"
+      @delete="emit('deleteProject', project)"
+      @move="emit('moveProject', project)"
+    />
+
+    <!-- Add tile (last index) -->
+    <AddMenu
+      variant="tile"
+      label="추가"
+      @create-project="emit('createProject')"
+      @create-folder="emit('createFolder')"
     />
   </div>
 </template>

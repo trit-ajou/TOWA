@@ -11,12 +11,27 @@ export interface ProjectRecord {
   targetLang: string
   pageCount: number
   status: ProjectStatus
-  folder: string
+  /** FK → folders.id. null = root. (See issue #33 spec.) */
+  folderId: string | null
+  /** Derived from server; null = root. */
+  folderPath: string | null
+  /** Soft delete timestamp; null = active, ISO = in trash. */
+  deletedAt: string | null
   config: ProjectConfig
   createdAt: string
   updatedAt: string
   /** Project cover thumbnail URL (cloud only; local leaves undefined). */
   thumbnailUrl?: string | null
+}
+
+export interface FolderRecord {
+  id: string
+  name: string
+  parentId: string | null
+  path: string
+  createdAt: string
+  updatedAt: string
+  deletedAt: string | null
 }
 
 export interface PageRecord {
@@ -75,7 +90,7 @@ export function getDB(): Promise<IDBPDatabase<TowaDBSchema>> {
       upgrade(db) {
         // projects
         const projectStore = db.createObjectStore('projects', { keyPath: 'id' })
-        projectStore.createIndex('by-folder', 'folder')
+        projectStore.createIndex('by-folder', 'folderId')
         projectStore.createIndex('by-updated', 'updatedAt')
 
         // pages

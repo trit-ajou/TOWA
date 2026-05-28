@@ -62,27 +62,31 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="h-[calc(100vh-48px)] flex">
-    <!-- 좌측: Teleport target (EditorTab/DetailEditorTab이 PageSidePanel 주입) -->
+    <!-- 좌측 최외곽: 페이지 사이드패널 (EditorTab/DetailEditorTab이 주입) -->
     <div id="towa-left-panel" class="shrink-0 h-full"></div>
 
-    <!-- 중앙: top toolbar + bitmappery + router-view -->
-    <div class="flex-1 min-w-0 h-full relative flex flex-col">
-      <!-- 상단 Teleport target (EditorTab/DetailEditorTab이 AiToolbar 주입) -->
-      <div id="towa-top-toolbar" class="shrink-0"></div>
-      <div class="flex-1 min-h-0 relative">
-        <div v-show="showCanvas" class="bitmappery-layer">
-          <BitMappery />
+    <!-- 캔버스 워크스페이스: 상단 통합 바 + (좌 toolbox + 캔버스 + 우 옵션) -->
+    <div class="flex-1 min-w-0 h-full flex flex-col bg-towa-bg">
+      <!-- 상단 통합 바: AI 도구 / 줌 등 (Editor/DetailEditor 진입 시 주입) -->
+      <div id="towa-canvas-topbar" class="shrink-0"></div>
+
+      <div class="flex-1 min-h-0 flex">
+        <!-- 캔버스 본체 + floating overlay 컨테이너 -->
+        <div id="towa-canvas-area" class="flex-1 min-w-0 h-full relative">
+          <div v-show="showCanvas" class="bitmappery-layer">
+            <BitMappery />
+          </div>
+          <router-view v-slot="{ Component }">
+            <keep-alive :include="['ProjectHomeTab']">
+              <component :is="Component" />
+            </keep-alive>
+          </router-view>
         </div>
-        <router-view v-slot="{ Component }">
-          <keep-alive :include="['ProjectHomeTab']">
-            <component :is="Component" />
-          </keep-alive>
-        </router-view>
+
+        <!-- 캔버스 우측 옵션/번역 패널 -->
+        <div id="towa-right-panel" class="shrink-0 h-full"></div>
       </div>
     </div>
-
-    <!-- 우측: Teleport target (EditorTab이 TranslationPanel 주입) -->
-    <div id="towa-right-panel" class="shrink-0 h-full"></div>
 
     <!-- 페이지 전환 시 캔버스 깜빡임을 가리는 overlay. 짧은 전환에 거슬리지 않도록
          delay를 300ms로 설정 — NN/g UX 가이드: 100ms는 즉각 인지(불필요), 300ms부터

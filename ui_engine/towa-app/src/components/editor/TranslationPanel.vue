@@ -21,7 +21,7 @@ defineEmits<{
 </script>
 
 <template>
-  <aside class="w-[320px] bg-towa-surface border-l border-towa-border flex flex-col shrink-0">
+  <aside class="w-[320px] h-full bg-towa-surface border-l border-towa-border flex flex-col shrink-0 min-h-0">
     <div class="px-3 py-2 border-b border-towa-border flex items-center justify-between">
       <h3 class="text-xs font-semibold text-towa-text-muted uppercase tracking-wider">
         번역 ({{ layers.length }})

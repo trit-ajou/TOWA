@@ -5,7 +5,7 @@ End-to-end REST smoke test for the Dockerized TOWA stack.
 Run the stack and smoke runner:
 
 ```bash
-VITE_UI_AUTH_BACKEND=real VITE_UI_AI_BACKEND=real docker compose up -d --build db service-engine model-engine ui-engine
+VITE_UI_BACKEND_MODE=real docker compose up -d --build db service-engine model-engine ui-engine
 docker compose --profile smoke run --rm --no-deps --build rest-smoke
 ```
 

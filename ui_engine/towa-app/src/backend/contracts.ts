@@ -150,11 +150,30 @@ export interface ProjectDto {
   targetLang: string
   pageCount: number
   status: string
-  folder: string
+  folderId: string | null
+  /** Derived path string for display (server-computed). */
+  folderPath: string | null
   config: Record<string, unknown>
   createdAt: string
   updatedAt: string
+  /** Soft delete timestamp; null = active, ISO string = in trash. */
+  deletedAt: string | null
 }
+
+export interface FolderDto {
+  id: string
+  name: string
+  parentId: string | null
+  /** Derived path string for display (server-computed). */
+  path: string
+  createdAt: string
+  updatedAt: string
+  deletedAt: string | null
+}
+
+export type TrashEntryDto =
+  | { type: 'folder'; item: FolderDto }
+  | { type: 'project'; item: ProjectDto }
 
 export interface PageSummaryDto {
   id: string
@@ -188,7 +207,7 @@ export interface ProjectCreateInput {
   sourceLang: string
   targetLang: string
   status?: string
-  folder?: string
+  folderId?: string | null
   config?: Record<string, unknown>
   thumbnailUrl?: string | null
 }
@@ -196,28 +215,60 @@ export interface ProjectCreateInput {
 export type ProjectPatchInput = Partial<
   Pick<
     ProjectDto,
-    'name' | 'thumbnailUrl' | 'sourceLang' | 'targetLang' | 'status' | 'folder' | 'config'
+    'name' | 'thumbnailUrl' | 'sourceLang' | 'targetLang' | 'status' | 'folderId' | 'config'
   >
 >
 
+export interface FolderCreateInput {
+  name: string
+  parentId: string | null
+}
+
+export interface FolderPatchInput {
+  name?: string
+  parentId?: string | null
+}
+
+export type DeleteFolderQuery =
+  | { mode: 'empty' }
+  | { mode: 'cascade-trash' }
+  | { mode: 'reparent' }
+  | { mode: 'permanent' }
+
 export interface FilesBackend {
-  // Project CRUD
+  // --- Project CRUD (active items) ---
   listProjects(options: AuthRequestOptions): Promise<ProjectDto[]>
   getProject(projectId: string, options: AuthRequestOptions): Promise<ProjectDto>
   createProject(input: ProjectCreateInput, options: AuthRequestOptions): Promise<ProjectDto>
   updateProject(projectId: string, patch: ProjectPatchInput, options: AuthRequestOptions): Promise<ProjectDto>
+  /** Soft delete (move to trash). */
   deleteProject(projectId: string, options: AuthRequestOptions): Promise<void>
+  /** Restore from trash. */
+  restoreProject(projectId: string, options: AuthRequestOptions): Promise<ProjectDto>
+  /** Permanently delete a trashed project. */
+  permanentlyDeleteProject(projectId: string, options: AuthRequestOptions): Promise<void>
 
-  // Pages (summary list)
+  // --- Folder CRUD ---
+  listFolders(options: AuthRequestOptions, params?: { search?: string }): Promise<FolderDto[]>
+  createFolder(input: FolderCreateInput, options: AuthRequestOptions): Promise<FolderDto>
+  updateFolder(folderId: string, patch: FolderPatchInput, options: AuthRequestOptions): Promise<FolderDto>
+  /** Delete with mode: 'empty' (only if no children), 'cascade-trash', 'reparent', 'permanent'. */
+  deleteFolder(folderId: string, query: DeleteFolderQuery, options: AuthRequestOptions): Promise<void>
+  restoreFolder(folderId: string, options: AuthRequestOptions): Promise<FolderDto>
+
+  // --- Trash ---
+  listTrash(options: AuthRequestOptions): Promise<TrashEntryDto[]>
+
+  // --- Pages (summary list) ---
   listPageSummaries(projectId: string, options: AuthRequestOptions): Promise<PageSummaryDto[]>
 
-  // Pages (full snapshot)
+  // --- Pages (full snapshot) ---
   createPage(projectId: string, snapshot: PageSnapshotPayload, options: AuthRequestOptions): Promise<PageSummaryDto>
   savePageSnapshot(pageId: string, snapshot: PageSnapshotPayload, options: AuthRequestOptions): Promise<PageSummaryDto>
   getPageSnapshot(pageId: string, options: AuthRequestOptions): Promise<PageSnapshotPayload>
   deletePage(pageId: string, options: AuthRequestOptions): Promise<void>
 
-  // Thumbnail (bearer-authed blob)
+  // --- Thumbnail (bearer-authed blob) ---
   getPageThumbnail(pageId: string, options: AuthRequestOptions): Promise<Blob>
 }
 

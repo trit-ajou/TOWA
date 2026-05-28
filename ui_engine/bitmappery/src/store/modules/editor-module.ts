@@ -46,6 +46,10 @@ export interface EditorState {
     antiAlias: boolean;
     pixelGrid: boolean;
     clonedFilters: Filters | null;
+    // 다음 zoom level 변화의 anchor. 줌-패닝을 한 호출 안에 처리하기 위한 임시 state.
+    // localX/Y: canvas element 내 좌표 (world ratio 계산용)
+    // focalX/Y: viewport(canvas-container) 내 좌표 (줌 후에도 이 화면 위치 유지)
+    pendingZoomAnchor: { localX: number; localY: number; focalX: number; focalY: number } | null;
 };
 
 export const createEditorState = ( props?: Partial<EditorState> ): EditorState => ({
@@ -64,6 +68,7 @@ export const createEditorState = ( props?: Partial<EditorState> ): EditorState =
     antiAlias : true,
     pixelGrid : false,
     clonedFilters: null,
+    pendingZoomAnchor: null,
     ...props,
 });
 
@@ -85,6 +90,7 @@ const EditorModule: Module<EditorState, any> = {
         snapAlign         : ( state: EditorState ): boolean => state.snapAlign,
         antiAlias         : ( state: EditorState ): boolean => state.antiAlias,
         pixelGrid         : ( state: EditorState ): boolean => state.pixelGrid,
+        pendingZoomAnchor : ( state: EditorState ) => state.pendingZoomAnchor,
     },
     mutations: {
         setActiveTool( state: EditorState, { tool, document }: { tool: ToolTypes, document: Document }): void {
@@ -125,6 +131,9 @@ const EditorModule: Module<EditorState, any> = {
         },
         setClonedFilters( state: EditorState, filters: Filters | null ): void {
             state.clonedFilters = filters;
+        },
+        setPendingZoomAnchor( state: EditorState, anchor: { localX: number; localY: number; focalX: number; focalY: number } | null ): void {
+            state.pendingZoomAnchor = anchor;
         },
     },
 };
