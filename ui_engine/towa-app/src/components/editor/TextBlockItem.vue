@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, nextTick, ref, useTemplateRef } from 'vue'
 import {
-  Type, Trash2,
+  Type, Trash2, Pencil,
   AlignLeft, AlignCenter, AlignRight,
   AlignStartVertical, AlignCenterVertical, AlignEndVertical,
 } from 'lucide-vue-next'
@@ -24,13 +24,36 @@ const props = defineProps<{
   selected: boolean
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   select: []
   updateText: [textPatch: Partial<Text>]
+  updateOriginal: [next: string]
   remove: []
 }>()
 
 const meta = computed(() => getTextMeta(props.layer))
+
+const editingOriginal = ref(false)
+const originalDraft = ref('')
+const originalInput = useTemplateRef<HTMLInputElement>('originalInput')
+
+async function startEditOriginal() {
+  originalDraft.value = meta.value?.original ?? ''
+  editingOriginal.value = true
+  await nextTick()
+  originalInput.value?.focus()
+  originalInput.value?.select()
+}
+
+function commitOriginal() {
+  if (!editingOriginal.value) return
+  emit('updateOriginal', originalDraft.value)
+  editingOriginal.value = false
+}
+
+function cancelOriginal() {
+  editingOriginal.value = false
+}
 
 const statusLabel = computed(() => {
   const status = meta.value?.status
@@ -71,7 +94,29 @@ const idLabel = computed(() => {
         </button>
       </div>
     </div>
-    <p v-if="original" class="text-xs text-towa-text-muted mb-1.5 leading-relaxed">{{ original }}</p>
+    <div v-if="original || selected" class="flex items-start gap-1 mb-1.5">
+      <input
+        v-if="editingOriginal"
+        ref="originalInput"
+        v-model="originalDraft"
+        class="flex-1 bg-towa-bg border border-towa-accent rounded px-1.5 py-0.5 text-xs text-towa-text focus:outline-none"
+        @keydown.enter.prevent="commitOriginal"
+        @keydown.esc.prevent="cancelOriginal"
+        @blur="commitOriginal"
+        @click.stop
+      />
+      <p v-else class="flex-1 text-xs text-towa-text-muted leading-relaxed min-h-[18px]">
+        {{ original || '원문 없음' }}
+      </p>
+      <button
+        v-if="selected && !editingOriginal"
+        class="p-0.5 rounded hover:bg-towa-surface-light text-towa-text-muted hover:text-towa-accent transition-colors"
+        title="원문 편집"
+        @click.stop="startEditOriginal"
+      >
+        <Pencil :size="11" />
+      </button>
+    </div>
     <textarea
       :value="layer.text.value"
       rows="2"

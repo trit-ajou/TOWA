@@ -106,6 +106,16 @@ function updateTextLayer(layerId: string, textPatch: Partial<Text>) {
   store.commit('bmp/updateLayer', { index: idx, opts: { text: nextText, meta: nextMeta } })
 }
 
+function updateOriginalForLayer(layerId: string, nextOriginal: string) {
+  const idx = findLayerIndex(layerId)
+  if (idx < 0) return
+  const doc = store.getters['bmp/activeDocument'] as { layers?: Layer[] } | undefined
+  const layer = doc?.layers?.[idx]
+  if (!layer) return
+  const nextMeta = mergeTextMeta(layer, { original: nextOriginal, status: 'edited' })
+  store.commit('bmp/updateLayer', { index: idx, opts: { meta: nextMeta } })
+}
+
 function addEmptyTextLayer() {
   const doc = store.getters['bmp/activeDocument'] as { width?: number; height?: number; layers?: Layer[] } | undefined
   if (!doc) return
@@ -199,6 +209,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
         :total-pages="pages.length"
         @select-layer="selectLayer"
         @update-text="updateTextLayer"
+        @update-original="updateOriginalForLayer"
         @add-block="addEmptyTextLayer"
         @remove-block="removeTextLayer"
         @prev-page="goToPrevPage"
