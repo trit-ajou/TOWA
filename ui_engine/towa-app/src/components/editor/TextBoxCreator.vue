@@ -25,6 +25,14 @@ onMounted(() => { rafId = requestAnimationFrame(loop) })
 onBeforeUnmount(() => cancelAnimationFrame(rafId))
 
 const activeTool = computed<string | null>(() => store.getters['bmp/activeTool'] ?? null)
+const activeLayer = computed<Layer | null>(() => store.getters['bmp/activeLayer'] ?? null)
+
+const hasSelectedBox = computed(() => {
+  const l = activeLayer.value
+  if (!l || !isTextLayer(l)) return false
+  const meta = (l.meta ?? {}) as Partial<LayerTextMeta>
+  return meta.boxMode === 'fixed'
+})
 
 // Always-on interaction layer for the text tool. TextBoxOverlay sits on top
 // (z=40) and captures pointer events inside the selected box; this layer
@@ -98,6 +106,21 @@ const create = computed<PointerState | null>(() => {
 
 const MIN_CREATE = 8
 const DRAG_THRESHOLD = 3 // doc-space pixels
+
+const hoverDoc = ref<{ x: number; y: number } | null>(null)
+
+// crosshair = ready to drag-create in empty area
+// pointer  = hovering a clickable box (will select on click)
+// default  = empty area but a box is selected (click would deselect)
+const cursor = computed<'crosshair' | 'pointer' | 'default'>(() => {
+  if (pointer.value) {
+    return pointer.value.hitLayer ? 'pointer' : 'crosshair'
+  }
+  if (!hoverDoc.value) return hasSelectedBox.value ? 'default' : 'crosshair'
+  const hit = hitTestTextLayer(hoverDoc.value)
+  if (hit) return 'pointer'
+  return hasSelectedBox.value ? 'default' : 'crosshair'
+})
 
 function hitTestTextLayer(doc: { x: number; y: number }): Layer | null {
   const ad = store.getters['bmp/activeDocument'] as { layers?: Layer[] } | undefined
@@ -184,10 +207,11 @@ function onPointerDown(event: PointerEvent) {
 }
 
 function onPointerMove(event: PointerEvent) {
-  const p = pointer.value
-  if (!p) return
   const docPoint = pointToDoc(event.clientX, event.clientY)
   if (!docPoint) return
+  hoverDoc.value = docPoint
+  const p = pointer.value
+  if (!p) return
   p.current = docPoint
   if (!p.moved) {
     if (
@@ -197,6 +221,10 @@ function onPointerMove(event: PointerEvent) {
       p.moved = true
     }
   }
+}
+
+function onPointerLeave() {
+  hoverDoc.value = null
 }
 
 function onPointerUp(event: PointerEvent) {
@@ -271,10 +299,11 @@ function onPointerUp(event: PointerEvent) {
   >
     <div
       class="absolute inset-0"
-      style="cursor: crosshair;"
+      :style="{ cursor }"
       @pointerdown="onPointerDown"
       @pointermove="onPointerMove"
       @pointerup="onPointerUp"
+      @pointerleave="onPointerLeave"
     />
     <div
       v-if="create"
