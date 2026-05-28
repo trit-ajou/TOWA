@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, type CSSProperties } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, type CSSProperties } from 'vue'
 import { useStore } from 'vuex'
 import type { Layer } from '@bitmappery/definitions/document'
-import { isTextLayer } from '@/utils/text-layer'
+import { getTextMeta, isTextLayer } from '@/utils/text-layer'
 import type { LayerTextMeta } from '@/types/text-block'
 // @ts-expect-error bitmappery JS module
 import ToolTypes from '@bitmappery/definitions/tool-types'
@@ -25,18 +25,12 @@ onMounted(() => { rafId = requestAnimationFrame(loop) })
 onBeforeUnmount(() => cancelAnimationFrame(rafId))
 
 const activeTool = computed<string | null>(() => store.getters['bmp/activeTool'] ?? null)
-const activeLayer = computed<Layer | null>(() => store.getters['bmp/activeLayer'] ?? null)
 
-// Active only when text tool is selected and there is no fixed-mode text box
-// currently selected — i.e. user is between blocks, ready to draw a new one.
-const visible = computed(() => {
-  if (activeTool.value !== ToolTypes.TEXT) return false
-  const l = activeLayer.value
-  if (!l) return true
-  if (!isTextLayer(l)) return true
-  const meta = (l.meta ?? {}) as Partial<LayerTextMeta>
-  return meta.boxMode !== 'fixed'
-})
+// Always-on interaction layer for the text tool. TextBoxOverlay sits on top
+// (z=40) and captures pointer events inside the selected box; this layer
+// (z=35) handles everything else: clicks on other boxes (select), clicks on
+// empty area (deselect), and empty-area drag (create new box).
+const visible = computed(() => activeTool.value === ToolTypes.TEXT && !!store.getters['bmp/activeDocument'])
 
 // area geometry — matches canvas viewport area
 interface ScreenRect { left: number; top: number; width: number; height: number }
@@ -86,16 +80,68 @@ function pointToDoc(clientX: number, clientY: number): { x: number; y: number } 
   }
 }
 
-interface CreateState {
+interface PointerState {
   startDoc: { x: number; y: number }
   current: { x: number; y: number }
   pointerId: number
   el: HTMLElement
   zoom: number
+  hitLayer: Layer | null   // if pointerdown landed inside an existing text box
+  moved: boolean
 }
-const create = ref<CreateState | null>(null)
+const pointer = ref<PointerState | null>(null)
+const create = computed<PointerState | null>(() => {
+  const p = pointer.value
+  if (!p || !p.moved || p.hitLayer) return null
+  return p
+})
 
 const MIN_CREATE = 8
+const DRAG_THRESHOLD = 3 // doc-space pixels
+
+function hitTestTextLayer(doc: { x: number; y: number }): Layer | null {
+  const ad = store.getters['bmp/activeDocument'] as { layers?: Layer[] } | undefined
+  const layers = ad?.layers ?? []
+  // top-down for z-order respect
+  for (let i = layers.length - 1; i >= 0; i--) {
+    const l = layers[i]
+    if (!isTextLayer(l)) continue
+    const meta = getTextMeta(l)
+    if (meta?.boxMode !== 'fixed') continue
+    if (
+      doc.x >= l.left &&
+      doc.x <= l.left + l.width &&
+      doc.y >= l.top &&
+      doc.y <= l.top + l.height
+    ) {
+      return l
+    }
+  }
+  return null
+}
+
+function selectLayer(layerId: string) {
+  const ad = store.getters['bmp/activeDocument'] as { layers?: Layer[] } | undefined
+  const idx = ad?.layers?.findIndex((l) => l.id === layerId) ?? -1
+  if (idx < 0) return
+  store.commit('editor/SELECT_LAYER', layerId)
+  store.commit('bmp/setActiveLayerIndex', idx)
+}
+
+function deselect() {
+  store.commit('editor/SELECT_LAYER', null)
+  store.commit('bmp/setActiveLayerIndex', -1)
+}
+
+function focusBlockTextarea(layerId: string) {
+  nextTick(() => {
+    const el = document.querySelector(
+      `[data-text-block-id="${layerId}"] textarea`,
+    ) as HTMLTextAreaElement | null
+    el?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    el?.focus()
+  })
+}
 
 const previewStyle = computed<CSSProperties>(() => {
   const c = create.value
@@ -126,38 +172,62 @@ function onPointerDown(event: PointerEvent) {
   event.stopPropagation()
   const el = event.currentTarget as HTMLElement
   el.setPointerCapture(event.pointerId)
-  create.value = {
+  pointer.value = {
     startDoc: docPoint,
     current: docPoint,
     pointerId: event.pointerId,
     el,
     zoom: canvas.zoomFactor,
+    hitLayer: hitTestTextLayer(docPoint),
+    moved: false,
   }
 }
 
 function onPointerMove(event: PointerEvent) {
-  const c = create.value
-  if (!c) return
+  const p = pointer.value
+  if (!p) return
   const docPoint = pointToDoc(event.clientX, event.clientY)
   if (!docPoint) return
-  c.current = docPoint
+  p.current = docPoint
+  if (!p.moved) {
+    if (
+      Math.abs(docPoint.x - p.startDoc.x) > DRAG_THRESHOLD ||
+      Math.abs(docPoint.y - p.startDoc.y) > DRAG_THRESHOLD
+    ) {
+      p.moved = true
+    }
+  }
 }
 
 function onPointerUp(event: PointerEvent) {
-  const c = create.value
-  if (!c) return
-  c.el.releasePointerCapture(c.pointerId)
-  const width = Math.abs(c.current.x - c.startDoc.x)
-  const height = Math.abs(c.current.y - c.startDoc.y)
-  create.value = null
+  const p = pointer.value
+  if (!p) return
+  p.el.releasePointerCapture(p.pointerId)
+  pointer.value = null
   event.preventDefault()
   event.stopPropagation()
-  // Click without drag is a no-op (avoids accidental tiny boxes).
+
+  // click (no drag): select the box under the pointer, or deselect if empty
+  if (!p.moved) {
+    if (p.hitLayer) selectLayer(p.hitLayer.id)
+    else deselect()
+    return
+  }
+
+  // drag started inside an existing box → do nothing (TextBoxOverlay handles
+  // dragging selected boxes; this overlay only catches the gap when no box
+  // is selected, so we just ignore drags on other boxes here)
+  if (p.hitLayer) {
+    selectLayer(p.hitLayer.id)
+    return
+  }
+
+  // drag in empty area → create new text box
+  const width = Math.abs(p.current.x - p.startDoc.x)
+  const height = Math.abs(p.current.y - p.startDoc.y)
   if (width < MIN_CREATE || height < MIN_CREATE) return
-  const left = Math.round(Math.min(c.startDoc.x, c.current.x))
-  const top  = Math.round(Math.min(c.startDoc.y, c.current.y))
-  const doc = store.getters['bmp/activeDocument'] as { layers?: Layer[] } | undefined
-  if (!doc) return
+  const left = Math.round(Math.min(p.startDoc.x, p.current.x))
+  const top  = Math.round(Math.min(p.startDoc.y, p.current.y))
   const layer = LayerFactory.create({
     type: LayerTypes.LAYER_TEXT,
     left,
@@ -185,7 +255,10 @@ function onPointerUp(event: PointerEvent) {
     boxMode: 'fixed',
   }
   store.commit('bmp/addLayer', layer)
+  // bmp/addLayer auto-sets activeLayerIndex; mirror it in TOWA editor state
+  // and immediately focus the panel textarea so the user can start typing.
   store.commit('editor/SELECT_LAYER', layer.id)
+  focusBlockTextarea(layer.id)
 }
 </script>
 
