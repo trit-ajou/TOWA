@@ -1,8 +1,23 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Type, Trash2 } from 'lucide-vue-next'
-import type { Layer, Text } from '@bitmappery/definitions/document'
+import {
+  Type, Trash2,
+  AlignLeft, AlignCenter, AlignRight,
+  AlignStartVertical, AlignCenterVertical, AlignEndVertical,
+} from 'lucide-vue-next'
+import type { Layer, Text, TextAlign, TextVerticalAlign } from '@bitmappery/definitions/document'
 import { getTextMeta } from '@/utils/text-layer'
+
+const HORIZONTAL_ALIGNS: Array<{ value: TextAlign; icon: typeof AlignLeft; title: string }> = [
+  { value: 'left',   icon: AlignLeft,   title: '왼쪽 정렬' },
+  { value: 'center', icon: AlignCenter, title: '가운데 정렬' },
+  { value: 'right',  icon: AlignRight,  title: '오른쪽 정렬' },
+]
+const VERTICAL_ALIGNS: Array<{ value: TextVerticalAlign; icon: typeof AlignStartVertical; title: string }> = [
+  { value: 'top',    icon: AlignStartVertical,  title: '상단 정렬' },
+  { value: 'middle', icon: AlignCenterVertical, title: '가운데 정렬' },
+  { value: 'bottom', icon: AlignEndVertical,    title: '하단 정렬' },
+]
 
 const props = defineProps<{
   layer: Layer
@@ -97,6 +112,35 @@ const idLabel = computed(() => {
         @input="$emit('updateText', { color: ($event.target as HTMLInputElement).value })"
         @click.stop
       />
+
+      <div class="flex items-center gap-0.5 ml-auto">
+        <button
+          v-for="opt in HORIZONTAL_ALIGNS"
+          :key="opt.value"
+          :title="opt.title"
+          class="p-1 rounded transition-colors"
+          :class="layer.text.align === opt.value
+            ? 'bg-towa-accent/20 text-towa-accent'
+            : 'text-towa-text-muted hover:bg-towa-surface-light hover:text-towa-text'"
+          @click.stop="$emit('updateText', { align: opt.value })"
+        >
+          <component :is="opt.icon" :size="13" />
+        </button>
+      </div>
+      <div class="flex items-center gap-0.5">
+        <button
+          v-for="opt in VERTICAL_ALIGNS"
+          :key="opt.value"
+          :title="opt.title"
+          class="p-1 rounded transition-colors"
+          :class="layer.text.verticalAlign === opt.value
+            ? 'bg-towa-accent/20 text-towa-accent'
+            : 'text-towa-text-muted hover:bg-towa-surface-light hover:text-towa-text'"
+          @click.stop="$emit('updateText', { verticalAlign: opt.value })"
+        >
+          <component :is="opt.icon" :size="13" />
+        </button>
+      </div>
     </div>
   </div>
 </template>

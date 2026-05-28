@@ -126,6 +126,8 @@ function addEmptyTextLayer() {
       lineHeight: 0,
       spacing: 0,
       color: '#000000',
+      align: 'center',
+      verticalAlign: 'middle',
     },
   }) as Layer
   layer.meta = { blockId: layer.id, original: '', status: 'edited', boxMode: 'fixed' }
