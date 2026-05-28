@@ -8,6 +8,7 @@ import PageSidePanel from '@/components/editor/PageSidePanel.vue'
 import TranslationPanel from '@/components/editor/TranslationPanel.vue'
 import CanvasToolbox from '@/components/editor/CanvasToolbox.vue'
 import ZoomToolHandler from '@/components/editor/ZoomToolHandler.vue'
+import TextBoxOverlay from '@/components/editor/TextBoxOverlay.vue'
 import { isTextLayer, mergeTextMeta } from '@/utils/text-layer'
 import type { Layer, Text } from '@bitmappery/definitions/document'
 import { LayerTypes } from '@bitmappery/definitions/layer-types'
@@ -177,6 +178,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
     <Teleport to="#towa-canvas-area" defer>
       <ZoomToolHandler />
       <CanvasToolbox />
+      <TextBoxOverlay />
     </Teleport>
 
     <Teleport to="#towa-left-panel" defer>
