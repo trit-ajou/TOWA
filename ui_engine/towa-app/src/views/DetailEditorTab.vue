@@ -14,6 +14,8 @@ import ZoomToolHandler from '@/components/editor/ZoomToolHandler.vue'
 import AiProgressOverlay from '@/components/editor/AiProgressOverlay.vue'
 import BrushOptionsPopover from '@/components/editor/BrushOptionsPopover.vue'
 import EyedropperHandler from '@/components/editor/EyedropperHandler.vue'
+import CanvasNoticeToast from '@/components/editor/CanvasNoticeToast.vue'
+import PaintGuard from '@/components/editor/PaintGuard.vue'
 
 defineOptions({ name: 'DetailEditorTab' })
 
@@ -80,6 +82,8 @@ function setPanelCollapsed(collapsed: boolean) {
       <AiProgressOverlay />
       <BrushOptionsPopover />
       <EyedropperHandler />
+      <PaintGuard />
+      <CanvasNoticeToast />
     </Teleport>
 
     <Teleport to="#towa-right-panel" defer>

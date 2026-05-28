@@ -4,6 +4,7 @@ import { useStore } from 'vuex'
 import { Eye, EyeOff, Type, Image as ImageIcon, Trash2, Plus, ChevronDown, ChevronRight } from 'lucide-vue-next'
 import type { Layer } from '@bitmappery/definitions/document'
 import { LayerTypes } from '@bitmappery/definitions/layer-types'
+import { classifyLayer, type LayerGroupId } from '@/utils/layer-classify'
 
 const store = useStore()
 
@@ -13,23 +14,9 @@ const activeDocument = computed(() => store.getters['bmp/activeDocument'])
 
 interface LayerEntry { layer: Layer; index: number }
 interface LayerGroup {
-  id: 'custom' | 'text' | 'inpaint' | 'original'
+  id: LayerGroupId
   label: string
   layers: LayerEntry[]
-}
-
-// 프리셋 그룹 자동 분류:
-// - 원본: name === 'original' (mock seed 규약). 추후 meta.role === 'original'로 확장 예정
-// - 텍스트: type === LAYER_TEXT
-// - 인페인트: meta.role === 'inpaint' (아직 데이터 없음, 그룹은 빈 상태로 노출)
-// - 커스텀: 위 어디에도 안 속하는 그래픽 레이어 (사용자가 추가한 레이어)
-function classify(entry: LayerEntry): LayerGroup['id'] {
-  const l = entry.layer
-  const role = (l.meta as { role?: string } | undefined)?.role
-  if (role === 'original' || l.name === 'original') return 'original'
-  if (role === 'inpaint') return 'inpaint'
-  if (l.type === LayerTypes.LAYER_TEXT) return 'text'
-  return 'custom'
 }
 
 // 포토샵 관습: 위가 최상위 z-order. 그룹 안에서도 layers 배열의 끝(상위)이 먼저 보이도록 reverse
@@ -38,7 +25,7 @@ const groups = computed<LayerGroup[]>(() => {
     custom: [], text: [], inpaint: [], original: [],
   }
   layers.value.forEach((layer, index) => {
-    buckets[classify({ layer, index })].push({ layer, index })
+    buckets[classifyLayer(layer)].push({ layer, index })
   })
   // 그룹 표시 순서: 위가 z-order 상단 (사용자 의도: 커스텀이 텍스트 위, 인페인트 아래, 원본 맨 아래)
   return [
