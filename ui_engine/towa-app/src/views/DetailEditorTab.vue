@@ -11,6 +11,7 @@ import ToolOptionsPanel from '@/components/editor/ToolOptionsPanel.vue'
 import LayerPanel from '@/components/editor/LayerPanel.vue'
 import RightPanelSplit from '@/components/editor/RightPanelSplit.vue'
 import ZoomToolHandler from '@/components/editor/ZoomToolHandler.vue'
+import AiProgressOverlay from '@/components/editor/AiProgressOverlay.vue'
 
 defineOptions({ name: 'DetailEditorTab' })
 
@@ -74,6 +75,7 @@ function setPanelCollapsed(collapsed: boolean) {
     <Teleport to="#towa-canvas-area" defer>
       <ZoomToolHandler />
       <CanvasToolbox />
+      <AiProgressOverlay />
     </Teleport>
 
     <Teleport to="#towa-right-panel" defer>
