@@ -178,6 +178,15 @@ function createAiTextLayerFromPayload(
 }
 
 function bboxFromPayload(value: unknown): { x: number; y: number; width: number; height: number } {
+  // 모델엔진 실응답: [x, y, w, h] 배열 형식
+  if (Array.isArray(value) && value.length >= 4) {
+    return {
+      x: positiveOrZero(value[0], 0),
+      y: positiveOrZero(value[1], 0),
+      width: positiveNumber(value[2], 1),
+      height: positiveNumber(value[3], 1),
+    }
+  }
   const payload = isRecord(value) ? value : {}
   return {
     x: positiveOrZero(payload.x ?? payload.left, 0),
