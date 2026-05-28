@@ -45,13 +45,19 @@ from ..contracts.artifacts import ArtifactDescriptor
 from ..contracts.document_ir import DocumentIR
 from ..contracts.models import StageKind
 from ..contracts.patches import PatchOperation
-from ..contracts.stages import ExecutionMode, StageReport, StageRuntimeContext, StageStatus
+from ..contracts.stages import (
+    ExecutionMode,
+    StageReport,
+    StageRequest,
+    StageResponse,
+    StageRuntimeContext,
+    StageStatus,
+)
 from ..ipc.serde import document_from_data, document_to_data, patch_to_data, stage_report_to_data
 from ..logging_utils import log_event, log_exception
 from ..models import ModelRegistry
 from ..orchestrator import PipelineOrchestrator
 from ..stages import AdapterBackedStage, Stage, run_mask_or_erase_planning
-from ..stages.base import Stage as StageProtocol
 from .service_bridge import (
     ServiceEngineBridgeClient,
     ServiceEngineHTTPError,
@@ -92,7 +98,7 @@ SERVICE_USAGE_OPERATION_KIND = {
     "translate": "translate",
 }
 OPERATION_STAGE_NAMES = {
-    "detect": ["text_detection"],
+    "detect": ["text_detection", "ocr"],
     "inpaint": ["text_detection", "mask_or_erase_planning", "inpaint"],
     "translate": ["text_detection", "ocr", "translation"],
 }
@@ -256,6 +262,31 @@ class OrchestratedJobExecutor(JobExecutor):
             stage_reports=result.stage_reports,
             error=_error_from_stage_reports(result.stage_reports),
         )
+
+
+class FunctionStage(Stage):
+    """Wrap deterministic planner handlers so API jobs can compose them with model stages."""
+
+    def __init__(
+        self,
+        stage_name: str,
+        handler: Callable[[StageRequest], StageResponse],
+        *,
+        config: dict[str, object] | None = None,
+    ) -> None:
+        self._stage_name = stage_name
+        self._handler = handler
+        self._config = dict(config or {})
+
+    @property
+    def stage_name(self) -> str:
+        return self._stage_name
+
+    def stage_config(self) -> dict[str, object]:
+        return dict(self._config)
+
+    def run(self, request: StageRequest) -> StageResponse:
+        return self._handler(request)
 
 
 class ModelJobManager:
@@ -880,31 +911,6 @@ def _server_job_workspace_path(job_id: str) -> Path:
     return path.resolve()
 
 
-class _FunctionStage(StageProtocol):
-    """Wrap planner-like stage functions so the executor can compose them uniformly."""
-
-    def __init__(
-        self,
-        stage_name: str,
-        handler: Callable[[Any], Any],
-        *,
-        config: dict[str, object] | None = None,
-    ) -> None:
-        self._stage_name = stage_name
-        self._handler = handler
-        self._config = dict(config or {})
-
-    @property
-    def stage_name(self) -> str:
-        return self._stage_name
-
-    def stage_config(self) -> dict[str, object]:
-        return dict(self._config)
-
-    def run(self, request: Any) -> Any:
-        return self._handler(request)
-
-
 def _build_builtin_registry() -> ModelRegistry:
     registry = ModelRegistry()
     register_craft_text_detection_model(registry)
@@ -936,11 +942,15 @@ def _build_operation_stages(
                 stage_kind=StageKind.TEXT_DETECTION,
                 registry=registry,
                 preferred_model_id=CRAFT_TEXT_DETECTION_MODEL_ID,
-                config={
-                    **common_detection_config,
-                    "emit_text_blocks": True,
-                },
-            )
+                config=common_detection_config,
+            ),
+            AdapterBackedStage(
+                "ocr",
+                stage_kind=StageKind.OCR,
+                registry=registry,
+                preferred_model_id=MANGA_OCR_MODEL_ID,
+                config=_manga_ocr_stage_config(input_artifact_ref),
+            ),
         ]
 
     if request.operation_kind == "translate":
@@ -957,22 +967,7 @@ def _build_operation_stages(
                 stage_kind=StageKind.OCR,
                 registry=registry,
                 preferred_model_id=MANGA_OCR_MODEL_ID,
-                config={
-                    "input_artifact_ref": input_artifact_ref,
-                    "writing_mode_hint": "vertical",
-                    "region_padding": 12,
-                    "merge_regions": True,
-                    "merge_gap_px": 24,
-                    "merge_min_overlap_ratio": 0.25,
-                    "reading_order_mode": "vertical_rtl",
-                    "min_ocr_region_area_px": 160,
-                    "min_ocr_region_area_ratio": 0.00015,
-                    "max_text_density_per_1000_px2": 1.5,
-                    "small_region_long_text_area_px": 6000,
-                    "small_region_long_text_area_ratio": 0.004,
-                    "small_region_long_text_min_chars": 16,
-                    "hallucination_action": "mark",
-                },
+                config=_manga_ocr_stage_config(input_artifact_ref),
             ),
             AdapterBackedStage(
                 "translation",
@@ -996,7 +991,7 @@ def _build_operation_stages(
                 preferred_model_id=CRAFT_TEXT_DETECTION_MODEL_ID,
                 config=common_detection_config,
             ),
-            _FunctionStage(
+            FunctionStage(
                 "mask_or_erase_planning",
                 run_mask_or_erase_planning,
                 config={
@@ -1013,13 +1008,33 @@ def _build_operation_stages(
                 config={
                     "input_artifact_ref": input_artifact_ref,
                     "target_layer_id": "layer_inpainting",
-                    "output_mask_mode": "expanded_bbox",
+                    "output_mask_mode": "mask_artifact",
+                    "output_mask_dilate_radius": 2,
                     **_inpaint_provider_config_from_runtime(request.runtime_context),
                 },
             ),
         ]
 
     raise ValueError(f"Unsupported operation_kind: {request.operation_kind}")
+
+
+def _manga_ocr_stage_config(input_artifact_ref: str) -> dict[str, object]:
+    return {
+        "input_artifact_ref": input_artifact_ref,
+        "writing_mode_hint": "vertical",
+        "region_padding": 12,
+        "merge_regions": True,
+        "merge_gap_px": 24,
+        "merge_min_overlap_ratio": 0.25,
+        "reading_order_mode": "vertical_rtl",
+        "min_ocr_region_area_px": 160,
+        "min_ocr_region_area_ratio": 0.00015,
+        "max_text_density_per_1000_px2": 1.5,
+        "small_region_long_text_area_px": 6000,
+        "small_region_long_text_area_ratio": 0.004,
+        "small_region_long_text_min_chars": 16,
+        "hallucination_action": "mark",
+    }
 
 
 def _resolve_primary_bitmap_artifact_ref(artifacts: dict[str, ArtifactDescriptor]) -> str:

@@ -942,7 +942,7 @@ terminal state:
 
 외부 `operation_kind`와 내부 stage capability 매핑:
 
-- `detect` -> `text_detection`
+- `detect` -> `text_detection`, `ocr`
 - `inpaint` -> `text_detection`, `mask_or_erase_planning`, `inpaint`
 - `translate` -> `text_detection`, `ocr`, `translation`
 - `pipeline` -> 명시된 pipeline config에 따름
@@ -950,7 +950,7 @@ terminal state:
 `detect` 성공 응답 규칙:
 
 - CRAFT `text_detection`은 `text_regions` artifact를 생성한다.
-- 외부 `detect` 작업에서는 같은 결과를 UI merge용 `replace_text_blocks` patch로도 반환한다.
+- 외부 `detect` 작업에서는 `manga_ocr`가 `text_regions`를 읽은 뒤 원문 일본어가 들어간 UI merge용 `replace_text_blocks` patch를 반환한다.
 - 내부 pipeline의 `translate`/`inpaint` 선행 검출 단계는 빈 text block patch를 만들지 않고, downstream stage용 `text_regions` artifact만 만든다.
 
 현재 구현 상태:
