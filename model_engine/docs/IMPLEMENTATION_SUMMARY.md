@@ -124,7 +124,7 @@
 - job 저장소는 in-memory다.
 - lifecycle은 `queued -> running -> succeeded|failed|partial`이다.
 - operation별 placeholder stage는 아래처럼 고정했다.
-  - `detect` -> `text_detection`
+  - `detect` -> `text_detection`, `ocr`
   - `inpaint` -> `text_detection`, `mask_or_erase_planning`, `inpaint`
   - `translate` -> `text_detection`, `ocr`, `translation`
   - `pipeline` -> 현재 `422 model_validation_error`

@@ -67,7 +67,7 @@ class OrchestratedJobExecutorTests(unittest.TestCase):
                 second.stage_reports[0].metrics["input_uri"],
             )
 
-    def test_detect_job_runs_real_text_detection_stage(self) -> None:
+    def test_detect_job_runs_text_detection_then_ocr(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             request = _job_request(Path(tmpdir), operation_kind="detect")
             executor = OrchestratedJobExecutor()
@@ -75,18 +75,23 @@ class OrchestratedJobExecutorTests(unittest.TestCase):
             with patch(
                 "model_engine.builtin_models.craft_text_detection._detect_with_craft",
                 side_effect=_fake_detect_text,
+            ), patch(
+                "model_engine.builtin_models.manga_ocr._recognize_with_manga_ocr",
+                side_effect=_fake_recognize_text,
             ):
                 result = executor.execute(request)
 
             self.assertEqual(ModelJobStatus.SUCCEEDED, result.status)
-            self.assertEqual(["text_detection"], [report.stage_name for report in result.stage_reports])
+            self.assertEqual(["text_detection", "ocr"], [report.stage_name for report in result.stage_reports])
             self.assertEqual("craft", result.document.stage_meta["text_detection"]["engine"])
+            self.assertEqual("manga_ocr", result.document.stage_meta["ocr"]["engine"])
             self.assertEqual(1, len(result.document.text_blocks))
             self.assertEqual("block_0001", result.document.text_blocks[0].block_id)
-            self.assertEqual("", result.document.text_blocks[0].source_lang_text)
+            self.assertEqual("縦書きテキスト", result.document.text_blocks[0].source_lang_text)
+            self.assertEqual("", result.document.text_blocks[0].translated_text)
             self.assertEqual("region_0001", result.document.text_blocks[0].source_region_ref)
             self.assertEqual(
-                ["replace_text_blocks", "set_stage_meta"],
+                ["set_stage_meta", "replace_text_blocks", "set_stage_meta"],
                 [patch.op.value for patch in result.document_patch],
             )
 

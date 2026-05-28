@@ -509,7 +509,7 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 구현 내용:
 
 - 기본 `ModelJobManager` executor를 placeholder에서 orchestrator 기반 executor로 전환
-- `detect`는 built-in `CRAFT text_detection` stage 조합 사용
+- `detect`는 `text_detection -> ocr` 조합 사용. CRAFT는 region artifact만 만들고, UI에 내려가는 `replace_text_blocks`는 manga OCR 결과의 원문 일본어를 담는다.
 - `translate`는 `text_detection -> ocr -> translation` 조합 사용
 - `inpaint`는 `text_detection -> mask_or_erase_planning -> inpaint` 조합 사용
 - planner 함수는 API job, 직접 stage 테스트, 샘플 경로에서 재사용 가능하도록 유지
