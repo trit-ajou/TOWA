@@ -4,6 +4,20 @@
 
 ---
 
+## 2026-05-29
+
+### 00:31 — 편집 화면 UI 개편 후속: 단축키·도구 옵션·레이어 가드 (#22)
+- 배경: #22 1차분(35ef6a3 main 머지)에서 toolbox/패널/AI 드롭다운/Zoom 신규 구현까지 끝. 이번 후속에서 사용자 검증 통해 빠진 항목 채움
+- **Hand 도구 Space modifier** (`composables/useSpacePanModifier.ts`): 어떤 도구를 쓰고 있든 Space 누른 채 드래그하면 임시로 MOVE 도구로 전환, 떼면 복원. input/textarea focus 시 무시, window blur 시 자동 복원
+- **AI 진행 알림 오버레이** (`AiProgressOverlay.vue`): `useAiActions`의 `loading` ref를 module-scope singleton으로 끌어올려 여러 컴포넌트가 같은 상태 구독. 캔버스 영역 우상단에 spinner + 작업명(검출/인페인팅/번역). `pointer-events-none`으로 캔버스 조작 통과
+- **FG/BG swap + 도구 단축키** (`store/modules/editor.ts`, `CanvasToolbox.vue`): editor store에 `backgroundColor` state 추가. `X` 키 또는 툴박스 작은 화살표로 `bmp/activeColor` ↔ `editor/backgroundColor` 교체. BG swatch가 실제 색으로 표시. `Z V M W B S E G I T R D` 도구 단축키 일괄 매핑 (e.code 기반이라 IME 한글 무관)
+- **우클릭 브러쉬 옵션 팝업** (`BrushOptionsPopover.vue`): brush/clone/eraser 활성 + 캔버스 우클릭 → 크기 slider + 종류 7가지 popover. capture phase로 bitmappery interaction-pane보다 먼저 가로채. Esc / 바깥 클릭 닫힘. Zoom 도구는 우클릭=줌아웃이 우선
+- **Alt+클릭 스포이드** (`EyedropperHandler.vue`): 어떤 도구든 Alt+클릭으로 캔버스 픽셀의 색을 `getImageData`로 추출해 `editor/backgroundColor`에 set (포토샵 패턴). CSS 좌표 → internal pixel 좌표 변환으로 HiDPI/zoom 보정
+- **페이지 nav 단축키 Q/W → ←/→**: W가 spec(canvas_ui_specs)의 wand 도구 단축키와 충돌 → ArrowLeft/ArrowRight로 옮김. TranslationPanel의 kbd 라벨도 ←/→로 갱신
+- **비-커스텀 레이어 paint 가드 토스트** (`PaintGuard.vue`, `CanvasNoticeToast.vue`, `useCanvasNotice.ts`, `utils/layer-classify.ts`): `classifyLayer`/`isPaintableLayer`를 utils로 추출. brush/eraser/clone/fill + active layer가 텍스트/인페인트/원본 그룹일 때 capture mousedown으로 안내 메시지 push. 캔버스 중앙에 200ms fade로 표시, 마지막 호출 이후 1.5초 hold → fade out. 그림 동작 자체는 막지 않음 (bitmappery 무시 동작에 맡김)
+- `TODO.md` / `Project_Plan.md`: U6(백그라운드 단축키 가드)는 라우터 가드(`router/index.ts:67`)로 이미 처리되어 있어 완료 표시. `Ctrl+T` 레이어 transform은 Project_Plan.md U7로 분리 후속 작업
+- 검증: Playwright로 AI overlay 시각 확인 + 사용자 손 테스트로 swap/popover/eyedropper/paint guard 동작 확인. dev 서버 HMR 에러 없음
+
 ## 2026-05-28
 
 ### 00:13 — backend mode 단일 master switch + AND-gate (#28)

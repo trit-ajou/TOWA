@@ -99,7 +99,8 @@
 | U3 | 페이지 순서 변경 (드래그) | PageGrid/PageSidePanel에서 드래그로 순서 변경 |
 | U4 | 키보드 단축키 통합 | bitmappery 단축키 + towa-app 단축키 충돌 해결 |
 | U5 | 다국어 지원 (i18n) | 한국어/일본어/영어 UI |
-| U6 | Bitmappery 백그라운드 단축키 비활성 가드 (B1) | bitmappery preload로 캔버스 비노출 화면(라이브러리/프로젝트 홈)에서도 키 입력이 KeyboardService에 전달됨 → `setSuspended(true)` 호출로 차단 |
+| ~~U6~~ | ~~Bitmappery 백그라운드 단축키 비활성 가드 (B1)~~ | **완료** — `router/index.ts` beforeEach에서 `KeyboardService.setSuspended(!CANVAS_ROUTES.has(to.name))`로 처리 |
+| U7 | 레이어 transform [Ctrl+T] | 선택 레이어를 자유 변형 모드로 진입 (이동/회전/스케일 핸들). canvas_ui_specs 정의. issue #22에서 일부러 미룬 항목 — bitmappery 자체에 transform 핸들 인프라가 부분적으로 있어, 그걸 활용하는 별도 작업으로 분리 |
 
 ### 장기 (post-MVP)
 

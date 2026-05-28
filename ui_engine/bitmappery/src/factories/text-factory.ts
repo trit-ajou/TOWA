@@ -20,7 +20,7 @@
  * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
-import type { Text } from "@/definitions/document";
+import type { Text, TextAlign, TextVerticalAlign } from "@/definitions/document";
 
 import { loadGoogleFont } from "@/services/font-service";
 import { googleFonts } from "@/definitions/font-types";
@@ -35,7 +35,9 @@ const TextFactory = {
         unit = "px",
         lineHeight = 0,
         spacing = 0,
-        color = "red"
+        color = "red",
+        align = "left" as TextAlign,
+        verticalAlign = "top" as TextVerticalAlign,
     }: TextProps = {}): Text {
         return {
             value,
@@ -45,6 +47,8 @@ const TextFactory = {
             lineHeight,
             spacing,
             color,
+            align,
+            verticalAlign,
         };
     },
 
@@ -61,6 +65,8 @@ const TextFactory = {
             l: text.lineHeight,
             p: text.spacing,
             c: text.color,
+            a: text.align,
+            va: text.verticalAlign,
         };
     },
 
@@ -83,6 +89,8 @@ const TextFactory = {
              lineHeight: text.l,
              spacing: text.p,
              color: text.c,
+             align: text.a,
+             verticalAlign: text.va,
          });
      }
 };
@@ -92,11 +100,13 @@ export const isEqual = ( text: Text, textToCompare?: Text ): boolean => {
     if ( !textToCompare ) {
         return false;
     }
-    return text.font       === textToCompare.font &&
-           text.value      === textToCompare.value &&
-           text.size       === textToCompare.size &&
-           text.unit       === textToCompare.unit &&
-           text.lineHeight === textToCompare.lineHeight &&
-           text.spacing    === textToCompare.spacing &&
-           text.color      === textToCompare.color;
+    return text.font          === textToCompare.font &&
+           text.value         === textToCompare.value &&
+           text.size          === textToCompare.size &&
+           text.unit          === textToCompare.unit &&
+           text.lineHeight    === textToCompare.lineHeight &&
+           text.spacing       === textToCompare.spacing &&
+           text.color         === textToCompare.color &&
+           text.align         === textToCompare.align &&
+           text.verticalAlign === textToCompare.verticalAlign;
 };

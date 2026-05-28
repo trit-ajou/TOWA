@@ -19,6 +19,8 @@ describe( "Text factory", () => {
                 value: "",
                 font: googleFonts[ 0 ],
                 color: "red",
+                align: "left",
+                verticalAlign: "top",
             });
         });
 
@@ -30,7 +32,9 @@ describe( "Text factory", () => {
                 spacing: 50,
                 font: "Helvetica",
                 value: "Foo bar baz",
-                color: "#FF00AE"
+                color: "#FF00AE",
+                align: "center",
+                verticalAlign: "middle",
             });
             expect( text ).toEqual({
                 size: 10,
@@ -39,7 +43,9 @@ describe( "Text factory", () => {
                 spacing: 50,
                 font: "Helvetica",
                 value: "Foo bar baz",
-                color: "#FF00AE"
+                color: "#FF00AE",
+                align: "center",
+                verticalAlign: "middle",
             });
         });
     });
@@ -70,6 +76,20 @@ describe( "Text factory", () => {
             const text = TextFactory.create({ [ property ]: 1 });
             expect( isEqual( text, defaultText )).toBe( false );
         });
+        expect( isEqual( TextFactory.create({ align: "center" }), defaultText )).toBe( false );
+        expect( isEqual( TextFactory.create({ verticalAlign: "middle" }), defaultText )).toBe( false );
         expect( isEqual( defaultText, TextFactory.create() )).toBe( true );
+    });
+
+    it( "should round-trip align/verticalAlign through serialize/deserialize", async () => {
+        mockUpdateFn = vi.fn();
+        const text = TextFactory.create({
+            font: "Helvetica",
+            align: "right",
+            verticalAlign: "bottom",
+        });
+        const deserialized = await TextFactory.deserialize( TextFactory.serialize( text ));
+        expect( deserialized.align ).toBe( "right" );
+        expect( deserialized.verticalAlign ).toBe( "bottom" );
     });
 });
