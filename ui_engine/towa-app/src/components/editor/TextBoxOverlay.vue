@@ -7,6 +7,10 @@ import { getTextMeta, isTextLayer } from '@/utils/text-layer'
 import ToolTypes from '@bitmappery/definitions/tool-types'
 // @ts-expect-error bitmappery JS module
 import { getCanvasInstance } from '@bitmappery/services/canvas-service'
+// @ts-expect-error bitmappery JS module
+import { getRendererForLayer } from '@bitmappery/factories/renderer-factory'
+// @ts-expect-error bitmappery JS module
+import { clearCacheProperty } from '@bitmappery/rendering/cache/bitmap-cache'
 
 const store = useStore()
 
@@ -142,6 +146,8 @@ function onPointerMove(event: PointerEvent) {
       height = Math.max(MIN_SIZE, startBox.height + dy)
     }
   }
+  const layer = activeLayer.value
+  const sizeChanged = layer && (layer.width !== Math.round(width) || layer.height !== Math.round(height))
   store.commit('bmp/updateLayer', {
     index: idx,
     opts: {
@@ -151,6 +157,23 @@ function onPointerMove(event: PointerEvent) {
       height: Math.round(height),
     },
   })
+  // updateLayer mutation does not propagate left/top to the zCanvas sprite
+  // and does not re-render text bitmap when only width/height change. We
+  // explicitly sync sprite position; for fixed-mode text layers we also
+  // invalidate the text cache so renderText runs with the new box size and
+  // alignment is recomputed.
+  const renderer = getRendererForLayer({ id: layer?.id })
+  if (renderer) {
+    renderer.syncPosition?.()
+    if (sizeChanged && layer && isTextLayer(layer)) {
+      // text bitmap cache is keyed on layer.text equality; width/height changes
+      // alone don't bust it. Clear text cache so renderText re-runs with the
+      // new box size.
+      clearCacheProperty(layer, 'textBitmap')
+      clearCacheProperty(layer, 'text')
+      renderer.resetFilterAndRecache?.()
+    }
+  }
 }
 
 function onPointerUp(event: PointerEvent) {
