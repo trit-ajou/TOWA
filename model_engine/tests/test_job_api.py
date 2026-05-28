@@ -86,7 +86,7 @@ class ModelJobAPITests(unittest.TestCase):
         detail = _wait_for_terminal_job(client, body["job_id"])
 
         self.assertEqual("succeeded", detail["status"])
-        self.assertEqual(["text_detection"], [report["stage_name"] for report in detail["stage_reports"]])
+        self.assertEqual(["text_detection", "ocr"], [report["stage_name"] for report in detail["stage_reports"]])
         self.assertEqual(
             "placeholder",
             detail["document"]["stage_meta"]["text_detection"]["executor"],

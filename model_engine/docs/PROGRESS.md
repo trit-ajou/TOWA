@@ -34,6 +34,9 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 
 최근 추가된 wiring:
 
+- 2026-05-29 기준 `detect` 결과 bbox 좌표계 검증을 완료했다. model-engine은 원본 이미지/문서 좌상단 기준 AABB(`bbox: {x, y, width, height}`)와 `polygon`을 함께 반환하며, Docker에서 현재 HEAD로 `CRAFT -> manga_ocr`를 새로 실행한 결과 OCR text block 12개와 CRAFT raw region 38개 모두 원본 `1075x1547` 이미지 범위 안에 있었다.
+- 같은 응답 JSON을 원본 이미지 위에 직접 그려 확인한 overlay에서도 bbox가 실제 말풍선/글자 위치에 정상적으로 겹쳤다. 확인용 산출물은 `model_engine/.runtime/bbox_debug_current_overlay/current_ocr_blocks_bbox_overlay.jpg`, `current_craft_regions_bbox_overlay.jpg`, `summary.json`에 남겨 두었다.
+- 따라서 현재 관측된 "텍스트 검출 시 UI에서 bbox 표시가 안 됨" 문제는 model-engine 좌표 산출 문제가 아니라 UI 결과 적용/렌더링 병목으로 판단한다. UI `result-applier`는 `bbox.x/y`만 텍스트 layer의 `left/top`으로 쓰고, `bbox.width/height`는 표시용 box로 보존/렌더링하지 않으며 layer 크기는 문서 전체 크기로 대체한다.
 - API `inpaint` job을 `text_detection -> mask_or_erase_planning -> inpaint` 3단계로 되돌렸다. i2i provider 호출에는 여전히 원본 bitmap 한 장만 보내고, 생성된 `inpaint_tasks` 마스크는 최종 `inpainting_layer_bitmap` 합성에만 사용해 마스크 영역은 불투명, 나머지는 투명하게 UI로 전달한다.
 - API `inpaint`의 최종 합성은 `output_mask_mode=mask_artifact`와 `output_mask_dilate_radius=2`를 사용한다. `expanded_bbox`는 글자를 잘 덮지만 휴대폰 화면 같은 비말풍선 영역을 과하게 덮어서, 기본 UI alpha는 CRAFT text mask 주변의 작은 dilation까지만 사용한다.
 - Nanobanana/Mindlogic 공통 인페인트 prompt는 “보존”보다 “기존 글자 완전 제거”가 우선임을 명시하도록 강화했다. 남은 glyph/stroke/ghost text를 허용하지 않고, 제거 영역은 말풍선 내부/종이톤/스크린톤/배경 텍스처로 채우게 한다.
@@ -509,7 +512,7 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 구현 내용:
 
 - 기본 `ModelJobManager` executor를 placeholder에서 orchestrator 기반 executor로 전환
-- `detect`는 built-in `CRAFT text_detection` stage 조합 사용
+- `detect`는 `text_detection -> ocr` 조합 사용. CRAFT는 region artifact만 만들고, UI에 내려가는 `replace_text_blocks`는 manga OCR 결과의 원문 일본어를 담는다.
 - `translate`는 `text_detection -> ocr -> translation` 조합 사용
 - `inpaint`는 `text_detection -> mask_or_erase_planning -> inpaint` 조합 사용
 - planner 함수는 API job, 직접 stage 테스트, 샘플 경로에서 재사용 가능하도록 유지
