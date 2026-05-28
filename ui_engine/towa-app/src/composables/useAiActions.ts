@@ -20,12 +20,15 @@ export interface AiActionResult {
   jobId: string
 }
 
+// AI 진행 상태는 module-scope singleton. 여러 컴포넌트(toolbox + 진행 알림 오버레이)가
+// 같은 상태를 구독해야 하므로 useAiActions() 호출마다 새 ref를 만들면 안 됨.
+const loading = ref<AiOperationKind | null>(null)
+const lastResult = ref<AiActionResult | null>(null)
+
 export function useAiActions() {
   const store = useStore()
   const backend = useAppBackend()
   const { savePage } = usePageLoader()
-  const loading = ref<AiOperationKind | null>(null)
-  const lastResult = ref<AiActionResult | null>(null)
 
   const projectId = computed(() => store.getters['editor/currentProjectId'] as string | null)
   const selectedPageId = computed(() => store.getters['editor/selectedPageId'] as string | null)

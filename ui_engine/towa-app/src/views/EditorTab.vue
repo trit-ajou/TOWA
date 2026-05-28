@@ -4,12 +4,18 @@ import { useStore } from 'vuex'
 import { useRoute } from 'vue-router'
 import { usePageLoader } from '@/composables/usePageLoader'
 import { useAutoSave } from '@/composables/useAutoSave'
+import { useSpacePanModifier } from '@/composables/useSpacePanModifier'
 import PageSidePanel from '@/components/editor/PageSidePanel.vue'
 import TranslationPanel from '@/components/editor/TranslationPanel.vue'
 import CanvasToolbox from '@/components/editor/CanvasToolbox.vue'
 import ZoomToolHandler from '@/components/editor/ZoomToolHandler.vue'
 import TextBoxOverlay from '@/components/editor/TextBoxOverlay.vue'
 import TextBoxCreator from '@/components/editor/TextBoxCreator.vue'
+import AiProgressOverlay from '@/components/editor/AiProgressOverlay.vue'
+import BrushOptionsPopover from '@/components/editor/BrushOptionsPopover.vue'
+import EyedropperHandler from '@/components/editor/EyedropperHandler.vue'
+import CanvasNoticeToast from '@/components/editor/CanvasNoticeToast.vue'
+import PaintGuard from '@/components/editor/PaintGuard.vue'
 import { isTextLayer, mergeTextMeta } from '@/utils/text-layer'
 import type { Layer, Text } from '@bitmappery/definitions/document'
 import { LayerTypes } from '@bitmappery/definitions/layer-types'
@@ -19,6 +25,8 @@ import LayerFactory from '@bitmappery/factories/layer-factory'
 import ToolTypes from '@bitmappery/definitions/tool-types'
 
 defineOptions({ name: 'EditorTab' })
+
+useSpacePanModifier()
 
 const store = useStore()
 const route = useRoute()
@@ -200,9 +208,10 @@ function goToNextPage() {
 function onKeydown(e: KeyboardEvent) {
   const tag = (e.target as HTMLElement).tagName
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
-  if (e.key === 'q' || e.key === 'Q' || e.key === 'ㅂ' || e.code === 'KeyQ') {
+  if (e.ctrlKey || e.metaKey || e.altKey) return
+  if (e.code === 'ArrowLeft') {
     e.preventDefault(); goToPrevPage()
-  } else if (e.key === 'w' || e.key === 'W' || e.key === 'ㅈ' || e.code === 'KeyW') {
+  } else if (e.code === 'ArrowRight') {
     e.preventDefault(); goToNextPage()
   }
 }
@@ -216,6 +225,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
     <Teleport to="#towa-canvas-area" defer>
       <ZoomToolHandler />
       <CanvasToolbox />
+      <AiProgressOverlay />
+      <BrushOptionsPopover />
+      <EyedropperHandler />
+      <PaintGuard />
+      <CanvasNoticeToast />
       <TextBoxCreator />
       <TextBoxOverlay />
     </Teleport>
