@@ -179,7 +179,13 @@ describe('applyAiJobSnapshotToCurrentPage', () => {
 
     expect(store.commit).toHaveBeenCalledWith(
       'bmp/addLayer',
-      expect.objectContaining({ left: 12, top: 34 }),
+      expect.objectContaining({
+        left: 12,
+        top: 34,
+        // detect-only: translated_text 없으면 text.value는 빈 값. 원문은 meta.original에만.
+        text: expect.objectContaining({ value: '' }),
+        meta: expect.objectContaining({ original: 'やあ', status: 'detected' }),
+      }),
     )
   })
 
