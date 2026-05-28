@@ -13,6 +13,7 @@ defineProps<{
 defineEmits<{
   selectLayer: [id: string]
   updateText: [layerId: string, textPatch: Partial<Text>]
+  updateOriginal: [layerId: string, next: string]
   addBlock: []
   removeBlock: [layerId: string]
   prevPage: []
@@ -42,6 +43,7 @@ defineEmits<{
         :selected="layer.id === selectedLayerId"
         @select="$emit('selectLayer', layer.id)"
         @update-text="(patch) => $emit('updateText', layer.id, patch)"
+        @update-original="(next) => $emit('updateOriginal', layer.id, next)"
         @remove="$emit('removeBlock', layer.id)"
       />
       <div v-if="layers.length === 0" class="p-4 text-center text-sm text-towa-text-muted">

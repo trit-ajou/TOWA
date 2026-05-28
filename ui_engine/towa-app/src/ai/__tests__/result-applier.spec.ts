@@ -144,6 +144,45 @@ describe('applyAiJobSnapshotToCurrentPage', () => {
     expect(store.commit).not.toHaveBeenCalledWith('bmp/removeLayer', expect.anything())
   })
 
+  it('accepts bbox in [x, y, w, h] array form from model engine', async () => {
+    const page = makePage()
+    const store = makeStore(page)
+    const snapshot = makeSnapshot({
+      operationKind: 'detect',
+      documentPatch: {
+        patches: [
+          {
+            op: 'replace_text_blocks',
+            payload: {
+              text_blocks: [
+                {
+                  block_id: 'tb-arr',
+                  source_lang_text: 'やあ',
+                  bbox: [12, 34, 56, 78],
+                },
+              ],
+            },
+          },
+        ],
+      },
+    })
+
+    await applyAiJobSnapshotToCurrentPage({
+      store,
+      backend: { getArtifact: vi.fn() },
+      snapshot,
+      projectId: page.projectId,
+      pageId: page.id,
+      savePage: vi.fn().mockResolvedValue(undefined),
+      appliedAt: new Date(2026, 4, 7, 15, 30),
+    })
+
+    expect(store.commit).toHaveBeenCalledWith(
+      'bmp/addLayer',
+      expect.objectContaining({ left: 12, top: 34 }),
+    )
+  })
+
   it('does not apply partial jobs automatically', async () => {
     const store = makeStore(makePage())
     const savePage = vi.fn()
