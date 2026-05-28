@@ -83,33 +83,41 @@ export const renderEffectsForLayer = async ( layer: Layer, useCaching = true ): 
     // step 1. render layer source contents
 
     let scheduleFontRerender = false;
-    if ( layer.type === LayerTypes.LAYER_TEXT && layer.text.value ) {
-        let textBitmap;
-        if ( cached?.textBitmap && isTextEqual( layer.text, cached.text )) {
-            //console.info( "reading rendered text from cache" );
-            textBitmap = cached.textBitmap;
-        } else {
-            const renderResult = await renderText( layer );
-            textBitmap = renderResult.bitmap;
-            scheduleFontRerender = renderResult.fontFreshlyLoaded;
-            const meta = layer.meta as Record<string, unknown> | undefined;
-            if ( meta?.boxMode === "fixed" ) {
-                // TOWA-style 텍스트 layer: layer.left/top/width/height 보존, source만 교체.
-                // (AI bbox 좌표/크기를 다음 렌더 사이클에도 유지)
-                layer.source = textBitmap;
+    if ( layer.type === LayerTypes.LAYER_TEXT ) {
+        const meta = layer.meta as Record<string, unknown> | undefined;
+        // text.value는 번역문 슬롯. 비어있을 때 'fixed' 모드는 meta.original을 fallback으로
+        // 그려서 검출만 끝난 상태에도 캔버스에 원문이 보이게 한다. (issue #29)
+        const fallback = meta?.boxMode === "fixed" && typeof meta?.original === "string"
+            ? ( meta.original as string ) : "";
+        const effectiveValue = layer.text.value || fallback;
+        if ( effectiveValue ) {
+            // text.value가 비어있을 때만 원문을 임시 렌더용으로 끼워넣는다. 저장되는
+            // layer.text는 그대로 유지 (정책: text.value = 번역문 슬롯).
+            const effectiveText = layer.text.value ? layer.text : { ...layer.text, value: effectiveValue };
+            let textBitmap;
+            if ( cached?.textBitmap && isTextEqual( effectiveText, cached.text )) {
+                //console.info( "reading rendered text from cache" );
+                textBitmap = cached.textBitmap;
             } else {
-                // native bitmappery 동작: layer를 텍스트 크기로 축소 + 중앙 보정.
-                replaceLayerSource( layer, textBitmap );
+                const renderResult = await renderText({ ...layer, text: effectiveText } as Layer );
+                textBitmap = renderResult.bitmap;
+                scheduleFontRerender = renderResult.fontFreshlyLoaded;
+                if ( meta?.boxMode === "fixed" ) {
+                    // TOWA-style 텍스트 layer: layer.left/top/width/height 보존, source만 교체.
+                    layer.source = textBitmap;
+                } else {
+                    // native bitmappery 동작: layer를 텍스트 크기로 축소 + 중앙 보정.
+                    replaceLayerSource( layer, textBitmap );
+                }
+                //console.info( "writing rendered text to cache" );
+                cacheToSet.text = { ...effectiveText };
+                cacheToSet.textBitmap = textBitmap;
+                hasCachedFilter = false; // new contents need to be refiltered
+                ({ width, height } = textBitmap );
             }
-            //console.info( "writing rendered text to cache" );
-            cacheToSet.text = { ...layer.text };
-            cacheToSet.textBitmap = textBitmap;
-            hasCachedFilter = false; // new contents need to be refiltered
-            ({ width, height } = textBitmap );
+            matchDimensions( textBitmap, cvs );
+            ctx.drawImage( textBitmap, 0, 0 );
         }
-        matchDimensions( textBitmap, cvs );
-        // render text onto destination source
-        ctx.drawImage( textBitmap, 0, 0 );
     } else if ( !hasCachedFilter ) {
         //console.info( "draw unfiltered source, will apply filter next: " + applyFilter );
         ctx.drawImage( layer.source, 0, 0 );
