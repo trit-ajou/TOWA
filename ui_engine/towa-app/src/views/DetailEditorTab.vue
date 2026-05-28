@@ -4,6 +4,7 @@ import { useStore } from 'vuex'
 import { useRoute } from 'vue-router'
 import { usePageLoader } from '@/composables/usePageLoader'
 import { useAutoSave } from '@/composables/useAutoSave'
+import { useSpacePanModifier } from '@/composables/useSpacePanModifier'
 import PageSidePanel from '@/components/editor/PageSidePanel.vue'
 import CanvasToolbox from '@/components/editor/CanvasToolbox.vue'
 import ToolOptionsPanel from '@/components/editor/ToolOptionsPanel.vue'
@@ -12,6 +13,8 @@ import RightPanelSplit from '@/components/editor/RightPanelSplit.vue'
 import ZoomToolHandler from '@/components/editor/ZoomToolHandler.vue'
 
 defineOptions({ name: 'DetailEditorTab' })
+
+useSpacePanModifier()
 
 const store = useStore()
 const route = useRoute()

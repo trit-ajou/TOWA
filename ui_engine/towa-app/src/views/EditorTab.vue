@@ -4,6 +4,7 @@ import { useStore } from 'vuex'
 import { useRoute } from 'vue-router'
 import { usePageLoader } from '@/composables/usePageLoader'
 import { useAutoSave } from '@/composables/useAutoSave'
+import { useSpacePanModifier } from '@/composables/useSpacePanModifier'
 import PageSidePanel from '@/components/editor/PageSidePanel.vue'
 import TranslationPanel from '@/components/editor/TranslationPanel.vue'
 import CanvasToolbox from '@/components/editor/CanvasToolbox.vue'
@@ -17,6 +18,8 @@ import LayerFactory from '@bitmappery/factories/layer-factory'
 import ToolTypes from '@bitmappery/definitions/tool-types'
 
 defineOptions({ name: 'EditorTab' })
+
+useSpacePanModifier()
 
 const store = useStore()
 const route = useRoute()
