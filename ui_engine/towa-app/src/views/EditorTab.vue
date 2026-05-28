@@ -31,7 +31,7 @@ useSpacePanModifier()
 const store = useStore()
 const route = useRoute()
 const { switchPage } = usePageLoader()
-const { saveImmediately } = useAutoSave()
+const { saveImmediately, markDirty } = useAutoSave()
 
 const projectId = computed(() => route.params.id as string)
 const pages = computed(() => store.getters['pages/forProject'](projectId.value))
@@ -111,7 +111,7 @@ function selectLayer(layerId: string) {
     const doc = store.getters['bmp/activeDocument'] as { layers?: Layer[] } | undefined
     const layer = doc?.layers?.[idx]
     if (layer?.type === LayerTypes.LAYER_TEXT) {
-      store.commit('bmp/setActiveTool', { tool: ToolTypes.TEXT })
+      store.commit('bmp/setActiveTool', { tool: ToolTypes.TEXT, document: doc })
     }
   }
 }
@@ -134,6 +134,7 @@ function updateTextLayer(layerId: string, textPatch: Partial<Text>) {
   const nextText: Text = { ...layer.text, ...textPatch }
   const nextMeta = mergeTextMeta(layer, { status: 'edited' })
   store.commit('bmp/updateLayer', { index: idx, opts: { text: nextText, meta: nextMeta } })
+  markDirty()
 }
 
 function updateOriginalForLayer(layerId: string, nextOriginal: string) {
@@ -144,6 +145,7 @@ function updateOriginalForLayer(layerId: string, nextOriginal: string) {
   if (!layer) return
   const nextMeta = mergeTextMeta(layer, { original: nextOriginal, status: 'edited' })
   store.commit('bmp/updateLayer', { index: idx, opts: { meta: nextMeta } })
+  markDirty()
 }
 
 function addEmptyTextLayer() {
@@ -183,13 +185,15 @@ function addEmptyTextLayer() {
   // 이미 +1 된 시점 값이라 out-of-bounds (N+1)로 덮어쓰는 회귀가 됨.
   store.commit('bmp/addLayer', layer)
   store.commit('editor/SELECT_LAYER', layer.id)
-  store.commit('bmp/setActiveTool', { tool: ToolTypes.TEXT })
+  store.commit('bmp/setActiveTool', { tool: ToolTypes.TEXT, document: doc })
+  markDirty()
 }
 
 function removeTextLayer(layerId: string) {
   const idx = findLayerIndex(layerId)
   if (idx < 0) return
   store.commit('bmp/removeLayer', idx)
+  markDirty()
   if (selectedLayerId.value === layerId) {
     store.commit('editor/SELECT_LAYER', null)
   }
