@@ -28,8 +28,12 @@ export const MODE_PRESETS: Record<TowaMode, Partial<Record<FeatureKey, boolean>>
         TOOL_BRUSH: false,
         TOOL_ERASER: false,
         TOOL_CLONE: false,
-        // UI 간소화
+        // bitmappery 기본 UI 전체 숨김 (towa-app이 대체)
         UI_HEADER_MENU: false,
+        UI_TOOLBOX: false,
+        UI_TOOL_OPTIONS_PANEL: false,
+        UI_LAYER_PANEL: false,
+        UI_DOCUMENT_HEADER: false,
         // 파일 관련 전부 비활성화 (towa-app이 관리)
         FILE_IMAGE_OPEN: false,
         FILE_IMAGE_EXPORT: false,
@@ -39,7 +43,12 @@ export const MODE_PRESETS: Record<TowaMode, Partial<Record<FeatureKey, boolean>>
         FILE_PDF_IMPORT: false,
     },
     typesetter: {
-        // 대부분 기본값(true) 유지, 파일 관련만 비활성화
+        // bitmappery 기본 UI 전체 숨김 (towa-app이 대체)
+        UI_HEADER_MENU: false,
+        UI_TOOLBOX: false,
+        UI_TOOL_OPTIONS_PANEL: false,
+        UI_LAYER_PANEL: false,
+        UI_DOCUMENT_HEADER: false,
         FILE_IMAGE_OPEN: false,
         FILE_BPY_SAVE: false,
         FILE_BPY_LOAD: false,
