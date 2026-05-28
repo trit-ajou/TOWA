@@ -89,6 +89,12 @@ function selectPage(pageId: string) {
 }
 
 function selectLayer(layerId: string) {
+  // Toggle: clicking the already-selected block deselects it.
+  if (selectedLayerId.value === layerId) {
+    store.commit('editor/SELECT_LAYER', null)
+    store.commit('bmp/setActiveLayerIndex', -1)
+    return
+  }
   store.commit('editor/SELECT_LAYER', layerId)
   const idx = findLayerIndex(layerId)
   if (idx >= 0) {
