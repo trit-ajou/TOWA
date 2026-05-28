@@ -2,11 +2,19 @@
 // Alt+클릭으로 캔버스에서 배경색을 추출. 도구를 EYEDROPPER로 명시적으로 전환할 필요 없이
 // 어떤 도구를 쓰고 있더라도 Alt 모디파이어가 눌려있으면 스포이드처럼 동작 (포토샵 패턴).
 // 추출된 색은 전경색이 아니라 배경색(editor/backgroundColor)에 set — spec(canvas_ui_specs.md).
-import { onMounted, onBeforeUnmount } from 'vue'
+//
+// 예외: CLONE 도구일 땐 Alt+클릭이 포토샵 표준 "source 샘플링" 단축키와 같은 위치를 점유.
+// bitmappery clone은 source 지정에 Alt를 직접 보지 않지만(첫 클릭=source), 포토샵 사용자
+// 멘탈에 맞춰 clone 도구가 활성일 땐 Alt+클릭을 양보 → bitmappery에 그대로 전달되어
+// source/paint cycle이 정상 동작.
+import { computed, onMounted, onBeforeUnmount } from 'vue'
 import { useStore } from 'vuex'
+// @ts-expect-error bitmappery JS module
+import ToolTypes from '@bitmappery/definitions/tool-types'
 import { getCanvasInstance } from '@bitmappery/services/canvas-service'
 
 const store = useStore()
+const activeTool = computed<string | null>(() => store.getters['bmp/activeTool'])
 
 function rgbaToHex(r: number, g: number, b: number): string {
   const h = (n: number) => n.toString(16).padStart(2, '0')
@@ -16,6 +24,8 @@ function rgbaToHex(r: number, g: number, b: number): string {
 function onClick(e: MouseEvent) {
   if (!e.altKey) return
   if (e.button !== 0) return
+  // CLONE 도구일 땐 source 샘플링 단축키와 충돌 → 양보
+  if (activeTool.value === ToolTypes.CLONE) return
   const area = document.getElementById('towa-canvas-area')
   if (!area || !area.contains(e.target as Node)) return
 
