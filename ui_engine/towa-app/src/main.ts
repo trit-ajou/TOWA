@@ -10,7 +10,6 @@ import { createFileAdapter } from './file-adapter'
 import { FILE_ADAPTER_KEY } from './composables/useFileAdapter'
 import { APP_BACKEND_KEY } from './composables/useAppBackend'
 import { DEPLOYMENT_MODE } from './config/deployment'
-import { seedDummyDataIfEmpty } from './data/dummy'
 import './app.css'
 import 'floating-vue/dist/style.css'
 
@@ -42,7 +41,7 @@ app.provide(APP_BACKEND_KEY, backend)
 // 2) Auth 모듈에 AuthBackend 주입
 store.dispatch('auth/init', backend.auth)
 
-// 3) FileAdapter — DEPLOYMENT_MODE에 따라 local/cloud 선택
+// 3) FileAdapter — cloud only for now. Standalone throws (see #37, file-adapter/index.ts).
 const mode = DEPLOYMENT_MODE.value
 const fileAdapter = createFileAdapter(mode, {
   backend,
@@ -54,22 +53,17 @@ app.provide(FILE_ADAPTER_KEY, fileAdapter)
 store.dispatch('projects/init', fileAdapter)
 store.dispatch('pages/init', fileAdapter)
 
-// 5) 초기화 순서: cloud면 세션 복원 → (로그인 상태일 때만) 프로젝트 로드, standalone은 seed + 로드
+// 5) 세션 복원 → 로그인 상태이면 프로젝트 로드
 async function init() {
-  if (mode === 'cloud') {
-    await store.dispatch('auth/restoreFromStorage')
-    const isLoggedIn = store.getters['auth/isLoggedIn']
-    if (isLoggedIn) {
-      try {
-        await store.dispatch('projects/loadAll')
-      } catch (e) {
-        // 서버 오류 시 빈 상태로 진입 (UI에서 재시도 안내)
-        console.warn('[init] loadAll failed on cloud boot:', e)
-      }
+  await store.dispatch('auth/restoreFromStorage')
+  const isLoggedIn = store.getters['auth/isLoggedIn']
+  if (isLoggedIn) {
+    try {
+      await store.dispatch('projects/loadAll')
+    } catch (e) {
+      // 서버 오류 시 빈 상태로 진입 (UI에서 재시도 안내)
+      console.warn('[init] loadAll failed on cloud boot:', e)
     }
-  } else {
-    await seedDummyDataIfEmpty(fileAdapter)
-    await store.dispatch('projects/loadAll')
   }
   app.mount('#app')
 }

@@ -44,7 +44,23 @@ def _assert_error(payload: dict[str, object], *, code: str) -> None:
     assert error["code"] == code
 
 
-def _create_project(client: TestClient, session_key: str, *, thumbnail_url=None) -> dict[str, object]:
+def _create_folder(client: TestClient, session_key: str, *, name: str, parent_id: str | None = None) -> dict[str, object]:
+    response = client.post(
+        "/api/v1/folders",
+        json={"name": name, "parent_id": parent_id},
+        headers=_session_headers(session_key),
+    )
+    assert response.status_code == 200
+    return response.json()
+
+
+def _create_project(
+    client: TestClient,
+    session_key: str,
+    *,
+    thumbnail_url=None,
+    folder_id: str | None = None,
+) -> dict[str, object]:
     response = client.post(
         "/api/v1/projects",
         json={
@@ -54,7 +70,7 @@ def _create_project(client: TestClient, session_key: str, *, thumbnail_url=None)
             "source_lang": "ja",
             "target_lang": "ko",
             "status": "todo",
-            "folder": "주간연재/점프",
+            "folder_id": folder_id,
             "config": {"auto_detect": True},
         },
         headers=_session_headers(session_key),
@@ -109,18 +125,43 @@ def test_project_crud_and_thumbnail_round_trip(sqlite_session_factory: sessionma
     client = _build_test_client(sqlite_session_factory)
     session_key = _login(client)
 
-    created = _create_project(client, session_key)
+    root_folder = _create_folder(client, session_key, name="주간연재")
+    child_folder = _create_folder(client, session_key, name="점프", parent_id=root_folder["id"])
+    created = _create_project(client, session_key, folder_id=child_folder["id"])
     assert created["thumbnail_url"] is None
     assert created["page_count"] == 0
+    assert created["folder_id"] == child_folder["id"]
+    assert created["folder_path"] == "주간연재/점프"
+
+    legacy_response = client.post(
+        "/api/v1/projects",
+        json={
+            "id": "01ARZ3NDEKTSV4RRFFQ69G5FAY",
+            "name": "legacy",
+            "source_lang": "ja",
+            "target_lang": "ko",
+            "status": "todo",
+            "folder": "legacy/path",
+            "config": {},
+        },
+        headers=_session_headers(session_key),
+    )
+    assert legacy_response.status_code == 422
 
     patch_response = client.patch(
         f"/api/v1/projects/{PROJECT_ID}",
-        json={"thumbnail_url": "https://storage.example.test/covers/project.webp", "status": "in-progress"},
+        json={
+            "thumbnail_url": "https://storage.example.test/covers/project.webp",
+            "status": "in-progress",
+            "folder_id": None,
+        },
         headers=_session_headers(session_key),
     )
     assert patch_response.status_code == 200
     assert patch_response.json()["thumbnail_url"] == "https://storage.example.test/covers/project.webp"
     assert patch_response.json()["status"] == "in-progress"
+    assert patch_response.json()["folder_id"] is None
+    assert patch_response.json()["folder_path"] is None
 
     list_response = client.get("/api/v1/projects", headers=_session_headers(session_key))
     assert list_response.status_code == 200
@@ -128,11 +169,29 @@ def test_project_crud_and_thumbnail_round_trip(sqlite_session_factory: sessionma
 
     delete_response = client.delete(f"/api/v1/projects/{PROJECT_ID}", headers=_session_headers(session_key))
     assert delete_response.status_code == 200
-    assert delete_response.json() == {"deleted": True, "project_id": PROJECT_ID}
+    assert delete_response.json()["id"] == PROJECT_ID
+    assert delete_response.json()["deleted_at"] is not None
 
     missing_response = client.get(f"/api/v1/projects/{PROJECT_ID}", headers=_session_headers(session_key))
     assert missing_response.status_code == 404
     _assert_error(missing_response.json(), code="project_not_found")
+
+    trash_response = client.get("/api/v1/trash", headers=_session_headers(session_key))
+    assert trash_response.status_code == 200
+    assert trash_response.json()["items"][0]["type"] == "project"
+
+    restore_response = client.post(f"/api/v1/projects/{PROJECT_ID}/restore", headers=_session_headers(session_key))
+    assert restore_response.status_code == 200
+    assert restore_response.json()["deleted_at"] is None
+
+    delete_again_response = client.delete(f"/api/v1/projects/{PROJECT_ID}", headers=_session_headers(session_key))
+    assert delete_again_response.status_code == 200
+    permanent_live_response = client.delete(
+        f"/api/v1/projects/{PROJECT_ID}?permanent=true",
+        headers=_session_headers(session_key),
+    )
+    assert permanent_live_response.status_code == 200
+    assert permanent_live_response.json() == {"deleted": True, "project_id": PROJECT_ID}
 
 
 def test_page_snapshot_round_trip_and_project_page_count(sqlite_session_factory: sessionmaker) -> None:

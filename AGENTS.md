@@ -38,23 +38,16 @@
 
 ## Workspace
 - 이 프로젝트는 만화 번역을 위한 통합 워크스테이션 with AI 개발 프로젝트입니다.
-- UI engine, model engine, service engine으로 나눕니다.
+- UI engine, model engine, service engine으로 나눕니다. 작업에 앞서 현재 브랜치를 파악하세요.
 - `service_engine` 브랜치에서는 각 엔진의 통신 레이어와 service engine을 담당합니다. UI engine과 model engine의 세부 구현은 건드리지 않습니다.
 - `ui_engine` 브랜치에서는 UI engine의 세부 구현을 담당합니다.
 - `model_engine` 브랜치에서는 model engine의 세부 구현을 담당합니다.
 - 빌드와 테스트 모두 Docker를 사용합니다.
 
-## Subagent Usage
-- 서브에이전트는 별도 승인 없이 자유롭게 사용해도 됩니다.
-- 서브에이전트 모델은 `gpt-5.4 xhigh`를 사용하세요.
-- 서브에이전트를 사용해 병렬로 코드를 수정할 때, 담당 범위를 좁게 유지하고 수정 영역이 겹치지 않게 하세요.
-- 서브에이전트는 문서 수정/삭제를 허용하지 않습니다.
-
-## Code Write Policy
-- 모듈화합니다. 하나의 파일이 1000 lines를 초과하면 분할하세요.
-- 타임아웃 기반 추정보다 상태 기반 판단을 우선합니다.
-- 우회 동작보다 strict path를 우선합니다.
-- 문제 경로를 막고 넘어가기보다 근본 원인을 찾으세요.
-- 분기는 결정적이고 상태 기반이어야 합니다. 취약한 휴리스틱으로 분기하지 마세요.
-- 코드 수정과 검증 이후에는 strict path만 남기고 나머지는 제거하는 것을 선호합니다.
-- backward compatiability보다 깔끔하고 디버깅하기 좋은 코드를 우선하세요.
+## Docs
+- 프로젝트 전반에 적용되는 중요한 규칙/방법론/접근법/리팩토링을 적용할 경우 `docs/` 디렉토리에 간단히 문서화하고, 그 문서에 대한 설명을 아래 목록에 작성하세요:
+  - [docs/http-contract.md](docs/http-contract.md): 현재 구현 기준 단일 HTTP 계약 문서입니다. `UI engine`, `service engine`, `model engine` 간 wire contract를 함께 정의합니다.
+  - [docs/service-engine-boundary.md](docs/service-engine-boundary.md): `service_engine`의 책임 경계, 비목표, 고정된 v1 설계 선택을 정리합니다.
+  - [docs/project-page-storage-boundary.md](docs/project-page-storage-boundary.md): cloud `project/page` 저장의 authority, page summary와 page snapshot 구분, multipart snapshot 규칙을 정리합니다.
+  - [docs/ui-model-abstract-boundary.md](docs/ui-model-abstract-boundary.md): `UI engine`과 `model engine` 사이에서 이번 단계에 고정하는 추상 경계와 의도적으로 미루는 세부 wire shape를 정리합니다.
+  - [docs/boundary-open-questions.md](docs/boundary-open-questions.md): v1 boundary를 구현하기 전에 정해야 하는 미결 질문과 합의 필요 항목을 추적합니다.

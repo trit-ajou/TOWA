@@ -69,6 +69,11 @@ def test_openapi_documents_project_and_page_storage_contract() -> None:
 
     assert set(paths["/api/v1/projects"].keys()) == {"get", "post"}
     assert set(paths["/api/v1/projects/{project_id}"].keys()) == {"get", "patch", "delete"}
+    assert set(paths["/api/v1/projects/{project_id}/restore"].keys()) == {"post"}
+    assert set(paths["/api/v1/folders"].keys()) == {"get", "post"}
+    assert set(paths["/api/v1/folders/{folder_id}"].keys()) == {"patch", "delete"}
+    assert set(paths["/api/v1/folders/{folder_id}/restore"].keys()) == {"post"}
+    assert set(paths["/api/v1/trash"].keys()) == {"get"}
     assert set(paths["/api/v1/projects/{project_id}/pages"].keys()) == {"get", "post"}
     assert set(paths["/api/v1/pages/{page_id}"].keys()) == {"delete"}
     assert set(paths["/api/v1/pages/{page_id}/snapshot"].keys()) == {"get", "put"}
@@ -100,6 +105,18 @@ def test_openapi_documents_project_and_page_storage_contract() -> None:
     ) == "#/components/schemas/PageSummaryEnvelope"
     assert _json_schema_ref(
         openapi,
+        path="/api/v1/folders",
+        method="get",
+        status_code="200",
+    ) == "#/components/schemas/FolderListResponse"
+    assert _json_schema_ref(
+        openapi,
+        path="/api/v1/trash",
+        method="get",
+        status_code="200",
+    ) == "#/components/schemas/TrashListResponse"
+    assert _json_schema_ref(
+        openapi,
         path="/api/v1/pages/{page_id}/snapshot",
         method="put",
         status_code="200",
@@ -118,6 +135,7 @@ def test_openapi_documents_project_and_page_storage_contract() -> None:
 
     project_response = schemas["ProjectResponse"]
     assert "thumbnail_url" in project_response["properties"]
+    assert "folder" not in project_response["properties"]
     assert set(project_response["required"]) == {
         "id",
         "name",
@@ -125,10 +143,23 @@ def test_openapi_documents_project_and_page_storage_contract() -> None:
         "target_lang",
         "page_count",
         "status",
-        "folder",
+        "folder_id",
+        "folder_path",
         "config",
         "created_at",
         "updated_at",
+        "deleted_at",
+    }
+
+    folder_response = schemas["FolderResponse"]
+    assert set(folder_response["required"]) == {
+        "id",
+        "name",
+        "parent_id",
+        "path",
+        "created_at",
+        "updated_at",
+        "deleted_at",
     }
 
     page_summary = schemas["PageSummaryResponse"]

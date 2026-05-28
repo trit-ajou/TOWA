@@ -213,3 +213,11 @@ __marimo__/
 # platform별 native binary 차이로 cross-platform 충돌만 발생해서 추적 해제)
 package-lock.json
 node_modules/
+
+# Local poster/reference artifacts generated during assistant sessions
+/output/poster_reference/
+/tmp/render_poster_pdfs.py
+/tmp/poster_reference_plan.md
+/tmp/pdf_tools_venv/
+/tmp/uv-cache/
+/tmp/
