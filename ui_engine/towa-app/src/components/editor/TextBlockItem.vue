@@ -75,6 +75,7 @@ const idLabel = computed(() => {
 
 <template>
   <div
+    :data-text-block-id="layer.id"
     class="px-3 py-2.5 border-b border-towa-border cursor-pointer transition-colors"
     :class="selected ? 'bg-towa-accent/10 border-l-2 border-l-towa-accent' : 'hover:bg-towa-surface-light'"
     @click="$emit('select')"

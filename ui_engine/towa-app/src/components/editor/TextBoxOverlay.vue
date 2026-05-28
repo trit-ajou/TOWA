@@ -11,6 +11,34 @@ import { getCanvasInstance } from '@bitmappery/services/canvas-service'
 import { getRendererForLayer } from '@bitmappery/factories/renderer-factory'
 // @ts-expect-error bitmappery JS module
 import { clearCacheProperty } from '@bitmappery/rendering/cache/bitmap-cache'
+// @ts-expect-error bitmappery JS module
+import { enqueueState } from '@bitmappery/factories/history-state-factory'
+
+interface BoxGeom { left: number; top: number; width: number; height: number }
+
+function findLayerIndexById(id: string): number {
+  const doc = store.getters['bmp/activeDocument'] as { layers?: Layer[] } | undefined
+  return doc?.layers?.findIndex((l) => l.id === id) ?? -1
+}
+
+function applyBoxToLayer(layerId: string, box: BoxGeom) {
+  const idx = findLayerIndexById(layerId)
+  if (idx < 0) return
+  const doc = store.getters['bmp/activeDocument'] as { layers?: Layer[] } | undefined
+  const layer = doc?.layers?.[idx]
+  if (!layer) return
+  const sizeChanged = layer.width !== box.width || layer.height !== box.height
+  store.commit('bmp/updateLayer', { index: idx, opts: { ...box } })
+  const renderer = getRendererForLayer({ id: layerId })
+  if (renderer) {
+    renderer.syncPosition?.()
+    if (sizeChanged && isTextLayer(layer)) {
+      clearCacheProperty(layer, 'textBitmap')
+      clearCacheProperty(layer, 'text')
+      renderer.resetFilterAndRecache?.()
+    }
+  }
+}
 
 const store = useStore()
 
@@ -91,11 +119,14 @@ const HANDLES: Array<{ id: Exclude<Handle, 'move'>; style: CSSProperties; cursor
 
 interface DragState {
   mode: Handle
+  layerId: string
   startPointer: { x: number; y: number }
-  startBox: { left: number; top: number; width: number; height: number }
+  startBox: BoxGeom
+  finalBox: BoxGeom
   zoom: number
   pointerId: number
   el: HTMLElement
+  moved: boolean
 }
 let drag: DragState | null = null
 
@@ -109,22 +140,25 @@ function onPointerDown(event: PointerEvent, mode: Handle) {
   event.stopPropagation()
   const el = event.currentTarget as HTMLElement
   el.setPointerCapture(event.pointerId)
+  const startBox = { left: layer.left, top: layer.top, width: layer.width, height: layer.height }
   drag = {
     mode,
+    layerId: layer.id,
     startPointer: { x: event.clientX, y: event.clientY },
-    startBox: { left: layer.left, top: layer.top, width: layer.width, height: layer.height },
+    startBox,
+    finalBox: { ...startBox },
     zoom: canvas.zoomFactor,
     pointerId: event.pointerId,
     el,
+    moved: false,
   }
 }
 
 function onPointerMove(event: PointerEvent) {
   if (!drag) return
-  const idx = activeLayerIndex.value
-  if (idx < 0) return
   const dx = (event.clientX - drag.startPointer.x) / drag.zoom
   const dy = (event.clientY - drag.startPointer.y) / drag.zoom
+  if (!drag.moved && (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5)) drag.moved = true
   const { startBox, mode } = drag
   let { left, top, width, height } = startBox
   if (mode === 'move') {
@@ -146,42 +180,45 @@ function onPointerMove(event: PointerEvent) {
       height = Math.max(MIN_SIZE, startBox.height + dy)
     }
   }
-  const layer = activeLayer.value
-  const sizeChanged = layer && (layer.width !== Math.round(width) || layer.height !== Math.round(height))
-  store.commit('bmp/updateLayer', {
-    index: idx,
-    opts: {
-      left: Math.round(left),
-      top: Math.round(top),
-      width: Math.round(width),
-      height: Math.round(height),
-    },
-  })
-  // updateLayer mutation does not propagate left/top to the zCanvas sprite
-  // and does not re-render text bitmap when only width/height change. We
-  // explicitly sync sprite position; for fixed-mode text layers we also
-  // invalidate the text cache so renderText runs with the new box size and
-  // alignment is recomputed.
-  const renderer = getRendererForLayer({ id: layer?.id })
-  if (renderer) {
-    renderer.syncPosition?.()
-    if (sizeChanged && layer && isTextLayer(layer)) {
-      // text bitmap cache is keyed on layer.text equality; width/height changes
-      // alone don't bust it. Clear text cache so renderText re-runs with the
-      // new box size.
-      clearCacheProperty(layer, 'textBitmap')
-      clearCacheProperty(layer, 'text')
-      renderer.resetFilterAndRecache?.()
-    }
+  drag.finalBox = {
+    left: Math.round(left),
+    top: Math.round(top),
+    width: Math.round(width),
+    height: Math.round(height),
   }
+  applyBoxToLayer(drag.layerId, drag.finalBox)
 }
 
 function onPointerUp(event: PointerEvent) {
   if (!drag) return
   drag.el.releasePointerCapture(drag.pointerId)
+  const { layerId, startBox, finalBox, moved } = drag
   drag = null
   event.preventDefault()
   event.stopPropagation()
+  // single history entry per drag operation — undo restores box at drag start.
+  if (moved) {
+    enqueueState(`textbox-geom-${layerId}`, {
+      undo: () => applyBoxToLayer(layerId, startBox),
+      redo: () => applyBoxToLayer(layerId, finalBox),
+    })
+  }
+}
+
+function onBoxDoubleClick(event: MouseEvent) {
+  // Double-click inside the box → focus the corresponding block's textarea
+  // in the side panel (TOWA's text editing path is panel-driven).
+  const layer = activeLayer.value
+  if (!layer) return
+  event.preventDefault()
+  event.stopPropagation()
+  requestAnimationFrame(() => {
+    const el = document.querySelector(
+      `[data-text-block-id="${layer.id}"] textarea`,
+    ) as HTMLTextAreaElement | null
+    el?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    el?.focus()
+  })
 }
 </script>
 
@@ -193,14 +230,15 @@ function onPointerUp(event: PointerEvent) {
     style="z-index: 40; pointer-events: none;"
   >
     <!--
-      Box body = move-drag zone. Currently captures all interior clicks; bitmappery's
-      in-canvas text-edit click (text tool) is therefore unreachable from overlay area.
-      Text editing is panel-driven in TOWA, so this is acceptable for MVP.
+      Box body = move-drag zone + double-click target for text editing.
+      Single click drag → move; double click → focus panel textarea (TOWA's
+      text editing path is panel-driven).
     -->
     <div
       class="absolute inset-0 border border-towa-accent"
       style="pointer-events: auto; cursor: move;"
       @pointerdown="onPointerDown($event, 'move')"
+      @dblclick="onBoxDoubleClick"
       @pointermove="onPointerMove"
       @pointerup="onPointerUp"
     />
