@@ -5,7 +5,11 @@ import { useRoute } from 'vue-router'
 import { usePageLoader } from '@/composables/usePageLoader'
 import { useAutoSave } from '@/composables/useAutoSave'
 import PageSidePanel from '@/components/editor/PageSidePanel.vue'
-import AiToolbar from '@/components/editor/AiToolbar.vue'
+import CanvasToolbox from '@/components/editor/CanvasToolbox.vue'
+import ToolOptionsPanel from '@/components/editor/ToolOptionsPanel.vue'
+import LayerPanel from '@/components/editor/LayerPanel.vue'
+import RightPanelSplit from '@/components/editor/RightPanelSplit.vue'
+import ZoomToolHandler from '@/components/editor/ZoomToolHandler.vue'
 
 defineOptions({ name: 'DetailEditorTab' })
 
@@ -54,10 +58,6 @@ function setPanelCollapsed(collapsed: boolean) {
 
 <template>
   <div>
-    <Teleport to="#towa-top-toolbar" defer>
-      <AiToolbar />
-    </Teleport>
-
     <Teleport to="#towa-left-panel" defer>
       <PageSidePanel
         :pages="pages"
@@ -66,6 +66,18 @@ function setPanelCollapsed(collapsed: boolean) {
         @select-page="selectPage"
         @update:collapsed="setPanelCollapsed"
       />
+    </Teleport>
+
+    <Teleport to="#towa-canvas-area" defer>
+      <ZoomToolHandler />
+      <CanvasToolbox />
+    </Teleport>
+
+    <Teleport to="#towa-right-panel" defer>
+      <RightPanelSplit>
+        <template #top><ToolOptionsPanel /></template>
+        <template #bottom><LayerPanel /></template>
+      </RightPanelSplit>
     </Teleport>
   </div>
 </template>

@@ -31,3 +31,4 @@ yarn-error.log*
 .playwright-mcp/
 towa-app/.vite/
 reports/
+issue*.png
