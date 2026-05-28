@@ -34,15 +34,17 @@ NANOBANANA_INPAINT_MODEL_ID = "builtin.nanobanana.inpaint"
 NANOBANANA_IMAGE_MODEL = "gemini-3.1-flash-image-preview"
 MINDLOGIC_INPAINT_MODEL_ID = "builtin.mindlogic.inpaint"
 MINDLOGIC_IMAGE_MODEL = "imagen-3.0-capability-001"
-MINDLOGIC_IMAGE_EDIT_BASE_URL = "https://factchat-cloud.mindlogic.ai/v1/api/google"
-MINDLOGIC_IMAGE_EDIT_PATH = "/models/edit-image"
-MINDLOGIC_IMAGE_EDIT_MODE = "EDIT_MODE_DEFAULT"
+MINDLOGIC_GOOGLE_EDIT_BASE_URL = "https://factchat-cloud.mindlogic.ai/v1/api/google"
+MINDLOGIC_GOOGLE_EDIT_PATH = "/models/edit-image"
 NANOBANANA_DEFAULT_PROMPT = (
     "Use the provided manga page as the source image. "
-    "Remove all visible source text, speech balloon text, and sound effects from the page. "
-    "Reconstruct the underlying manga background, lineart, screentones, and balloon interiors naturally. "
-    "Do not add any new text. Preserve composition, character art, panel borders, and the rest of the page "
-    "as faithfully as possible."
+    "The primary objective is to erase existing lettering completely. "
+    "Remove every visible source text glyph, speech balloon text, caption, handwritten mark, and sound effect. "
+    "Leave no readable characters, no text strokes, and no ghosted remnants. "
+    "Fill removed text areas with clean balloon interiors, paper tone, screentone, lineart, or background texture "
+    "that matches the surrounding artwork. Do not add any new text or symbols. "
+    "Preserve composition, character art, panel borders, and the rest of the page as faithfully as possible, "
+    "but if preservation conflicts with removing text, text removal wins."
 )
 
 
@@ -99,8 +101,8 @@ def build_mindlogic_inpaint_manifest() -> StageManifest:
         ),
         custom_model=False,
         priority=50,
-        display_name="Mindlogic Image Edit Inpaint",
-        tags=["builtin", "mindlogic", "inpaint", "google-edit"],
+        display_name="Mindlogic Google Edit Inpaint",
+        tags=["builtin", "mindlogic", "imagen", "inpaint", "google-edit"],
     )
 
 
@@ -199,18 +201,29 @@ def run_nanobanana_inpaint(
             provider_name,
         )
 
+        diff_metrics: dict[str, str | int | float] = {}
+        cleanup_metrics: dict[str, str | int | float] = {}
         if use_mask:
+            generated_page, cleanup_metrics, cleanup_warning = _cleanup_generated_text_regions(
+                request,
+                generated_page,
+                tasks_payload,
+            )
+            if cleanup_warning is not None:
+                warnings.append(cleanup_warning)
             edited_image = _initial_inpainting_canvas(request, base_image, target_layer_id)
             composite_mask = _build_composite_mask(request, tasks_payload, base_image.size)
             edited_image.paste(generated_page, (0, 0), composite_mask)
-            diff_metrics: dict[str, int | float | str] = {}
+            composite_mask_mode = _composite_mask_mode(request)
         else:
-            edited_image, diff_metrics = _build_diff_overlay_image(
+            edited_image, diff_metrics, diff_warning = _build_diff_overlay_image(
                 request,
                 base_image,
                 generated_page,
-                warnings,
             )
+            if diff_warning is not None:
+                warnings.append(diff_warning)
+            composite_mask_mode = "pixel_diff"
     except Exception as exc:
         return _failed_response(
             request,
@@ -242,15 +255,17 @@ def run_nanobanana_inpaint(
         "task_count": task_count,
         "target_layer_id": target_layer_id,
         "provider_call_mode": "full_page_single_call",
-        "composite_mask_mode": _composite_mask_mode(request) if use_mask else "pixel_diff",
+        "composite_mask_mode": composite_mask_mode,
         "provider_output_size": f"{generated_page.width}x{generated_page.height}",
         "base_image_size": f"{base_image.width}x{base_image.height}",
         "prompt_output_size": f"{base_image.width}x{base_image.height}",
         "provider_output_resized": "yes" if resize_warning is not None else "no",
         "provider_reference_image_count": 1,
         "provider_mask_guide": "no",
+        "output_mask_dilate_radius": _output_mask_dilate_radius(request),
     }
     metrics.update(diff_metrics)
+    metrics.update(cleanup_metrics)
     report = StageReport(
         stage_name=request.stage_name,
         stage_run_id=request.stage_run_id,
@@ -397,58 +412,76 @@ def _generate_with_mindlogic_google_edit(
     model_name: str,
     api_key: str,
 ) -> bytes:
+    if not reference_images:
+        raise RuntimeError("Mindlogic image edit requires a source image")
+
     payload = {
         "model": model_name,
         "prompt": prompt,
         "reference_images": [
-            _build_mindlogic_reference_image_payload(
-                index=index,
-                image_bytes=image_bytes,
-                mime_type=mime_type,
-            )
+            {
+                "reference_id": index,
+                "reference_type": "REFERENCE_TYPE_RAW",
+                "reference_image": {
+                    "image_bytes": base64.b64encode(image_bytes).decode("ascii"),
+                    "mime_type": mime_type,
+                },
+            }
             for index, (image_bytes, mime_type) in enumerate(reference_images, start=1)
         ],
         "config": {
-            "edit_mode": MINDLOGIC_IMAGE_EDIT_MODE,
+            "edit_mode": "EDIT_MODE_DEFAULT",
             "number_of_images": 1,
             "output_mime_type": "image/png",
         },
     }
-    endpoint = MINDLOGIC_IMAGE_EDIT_BASE_URL.rstrip("/") + MINDLOGIC_IMAGE_EDIT_PATH
+    endpoint = _mindlogic_google_edit_endpoint(MINDLOGIC_GOOGLE_EDIT_PATH)
+    response_payload = _post_mindlogic_json(endpoint, payload=payload, api_key=api_key, timeout=180.0)
+
+    generated_image_bytes = _extract_mindlogic_image_bytes(response_payload)
+    if generated_image_bytes is None:
+        keys = sorted(response_payload.keys()) if isinstance(response_payload, dict) else []
+        raise RuntimeError(f"Mindlogic image edit response did not include an image: keys={keys}")
+    return generated_image_bytes
+
+
+def _mindlogic_google_edit_endpoint(path: str) -> str:
+    endpoint = MINDLOGIC_GOOGLE_EDIT_BASE_URL.rstrip("/") + "/" + path.strip("/")
+    if path.endswith("/"):
+        endpoint += "/"
+    return endpoint
+
+
+def _post_mindlogic_json(
+    url: str,
+    *,
+    payload: dict[str, Any],
+    api_key: str,
+    timeout: float,
+) -> dict[str, Any]:
     body = json.dumps(payload).encode("utf-8")
-    req = request.Request(endpoint, data=body, method="POST")
-    req.add_header("Authorization", f"Bearer {api_key}")
-    req.add_header("Accept", "application/json")
+    req = request.Request(url, data=body, method="POST")
+    _add_mindlogic_headers(req, api_key=api_key)
     req.add_header("Content-Type", "application/json")
-    req.add_header("User-Agent", "curl/8.7.1")
     try:
-        with request.urlopen(req, timeout=180.0) as resp:
-            response_payload = json.loads(resp.read().decode("utf-8"))
+        with request.urlopen(req, timeout=timeout) as resp:
+            return _read_mindlogic_json(resp.read())
     except error.HTTPError as exc:
         raw = exc.read().decode("utf-8", errors="replace")
         raise RuntimeError(f"Mindlogic image edit failed: HTTP {exc.code}: {raw}") from exc
 
-    image_bytes = _extract_mindlogic_image_bytes(response_payload)
-    if image_bytes is None:
-        keys = sorted(response_payload.keys()) if isinstance(response_payload, dict) else []
-        raise RuntimeError(f"Mindlogic image edit response did not include an image: keys={keys}")
-    return image_bytes
+
+def _add_mindlogic_headers(req: request.Request, *, api_key: str) -> None:
+    req.add_header("Authorization", f"Bearer {api_key}")
+    req.add_header("Accept", "application/json")
+    req.add_header("User-Agent", "curl/8.7.1")
 
 
-def _build_mindlogic_reference_image_payload(
-    *,
-    index: int,
-    image_bytes: bytes,
-    mime_type: str,
-) -> dict[str, Any]:
-    return {
-        "reference_id": index,
-        "reference_type": "REFERENCE_TYPE_RAW",
-        "reference_image": {
-            "image_bytes": base64.b64encode(image_bytes).decode("ascii"),
-            "mime_type": mime_type,
-        },
-    }
+def _read_mindlogic_json(raw: bytes) -> dict[str, Any]:
+    payload = json.loads(raw.decode("utf-8"))
+    if not isinstance(payload, dict):
+        raise RuntimeError("Mindlogic image edit response was not a JSON object")
+    return payload
 
 
 def _extract_mindlogic_image_bytes(payload: Any) -> Optional[bytes]:
@@ -515,11 +548,121 @@ def _build_composite_mask(
         region_mask = Image.open(mask_path).convert("L")
         position = (task.expanded_bbox["x"], task.expanded_bbox["y"])
         composite_mask.paste(region_mask, position, region_mask)
+    dilate_radius = _output_mask_dilate_radius(request)
+    if dilate_radius > 0:
+        composite_mask = composite_mask.filter(ImageFilter.MaxFilter(dilate_radius * 2 + 1))
     return composite_mask
+
+
+def _output_mask_dilate_radius(request: StageRequest) -> int:
+    return int(request.stage_config.get("output_mask_dilate_radius", 0))
+
+
+def _cleanup_generated_text_regions(
+    request: StageRequest,
+    generated_page: Image.Image,
+    tasks_payload: object,
+) -> tuple[Image.Image, dict[str, str | int | float], Optional[str]]:
+    if not bool(request.stage_config.get("local_text_cleanup", True)):
+        return generated_page, {"local_text_cleanup": "disabled"}, None
+
+    cleanup_mask = _build_text_cleanup_mask(request, tasks_payload, generated_page.size)
+    mask_pixel_count = generated_page.width * generated_page.height - cleanup_mask.histogram()[0]
+    metrics: dict[str, str | int | float] = {
+        "local_text_cleanup": "opencv_inpaint",
+        "cleanup_mask_pixel_count": mask_pixel_count,
+    }
+    if mask_pixel_count <= 0:
+        metrics["local_text_cleanup"] = "empty_mask"
+        return generated_page, metrics, None
+
+    dilate_radius = int(request.stage_config.get("cleanup_text_mask_dilate_radius", 2))
+    inpaint_radius = float(request.stage_config.get("cleanup_inpaint_radius", 3.0))
+    if dilate_radius > 0:
+        cleanup_mask = cleanup_mask.filter(ImageFilter.MaxFilter(dilate_radius * 2 + 1))
+    metrics["cleanup_text_mask_dilate_radius"] = dilate_radius
+    metrics["cleanup_inpaint_radius"] = inpaint_radius
+
+    try:
+        import cv2  # type: ignore[import-not-found]
+        import numpy as np
+    except Exception as exc:  # pragma: no cover - exercised only in stripped runtime images
+        metrics["local_text_cleanup"] = "unavailable"
+        return generated_page, metrics, f"local_text_cleanup_unavailable: {type(exc).__name__}: {exc}"
+
+    rgba = generated_page.convert("RGBA")
+    rgb = np.array(rgba.convert("RGB"))
+    mask = np.array(cleanup_mask.convert("L"))
+    cleaned_rgb = cv2.inpaint(rgb, mask, inpaint_radius, cv2.INPAINT_TELEA)
+    cleaned = Image.fromarray(cleaned_rgb, mode="RGB").convert("RGBA")
+    cleaned.putalpha(rgba.getchannel("A"))
+    return cleaned, metrics, None
+
+
+def _build_text_cleanup_mask(
+    request: StageRequest,
+    tasks_payload: object,
+    image_size: tuple[int, int],
+) -> Image.Image:
+    cleanup_mask = Image.new("L", image_size, color=0)
+    for task in getattr(tasks_payload, "tasks", []) or []:
+        mask_artifact = request.artifacts[task.mask_artifact_ref]
+        mask_path = _file_path_from_uri(mask_artifact.uri)
+        region_mask = Image.open(mask_path).convert("L")
+        position = (task.expanded_bbox["x"], task.expanded_bbox["y"])
+        cleanup_mask.paste(region_mask, position, region_mask)
+    return cleanup_mask
 
 
 def _composite_mask_mode(request: StageRequest) -> str:
     return str(request.stage_config.get("output_mask_mode", "mask_artifact"))
+
+
+def _build_diff_overlay_image(
+    request: StageRequest,
+    base_image: Image.Image,
+    generated_page: Image.Image,
+) -> tuple[Image.Image, dict[str, str | int | float], Optional[str]]:
+    threshold = int(request.stage_config.get("diff_threshold", 24))
+    dilate_radius = int(request.stage_config.get("diff_dilate_radius", 1))
+    large_region_ratio_threshold = float(
+        request.stage_config.get("diff_large_region_ratio_threshold", 0.35)
+    )
+
+    diff = ImageChops.difference(base_image.convert("RGB"), generated_page.convert("RGB")).convert("L")
+    mask = diff.point(lambda value: 255 if value > threshold else 0)
+    total_pixels = base_image.width * base_image.height
+    changed_pixel_count = total_pixels - mask.histogram()[0]
+    changed_ratio = changed_pixel_count / total_pixels if total_pixels else 0.0
+    diff_bbox = mask.getbbox()
+
+    if dilate_radius > 0:
+        kernel_size = dilate_radius * 2 + 1
+        mask = mask.filter(ImageFilter.MaxFilter(kernel_size))
+
+    overlay = Image.new("RGBA", base_image.size, color=(0, 0, 0, 0))
+    overlay.paste(generated_page, (0, 0), mask)
+    metrics: dict[str, str | int | float] = {
+        "diff_threshold": threshold,
+        "diff_dilate_radius": dilate_radius,
+        "diff_changed_pixel_count": changed_pixel_count,
+        "diff_changed_pixel_ratio": round(changed_ratio, 6),
+        "diff_bbox": _format_bbox(diff_bbox),
+    }
+    warning = None
+    if changed_ratio > large_region_ratio_threshold:
+        warning = (
+            "diff_overlay_large_changed_region: "
+            f"ratio={changed_ratio:.6f} threshold={large_region_ratio_threshold:.6f}"
+        )
+    return overlay, metrics, warning
+
+
+def _format_bbox(bbox: Optional[tuple[int, int, int, int]]) -> str:
+    if bbox is None:
+        return ""
+    left, top, right, bottom = bbox
+    return f"{left},{top},{right},{bottom}"
 
 
 def _build_inpaint_prompt(base_prompt: str, image_size: tuple[int, int]) -> str:
@@ -530,71 +673,6 @@ def _build_inpaint_prompt(base_prompt: str, image_size: tuple[int, int]) -> str:
         f"The output image must be exactly {width}x{height} pixels. "
         "Do not crop, pad, rotate, stretch, zoom, or change the page scale."
     )
-
-
-def _build_diff_overlay_image(
-    request: StageRequest,
-    base_image: Image.Image,
-    generated_page: Image.Image,
-    warnings: list[str],
-) -> tuple[Image.Image, dict[str, int | float | str]]:
-    threshold = int(request.stage_config.get("diff_threshold", 24))
-    dilate_radius = int(request.stage_config.get("diff_dilate_radius", 1))
-    large_ratio_threshold = float(
-        request.stage_config.get("diff_large_region_ratio_threshold", 0.35)
-    )
-    diff_mask = _build_pixel_diff_mask(
-        base_image,
-        generated_page,
-        threshold=threshold,
-        dilate_radius=dilate_radius,
-    )
-    edited_image = Image.new("RGBA", base_image.size, color=(0, 0, 0, 0))
-    diff_bbox = diff_mask.getbbox()
-    if diff_bbox is not None:
-        edited_image.paste(generated_page, (0, 0), diff_mask)
-
-    changed_pixels = diff_mask.histogram()[255]
-    total_pixels = max(base_image.width * base_image.height, 1)
-    changed_ratio = changed_pixels / total_pixels
-    if changed_ratio > large_ratio_threshold:
-        warnings.append(
-            "diff_overlay_large_changed_region: "
-            f"ratio={changed_ratio:.6f} threshold={large_ratio_threshold:.6f}"
-        )
-    return edited_image, {
-        "diff_threshold": threshold,
-        "diff_dilate_radius": dilate_radius,
-        "diff_changed_pixel_count": changed_pixels,
-        "diff_changed_pixel_ratio": round(changed_ratio, 6),
-        "diff_bbox": _bbox_to_metric(diff_bbox),
-    }
-
-
-def _build_pixel_diff_mask(
-    base_image: Image.Image,
-    generated_page: Image.Image,
-    *,
-    threshold: int,
-    dilate_radius: int,
-) -> Image.Image:
-    base_rgb = base_image.convert("RGB")
-    generated_rgb = generated_page.convert("RGB")
-    diff = ImageChops.difference(base_rgb, generated_rgb)
-    red_diff, green_diff, blue_diff = diff.split()
-    max_channel_diff = ImageChops.lighter(ImageChops.lighter(red_diff, green_diff), blue_diff)
-    thresholded = max_channel_diff.point(lambda value: 255 if value >= threshold else 0)
-    if dilate_radius <= 0:
-        return thresholded
-    kernel_size = dilate_radius * 2 + 1
-    return thresholded.filter(ImageFilter.MaxFilter(kernel_size))
-
-
-def _bbox_to_metric(bbox: tuple[int, int, int, int] | None) -> str:
-    if bbox is None:
-        return "none"
-    left, top, right, bottom = bbox
-    return f"{left},{top},{right},{bottom}"
 
 
 def _normalize_generated_page_size(
