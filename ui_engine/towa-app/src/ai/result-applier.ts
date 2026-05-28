@@ -153,15 +153,17 @@ function createAiTextLayerFromPayload(
     status: translated ? 'translated' : 'detected',
     boxMode: 'fixed',
   }
-  // layer.width/height는 텍스트 렌더링 canvas 크기. bbox는 left/top으로만 반영하고
-  // canvas 영역은 document 전체로 잡아 글자가 잘리지 않게 함.
+  // 박스 = bbox.width/height. document 전체가 아닌 검출된 박스 그대로 보존하여
+  // box-mode 렌더에서 정렬 기준으로 사용. document 크기는 박스 clamp용으로만.
+  const width = Math.min(Math.max(1, Math.round(bbox.width)), Math.max(1, docW))
+  const height = Math.min(Math.max(1, Math.round(bbox.height)), Math.max(1, docH))
   return LayerFactory.create({
     name: aiLayerName(operationLabel, timestamp, index),
     type: LayerTypes.LAYER_TEXT,
     left: bbox.x,
     top: bbox.y,
-    width: docW,
-    height: docH,
+    width,
+    height,
     transparent: true,
     visible: true,
     text: {
@@ -172,6 +174,8 @@ function createAiTextLayerFromPayload(
       lineHeight: 0,
       spacing: 0,
       color: AI_TEXT_COLOR,
+      align: 'center',
+      verticalAlign: 'middle',
     },
     meta,
   })

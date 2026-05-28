@@ -245,7 +245,11 @@ const renderText = async ( layer: Layer ): Promise<{ bitmap: HTMLCanvasElement; 
         font = "Arial"; // fall back to universally available Arial
     }
     const { cvs, ctx } = createCanvas();
-    renderMultiLineText( ctx, text );
+    const meta = layer.meta as Record<string, unknown> | undefined;
+    const box = meta?.boxMode === "fixed"
+        ? { width: layer.width, height: layer.height }
+        : undefined;
+    renderMultiLineText( ctx, text, box );
 
     // render outlines to debug cropped bounding box
     //ctx.fillStyle = "rgba(255,0,0,.5)";

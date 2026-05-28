@@ -69,6 +69,9 @@ export type Filters = {
     };
 };
 
+export type TextAlign = "left" | "center" | "right";
+export type TextVerticalAlign = "top" | "middle" | "bottom";
+
 export type Text = {
     value: string;
     font: string;
@@ -77,6 +80,8 @@ export type Text = {
     lineHeight: number;
     spacing: number;
     color: string;
+    align: TextAlign;
+    verticalAlign: TextVerticalAlign;
 };
 
 // a shape is a list of Points (describing coordinates within a polygon)
