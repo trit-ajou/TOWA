@@ -9,6 +9,7 @@ import TranslationPanel from '@/components/editor/TranslationPanel.vue'
 import CanvasToolbox from '@/components/editor/CanvasToolbox.vue'
 import ZoomToolHandler from '@/components/editor/ZoomToolHandler.vue'
 import TextBoxOverlay from '@/components/editor/TextBoxOverlay.vue'
+import TextBoxCreator from '@/components/editor/TextBoxCreator.vue'
 import { isTextLayer, mergeTextMeta } from '@/utils/text-layer'
 import type { Layer, Text } from '@bitmappery/definitions/document'
 import { LayerTypes } from '@bitmappery/definitions/layer-types'
@@ -140,14 +141,20 @@ function updateOriginalForLayer(layerId: string, nextOriginal: string) {
 function addEmptyTextLayer() {
   const doc = store.getters['bmp/activeDocument'] as { width?: number; height?: number; layers?: Layer[] } | undefined
   if (!doc) return
-  // bitmappery 텍스트 layer는 layer.width/height 크기 canvas에 텍스트를 렌더링하므로
-  // document 전체 크기로 만들어야 글자가 잘리지 않음. (기존 layer-add-text-layer.ts 패턴)
+  // Center a small box; user can drag-resize via overlay handles. Width is
+  // 25% of the doc width (clamped) so it scales reasonably across panel sizes.
+  const docW = doc.width ?? 800
+  const docH = doc.height ?? 1200
+  const width = Math.max(120, Math.min(300, Math.round(docW * 0.25)))
+  const height = Math.max(60, Math.round(width * 0.4))
+  const left = Math.round((docW - width) / 2)
+  const top = Math.round((docH - height) / 2)
   const layer = LayerFactory.create({
     type: LayerTypes.LAYER_TEXT,
-    left: 0,
-    top: 0,
-    width: doc.width ?? 800,
-    height: doc.height ?? 1200,
+    left,
+    top,
+    width,
+    height,
     transparent: true,
     visible: true,
     text: {
@@ -209,6 +216,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
     <Teleport to="#towa-canvas-area" defer>
       <ZoomToolHandler />
       <CanvasToolbox />
+      <TextBoxCreator />
       <TextBoxOverlay />
     </Teleport>
 
