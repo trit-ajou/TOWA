@@ -54,7 +54,10 @@ let lastKeyCode = -1;
 const DEFAULT_BLOCKED    = [ 8, 32, 37, 38, 39, 40 ];
 const MOVABLE_TOOL_TYPES = [ ToolTypes.DRAG, ToolTypes.SELECTION, ToolTypes.LASSO, ToolTypes.WAND ];
 const BRUSH_TOOL_TYPES   = [ ToolTypes.BRUSH, ToolTypes.ERASER, ToolTypes.CLONE ];
-const LAYER_SELECT_EXCLUDE_TYPES = [ ToolTypes.CLONE, ToolTypes.ZOOM ];
+// EYEDROPPER 추가: 스포이드 사용 중 Alt가 눌리면 layerSelectMode가 켜져서 클릭 시
+// 원본/다른 레이어로 active layer가 전환되는 부작용이 있다. 스포이드는 색만 추출하는
+// 도구라 토글이 일어나면 의도와 어긋난다 (towa issue #50).
+const LAYER_SELECT_EXCLUDE_TYPES = [ ToolTypes.CLONE, ToolTypes.ZOOM, ToolTypes.EYEDROPPER ];
 
 const defaultBlock = ( e: KeyboardEvent ): void => e.preventDefault();
 
