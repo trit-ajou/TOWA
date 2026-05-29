@@ -16,6 +16,7 @@ import BrushOptionsPopover from '@/components/editor/BrushOptionsPopover.vue'
 import EyedropperHandler from '@/components/editor/EyedropperHandler.vue'
 import CanvasNoticeToast from '@/components/editor/CanvasNoticeToast.vue'
 import PaintGuard from '@/components/editor/PaintGuard.vue'
+import ErrorDialogStack from '@/components/editor/ErrorDialogStack.vue'
 
 defineOptions({ name: 'DetailEditorTab' })
 
@@ -88,6 +89,7 @@ function setPanelCollapsed(collapsed: boolean) {
       <EyedropperHandler />
       <PaintGuard />
       <CanvasNoticeToast />
+      <ErrorDialogStack />
     </Teleport>
 
     <Teleport to="#towa-right-panel" defer>

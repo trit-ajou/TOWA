@@ -2,6 +2,7 @@ import { computed, ref } from 'vue'
 import { useStore } from 'vuex'
 import { useAppBackend } from '@/composables/useAppBackend'
 import { usePageLoader } from '@/composables/usePageLoader'
+import { useErrorDialog } from '@/composables/useErrorDialog'
 import { DEPLOYMENT_MODE } from '@/config/deployment'
 import { BackendError } from '@/backend/errors'
 import type { AiJobCreateInput, AiJobSnapshot, AiOperationKind } from '@/backend/contracts'
@@ -29,6 +30,7 @@ export function useAiActions() {
   const store = useStore()
   const backend = useAppBackend()
   const { savePage } = usePageLoader()
+  const { showError } = useErrorDialog()
 
   const projectId = computed(() => store.getters['editor/currentProjectId'] as string | null)
   const selectedPageId = computed(() => store.getters['editor/selectedPageId'] as string | null)
@@ -143,12 +145,12 @@ export function useAiActions() {
         restorePreviousPage = false
         const reason = final.error?.message ? `: ${final.error.message}` : ''
         lastResult.value = { op: action, status: `${final.status}${reason}`, jobId: final.jobId }
-        // 실패/부분 성공도 사용자가 진행 상황을 알 수 있게 토스트로 노출.
-        // 이전엔 spinner만 사라져서 "정상 처리됐는데 결과가 없는 건지, 호출이 실패한 건지" 구분 불가.
-        store.commit('bmp/showNotification', {
-          title: `AI ${action} ${final.status === 'failed' ? '실패' : '부분 성공'}`,
-          message: final.error?.message ?? `상태: ${final.status} (jobId: ${final.jobId})`,
-        })
+        // 실패/부분 성공도 사용자가 진행 상황을 알 수 있게 dismissible 다이얼로그로 노출.
+        // bitmappery notification(5초 자동 닫힘 + truncate)은 카피·정독에 부적합.
+        showError(
+          `AI ${action} ${final.status === 'failed' ? '실패' : '부분 성공'}`,
+          final.error?.message ?? `상태: ${final.status} (jobId: ${final.jobId})`,
+        )
       }
       console.log(`[AI] ${action} →`, final)
     } catch (e) {
@@ -162,10 +164,7 @@ export function useAiActions() {
           : String(e)
       lastResult.value = { op: action, status: `error: ${msg}`, jobId: '' }
       console.error(`[AI] ${action} failed:`, e)
-      store.commit('bmp/showNotification', {
-        title: `AI ${action} 오류`,
-        message: msg,
-      })
+      showError(`AI ${action} 오류`, msg)
     } finally {
       const sessionKey = (store.state as { auth?: { sessionKey: string | null } }).auth?.sessionKey ?? null
       if (sessionKey) {
