@@ -2,6 +2,7 @@
 import { Plus, ChevronLeft, ChevronRight } from 'lucide-vue-next'
 import type { Layer, Text } from '@bitmappery/definitions/document'
 import TextBlockItem from './TextBlockItem.vue'
+import InpaintLayerControl from './InpaintLayerControl.vue'
 
 defineProps<{
   layers: Layer[]
@@ -24,16 +25,19 @@ defineEmits<{
 <template>
   <aside class="w-[320px] h-full bg-towa-surface border-l border-towa-border flex flex-col shrink-0 min-h-0">
     <div class="px-3 py-2 border-b border-towa-border flex items-center justify-between">
-      <h3 class="text-xs font-semibold text-towa-text-muted uppercase tracking-wider">
+      <div class="text-xs font-semibold text-towa-accent uppercase tracking-wider">
         번역 ({{ layers.length }})
-      </h3>
-      <button
-        class="p-1 rounded hover:bg-towa-surface-light text-towa-text-muted hover:text-towa-accent transition-colors"
-        title="텍스트 블록 추가"
-        @click="$emit('addBlock')"
-      >
-        <Plus :size="14" />
-      </button>
+      </div>
+      <div class="flex items-center gap-0.5">
+        <InpaintLayerControl />
+        <button
+          class="p-1 rounded hover:bg-towa-surface-light text-towa-text-muted hover:text-towa-accent transition-colors"
+          title="텍스트 블록 추가"
+          @click="$emit('addBlock')"
+        >
+          <Plus :size="14" />
+        </button>
+      </div>
     </div>
     <div class="flex-1 overflow-y-auto">
       <TextBlockItem

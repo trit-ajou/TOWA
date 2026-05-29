@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useStore } from 'vuex'
+import TextLayerInspector from './TextLayerInspector.vue'
 
 const store = useStore()
 const activeTool = computed<string | null>(() => store.getters['bmp/activeTool'])
 const activeToolOptions = computed<Record<string, unknown> | undefined>(() => store.getters['bmp/activeToolOptions'])
+const isText = computed(() => activeTool.value === 'text')
 
 const TOOL_LABELS: Record<string, string> = {
   move: '화면 이동', drag: '객체 이동', zoom: '줌',
@@ -35,12 +37,14 @@ const brushOpacity = computed<number>({
 <template>
   <aside class="w-full h-full bg-towa-surface border-l border-towa-border flex flex-col">
     <header class="px-3 py-2 border-b border-towa-border">
-      <div class="text-xs uppercase tracking-wider text-towa-text-muted">도구 옵션</div>
+      <div class="text-xs uppercase tracking-wider font-semibold text-towa-accent">도구 옵션</div>
       <div class="text-sm font-medium text-towa-text mt-0.5">{{ label }}</div>
     </header>
 
     <div class="flex-1 overflow-y-auto p-3 space-y-4">
-      <template v-if="isBrushLike">
+      <TextLayerInspector v-if="isText" />
+
+      <template v-else-if="isBrushLike">
         <div class="space-y-1">
           <div class="flex items-center justify-between text-xs text-towa-text-muted">
             <span>크기</span>

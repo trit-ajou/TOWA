@@ -166,7 +166,7 @@ function layerLabel(layer: Layer, index: number): string {
   <section class="flex flex-col h-full bg-towa-surface border-t border-towa-border">
     <header class="flex items-center justify-between px-3 py-2 border-b border-towa-border shrink-0">
       <div>
-        <div class="text-xs uppercase tracking-wider text-towa-text-muted">레이어</div>
+        <div class="text-xs uppercase tracking-wider font-semibold text-towa-accent">레이어</div>
         <div class="text-sm font-medium text-towa-text mt-0.5">{{ layers.length }}개</div>
       </div>
       <button
