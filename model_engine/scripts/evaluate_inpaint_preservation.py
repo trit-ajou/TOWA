@@ -213,15 +213,21 @@ def _evaluate_page(
         original = image.convert("RGBA")
     original_path = page_output_dir / "original.png"
     original.save(original_path)
+    pipeline_input_path = page_workspace / "input_page.png"
+    original.save(pipeline_input_path)
 
     input_artifact = ArtifactDescriptor(
         artifact_ref=f"artifact://benchmark/{page_id}/input_bitmap",
         kind="bitmap",
-        media_type=_media_type_for_suffix(image_path.suffix),
-        uri=image_path.resolve().as_uri(),
+        media_type="image/png",
+        uri=pipeline_input_path.resolve().as_uri(),
         width=original.width,
         height=original.height,
-        metadata={"role": "input_page", "source_path": str(image_path)},
+        metadata={
+            "role": "input_page",
+            "source_path": str(image_path),
+            "benchmark_input_path": str(pipeline_input_path),
+        },
     )
     document = DocumentIR(
         id=f"benchmark_{page_id}",
