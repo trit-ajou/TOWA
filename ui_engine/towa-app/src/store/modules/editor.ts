@@ -17,6 +17,7 @@ interface EditorState {
   selectedLayerId: string | null
   layerVisibility: Record<string, boolean>
   zoomLevel: number
+  backgroundColor: string
 }
 
 const editor: Module<EditorState, unknown> = {
@@ -35,6 +36,7 @@ const editor: Module<EditorState, unknown> = {
     selectedLayerId: null,
     layerVisibility: {},
     zoomLevel: 100,
+    backgroundColor: '#ffffff',
   }),
 
   getters: {
@@ -50,6 +52,7 @@ const editor: Module<EditorState, unknown> = {
     selectedLayerId: (state) => state.selectedLayerId,
     isLayerVisible: (state) => (layerId: string) => state.layerVisibility[layerId] ?? true,
     zoomLevel: (state) => state.zoomLevel,
+    backgroundColor: (state) => state.backgroundColor,
   },
 
   mutations: {
@@ -93,6 +96,9 @@ const editor: Module<EditorState, unknown> = {
     },
     SET_ZOOM(state, level: number) {
       state.zoomLevel = Math.max(25, Math.min(400, level))
+    },
+    SET_BACKGROUND_COLOR(state, color: string) {
+      state.backgroundColor = color
     },
   },
 }

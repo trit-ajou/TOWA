@@ -15,36 +15,56 @@ export function useAutoSave() {
   const { savePage } = usePageLoader()
 
   const dirty = ref(false)
+  // 마지막으로 dirty 처리된 페이지 ID. 라우터 이동으로 selectedPageId가 reset된 뒤
+  // onUnmounted가 돌면 selectedPageId가 null이라 저장이 누락된다. markDirty 시점에
+  // 떠나는 페이지를 잡아두고 fallback으로 쓴다.
+  let lastDirtyPageId: string | null = null
   let saveTimer: ReturnType<typeof setTimeout> | null = null
 
   function getCurrentPageId(): string | null {
-    return store.getters['editor/selectedPageId'] ?? null
+    return store.state.editor?.selectedPageId ?? null
+  }
+
+  // dirty 플래그 세팅 + debounce 타이머 (재)시작 + 현재 페이지 ID capture.
+  // pageId capture는 라우터 이동으로 selectedPageId가 reset된 후 onUnmounted가 돌면
+  // doSave가 pageId=null로 bail out하는 케이스를 막기 위함. 편집/상세편집 탭 전환이
+  // 특히 이 패턴에 해당.
+  function flagDirty(): void {
+    dirty.value = true
+    lastDirtyPageId = getCurrentPageId() ?? lastDirtyPageId
+    if (saveTimer) clearTimeout(saveTimer)
+    saveTimer = setTimeout(async () => {
+      await doSave()
+    }, DEBOUNCE_MS)
   }
 
   // bitmappery history 변화 감지. bmp/history 모듈의 실제 필드명은 historyIndex.
+  // 상세 편집 탭의 브러시/지우개 등 bitmappery history API를 거치는 편집을 잡는다.
   const stopWatch = watch(
     () => store.state.bmp?.history?.historyIndex,
-    () => {
-      dirty.value = true
-      if (saveTimer) clearTimeout(saveTimer)
-      saveTimer = setTimeout(async () => {
-        await doSave()
-      }, DEBOUNCE_MS)
-    },
+    () => flagDirty(),
   )
 
   async function doSave(explicitPageId?: string): Promise<void> {
     if (!dirty.value) return
-    // 페이지 전환 직전 호출 시 selectedPageId는 이미 새 페이지로 바뀐 상태이므로
-    // 호출자가 명시적으로 떠나는 페이지 ID를 넘긴다.
-    const pageId = explicitPageId ?? getCurrentPageId()
+    // 우선순위: 명시 인자 > 현재 selectedPageId > 마지막 dirty 시 잡아둔 ID.
+    // 마지막 옵션은 EditorTab unmount(라우터 이동) 시 selectedPageId가 reset된 케이스용.
+    const pageId = explicitPageId ?? getCurrentPageId() ?? lastDirtyPageId
     if (!pageId) return
     try {
       await savePage(pageId)
       dirty.value = false
+      lastDirtyPageId = null
     } catch (e) {
       console.error('[AutoSave] Failed:', e)
     }
+  }
+
+  // bmp/updateLayer/addLayer/removeLayer 같은 mutation은 bitmappery history에 기록되지
+  // 않으므로 historyIndex watch가 못 잡는다. UI에서 layer를 직접 수정한 호출 지점에서
+  // 이 함수를 호출해 dirty 플래그를 명시적으로 세팅한다.
+  function markDirty(): void {
+    flagDirty()
   }
 
   async function saveImmediately(explicitPageId?: string): Promise<void> {
@@ -79,5 +99,5 @@ export function useAutoSave() {
     doSave()
   })
 
-  return { dirty, saveImmediately }
+  return { dirty, saveImmediately, markDirty }
 }

@@ -56,6 +56,7 @@ const AI_ACTIONS: AiActionDef[] = [
 const store = useStore()
 const activeTool = computed<string | null>(() => store.getters['bmp/activeTool'])
 const activeColor = computed<string>(() => store.getters['bmp/activeColor'] ?? '#000000')
+const backgroundColor = computed<string>(() => store.getters['editor/backgroundColor'] ?? '#ffffff')
 const activeDocument = computed(() => store.getters['bmp/activeDocument'])
 
 const visibleTools = computed(() => TOOLS.filter(t => isFeatureEnabled(t.flag)))
@@ -69,7 +70,36 @@ function selectTool(t: ToolDef) {
 }
 
 function swapColors() {
-  // TODO: 배경색 store 추가 후 swap 구현
+  const fg = activeColor.value
+  const bg = backgroundColor.value
+  store.commit('bmp/setActiveColor', bg)
+  store.commit('editor/SET_BACKGROUND_COLOR', fg)
+}
+
+// ─── 단축키 (도구 선택 + 색 swap) ───
+// bitmappery KeyboardService와 충돌 피하려 input/textarea/contentEditable 포커스 시 무시.
+// 도구 선택 단축키는 spec(canvas_ui_specs.md) 기준. TOOLS 배열의 shortcut 필드를 그대로 매핑.
+function isTextInputFocused(): boolean {
+  const t = document.activeElement as HTMLElement | null
+  if (!t) return false
+  return t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable
+}
+
+function onShortcut(e: KeyboardEvent) {
+  if (e.ctrlKey || e.metaKey || e.altKey) return
+  if (isTextInputFocused()) return
+  // 한글 입력 시 e.key는 한글, e.code는 'KeyX' 등. code로 매칭하면 IME 무관.
+  const code = e.code
+  if (code === 'KeyX') {
+    e.preventDefault()
+    swapColors()
+    return
+  }
+  const tool = TOOLS.find(t => `Key${t.shortcut.toUpperCase()}` === code)
+  if (tool && activeDocument.value) {
+    e.preventDefault()
+    selectTool(tool)
+  }
 }
 
 // ─── AI 드롭다운 ───
@@ -129,6 +159,7 @@ function onDragEnd(e: PointerEvent) {
 
 onMounted(() => {
   document.addEventListener('mousedown', onDocClick)
+  window.addEventListener('keydown', onShortcut)
   // 기본 위치를 좌측 하단으로 (캔버스 영역 높이에 맞춰)
   nextTick(() => {
     const aside = asideRef.value
@@ -141,7 +172,10 @@ onMounted(() => {
     }
   })
 })
-onBeforeUnmount(() => document.removeEventListener('mousedown', onDocClick))
+onBeforeUnmount(() => {
+  document.removeEventListener('mousedown', onDocClick)
+  window.removeEventListener('keydown', onShortcut)
+})
 </script>
 
 <template>
@@ -209,8 +243,9 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocClick))
     <div class="relative h-9 mx-auto my-2 w-9">
       <!-- BG (뒤, 우하단) -->
       <div
-        class="absolute right-0 bottom-0 w-[22px] h-[22px] border-2 border-towa-text/80 bg-white cursor-pointer"
-        title="배경색 (예정)"
+        class="absolute right-0 bottom-0 w-[22px] h-[22px] border-2 border-towa-text/80 cursor-pointer"
+        :style="{ backgroundColor }"
+        title="배경색 (Alt+드래그로 캔버스 색 추출)"
       />
       <!-- FG (앞, 좌상단) -->
       <div

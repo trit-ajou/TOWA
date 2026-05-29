@@ -113,8 +113,17 @@ export async function applyAiJobSnapshotToCurrentPage(
   for (const layer of textLayers) {
     options.store.commit('bmp/addLayer', layer)
   }
+  // 텍스트 레이어가 항상 최상단(배열 끝)에 오도록 graphic은 첫 텍스트 직전에 insert.
+  // bmp/addLayer는 무조건 push라서 그대로 부르면 graphic이 텍스트 위로 올라가 가린다.
   for (const layer of graphicLayers) {
-    options.store.commit('bmp/addLayer', layer)
+    const doc = options.store.getters['bmp/activeDocument'] as { layers?: Layer[] } | undefined
+    const layers = doc?.layers ?? []
+    const firstTextIdx = layers.findIndex((l) => l.type === LayerTypes.LAYER_TEXT)
+    if (firstTextIdx === -1) {
+      options.store.commit('bmp/addLayer', layer)
+    } else {
+      options.store.commit('bmp/insertLayerAtIndex', { index: firstTextIdx, layer })
+    }
   }
 
   options.store.commit('pages/UPDATE_PAGE', {
@@ -153,31 +162,48 @@ function createAiTextLayerFromPayload(
     status: translated ? 'translated' : 'detected',
     boxMode: 'fixed',
   }
-  // layer.width/height는 텍스트 렌더링 canvas 크기. bbox는 left/top으로만 반영하고
-  // canvas 영역은 document 전체로 잡아 글자가 잘리지 않게 함.
+  // 박스 = bbox.width/height. document 전체가 아닌 검출된 박스 그대로 보존하여
+  // box-mode 렌더에서 정렬 기준으로 사용. document 크기는 박스 clamp용으로만.
+  const width = Math.min(Math.max(1, Math.round(bbox.width)), Math.max(1, docW))
+  const height = Math.min(Math.max(1, Math.round(bbox.height)), Math.max(1, docH))
   return LayerFactory.create({
     name: aiLayerName(operationLabel, timestamp, index),
     type: LayerTypes.LAYER_TEXT,
     left: bbox.x,
     top: bbox.y,
-    width: docW,
-    height: docH,
+    width,
+    height,
     transparent: true,
     visible: true,
     text: {
-      value: translated || original,
+      // text.value는 번역문 슬롯. 검출만 끝난 상태에선 빈 값으로 두고,
+      // canvas 렌더는 meta.original로 fallback (render-service.ts).
+      // panel textarea가 layer.text.value를 binding하므로 빈 값에서 시작해야
+      // 사용자가 어디에 번역문을 써야 할지 헷갈리지 않는다. (issue #29)
+      value: translated || '',
       font: AI_TEXT_FONT,
       size: AI_TEXT_SIZE,
       unit: 'px',
       lineHeight: 0,
       spacing: 0,
       color: AI_TEXT_COLOR,
+      align: 'center',
+      verticalAlign: 'middle',
     },
     meta,
   })
 }
 
 function bboxFromPayload(value: unknown): { x: number; y: number; width: number; height: number } {
+  // 모델엔진 실응답: [x, y, w, h] 배열 형식
+  if (Array.isArray(value) && value.length >= 4) {
+    return {
+      x: positiveOrZero(value[0], 0),
+      y: positiveOrZero(value[1], 0),
+      width: positiveNumber(value[2], 1),
+      height: positiveNumber(value[3], 1),
+    }
+  }
   const payload = isRecord(value) ? value : {}
   return {
     x: positiveOrZero(payload.x ?? payload.left, 0),
@@ -245,6 +271,10 @@ function createAiGraphicLayer(
     height: payloadHeight ?? canvas.height,
     transparent: true,
     visible: true,
+    // bitmap artifact는 현재 inpaint/pipeline operation에서만 생성됨.
+    // LayerPanel은 meta.role로 카테고리 분류 — 이게 없으면 'custom'으로 떨어져
+    // 텍스트 레이어 위에 쌓이면서 번역 텍스트가 가려진다 (issue #50).
+    meta: { role: 'inpaint' },
   })
 }
 

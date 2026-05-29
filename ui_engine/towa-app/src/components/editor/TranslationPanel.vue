@@ -13,6 +13,7 @@ defineProps<{
 defineEmits<{
   selectLayer: [id: string]
   updateText: [layerId: string, textPatch: Partial<Text>]
+  updateOriginal: [layerId: string, next: string]
   addBlock: []
   removeBlock: [layerId: string]
   prevPage: []
@@ -42,6 +43,7 @@ defineEmits<{
         :selected="layer.id === selectedLayerId"
         @select="$emit('selectLayer', layer.id)"
         @update-text="(patch) => $emit('updateText', layer.id, patch)"
+        @update-original="(next) => $emit('updateOriginal', layer.id, next)"
         @remove="$emit('removeBlock', layer.id)"
       />
       <div v-if="layers.length === 0" class="p-4 text-center text-sm text-towa-text-muted">
@@ -58,7 +60,7 @@ defineEmits<{
       >
         <ChevronLeft :size="16" />
         <span class="text-sm">이전</span>
-        <kbd class="text-[10px] px-1 py-0.5 rounded bg-towa-bg border border-towa-border text-towa-text-muted">Q</kbd>
+        <kbd class="text-[10px] px-1 py-0.5 rounded bg-towa-bg border border-towa-border text-towa-text-muted">←</kbd>
       </button>
       <span class="text-xs text-towa-text-muted">
         <span class="text-sm text-towa-text font-medium">{{ currentPageIndex }}</span> / {{ totalPages }} 페이지
@@ -69,7 +71,7 @@ defineEmits<{
         @click="$emit('nextPage')"
       >
         <span class="text-sm">다음</span>
-        <kbd class="text-[10px] px-1 py-0.5 rounded bg-towa-bg border border-towa-border text-towa-text-muted">W</kbd>
+        <kbd class="text-[10px] px-1 py-0.5 rounded bg-towa-bg border border-towa-border text-towa-text-muted">→</kbd>
         <ChevronRight :size="16" />
       </button>
     </div>

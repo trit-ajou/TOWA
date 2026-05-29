@@ -26,34 +26,66 @@ import { fastRound } from "@/math/unit-math";
 type MeasuredLineDef = {
     line: string;
     top: number;
+    width: number;
+};
+
+export type TextBox = {
+    width: number;
+    height: number;
 };
 
 /**
  * Renders a Layers text Object as multi line text onto given context.
+ *
+ * If `box` is provided the canvas is sized to the box and the text is positioned
+ * using `text.align` / `text.verticalAlign`. Otherwise (legacy bitmappery path)
+ * the canvas is sized to the text bounding box and drawn at (0,0).
  */
-export const renderMultiLineText = ( ctx: CanvasRenderingContext2D, text: Text ): void => {
-    // calculate bounding box and offsets for all lines in the text
-    const { lines, width, height } = measureLines( text.value.split( "\n" ), text, ctx );
+export const renderMultiLineText = ( ctx: CanvasRenderingContext2D, text: Text, box?: TextBox ): void => {
+    const measured = measureLines( text.value.split( "\n" ), text, ctx );
+    const { lines } = measured;
+    const textWidth  = measured.width;
+    const textHeight = measured.height;
 
-    // size canvas to bounding box
-    ctx.canvas.width  = width;
-    ctx.canvas.height = height;
+    const canvasWidth  = box ? Math.max( 1, Math.round( box.width  )) : textWidth;
+    const canvasHeight = box ? Math.max( 1, Math.round( box.height )) : textHeight;
+
+    // size canvas
+    ctx.canvas.width  = canvasWidth;
+    ctx.canvas.height = canvasHeight;
 
     applyTextStyleToContext( text, ctx );
 
-    lines.forEach(({ line, top }) => {
+    const yOffset = box ? computeVerticalOffset( text.verticalAlign, canvasHeight, textHeight ) : 0;
+
+    lines.forEach(({ line, top, width }) => {
+        const xOffset = box ? computeHorizontalOffset( text.align, canvasWidth, width ) : 0;
         if ( !text.spacing ) {
-            // write entire line (0 spacing defaults to font spacing)
-            ctx.fillText( line, 0, top );
+            ctx.fillText( line, xOffset, top + yOffset );
         } else {
-            // write letter by letter (yeah... this is why we cache things)
             const letters = line.split( "" );
             letters.forEach(( letter, letterIndex ) => {
-                ctx.fillText( letter, fastRound( letterIndex * text.spacing ), top );
+                ctx.fillText( letter, xOffset + fastRound( letterIndex * text.spacing ), top + yOffset );
             });
         }
     });
 };
+
+function computeHorizontalOffset( align: Text[ "align" ], canvasWidth: number, lineWidth: number ): number {
+    switch ( align ) {
+        case "center": return fastRound(( canvasWidth - lineWidth ) / 2 );
+        case "right":  return fastRound( canvasWidth - lineWidth );
+        default:       return 0;
+    }
+}
+
+function computeVerticalOffset( verticalAlign: Text[ "verticalAlign" ], canvasHeight: number, textHeight: number ): number {
+    switch ( verticalAlign ) {
+        case "middle": return fastRound(( canvasHeight - textHeight ) / 2 );
+        case "bottom": return fastRound( canvasHeight - textHeight );
+        default:       return 0;
+    }
+}
 
 /* internal methods */
 
@@ -87,14 +119,16 @@ function measureLines( lines: string[], text: Text, ctx: CanvasRenderingContext2
 
     lines.forEach(( line, lineIndex ) => {
         top = fastRound( topOffset + ( lineIndex * lineHeight ));
+        let lineWidth: number;
         if ( !text.spacing ) {
             textMetrics = ctx.measureText( line );
-            width = Math.max( width, textMetrics.actualBoundingBoxRight );
+            lineWidth = textMetrics.actualBoundingBoxRight;
         } else {
             const letters = line.split( "" );
-            width = Math.max( width, letters.length * text.spacing );
+            lineWidth = letters.length * text.spacing;
         }
-        linesOut.push({ line, top });
+        width = Math.max( width, lineWidth );
+        linesOut.push({ line, top, width: lineWidth });
         height += lineHeight;
     });
     return {

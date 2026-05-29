@@ -1,21 +1,59 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { Type, Trash2 } from 'lucide-vue-next'
-import type { Layer, Text } from '@bitmappery/definitions/document'
+import { computed, nextTick, ref, useTemplateRef } from 'vue'
+import {
+  Type, Trash2, Pencil,
+  AlignLeft, AlignCenter, AlignRight,
+  AlignStartVertical, AlignCenterVertical, AlignEndVertical,
+} from 'lucide-vue-next'
+import type { Layer, Text, TextAlign, TextVerticalAlign } from '@bitmappery/definitions/document'
 import { getTextMeta } from '@/utils/text-layer'
+
+const HORIZONTAL_ALIGNS: Array<{ value: TextAlign; icon: typeof AlignLeft; title: string }> = [
+  { value: 'left',   icon: AlignLeft,   title: '왼쪽 정렬' },
+  { value: 'center', icon: AlignCenter, title: '가운데 정렬' },
+  { value: 'right',  icon: AlignRight,  title: '오른쪽 정렬' },
+]
+const VERTICAL_ALIGNS: Array<{ value: TextVerticalAlign; icon: typeof AlignStartVertical; title: string }> = [
+  { value: 'top',    icon: AlignStartVertical,  title: '상단 정렬' },
+  { value: 'middle', icon: AlignCenterVertical, title: '가운데 정렬' },
+  { value: 'bottom', icon: AlignEndVertical,    title: '하단 정렬' },
+]
 
 const props = defineProps<{
   layer: Layer
   selected: boolean
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   select: []
   updateText: [textPatch: Partial<Text>]
+  updateOriginal: [next: string]
   remove: []
 }>()
 
 const meta = computed(() => getTextMeta(props.layer))
+
+const editingOriginal = ref(false)
+const originalDraft = ref('')
+const originalInput = useTemplateRef<HTMLInputElement>('originalInput')
+
+async function startEditOriginal() {
+  originalDraft.value = meta.value?.original ?? ''
+  editingOriginal.value = true
+  await nextTick()
+  originalInput.value?.focus()
+  originalInput.value?.select()
+}
+
+function commitOriginal() {
+  if (!editingOriginal.value) return
+  emit('updateOriginal', originalDraft.value)
+  editingOriginal.value = false
+}
+
+function cancelOriginal() {
+  editingOriginal.value = false
+}
 
 const statusLabel = computed(() => {
   const status = meta.value?.status
@@ -37,6 +75,7 @@ const idLabel = computed(() => {
 
 <template>
   <div
+    :data-text-block-id="layer.id"
     class="px-3 py-2.5 border-b border-towa-border cursor-pointer transition-colors"
     :class="selected ? 'bg-towa-accent/10 border-l-2 border-l-towa-accent' : 'hover:bg-towa-surface-light'"
     @click="$emit('select')"
@@ -56,7 +95,29 @@ const idLabel = computed(() => {
         </button>
       </div>
     </div>
-    <p v-if="original" class="text-xs text-towa-text-muted mb-1.5 leading-relaxed">{{ original }}</p>
+    <div v-if="original || selected" class="flex items-start gap-1 mb-1.5">
+      <input
+        v-if="editingOriginal"
+        ref="originalInput"
+        v-model="originalDraft"
+        class="flex-1 bg-towa-bg border border-towa-accent rounded px-1.5 py-0.5 text-xs text-towa-text focus:outline-none"
+        @keydown.enter.prevent="commitOriginal"
+        @keydown.esc.prevent="cancelOriginal"
+        @blur="commitOriginal"
+        @click.stop
+      />
+      <p v-else class="flex-1 text-xs text-towa-text-muted leading-relaxed min-h-[18px]">
+        {{ original || '원문 없음' }}
+      </p>
+      <button
+        v-if="selected && !editingOriginal"
+        class="p-0.5 rounded hover:bg-towa-surface-light text-towa-text-muted hover:text-towa-accent transition-colors"
+        title="원문 편집"
+        @click.stop="startEditOriginal"
+      >
+        <Pencil :size="11" />
+      </button>
+    </div>
     <textarea
       :value="layer.text.value"
       rows="2"
@@ -97,6 +158,35 @@ const idLabel = computed(() => {
         @input="$emit('updateText', { color: ($event.target as HTMLInputElement).value })"
         @click.stop
       />
+
+      <div class="flex items-center gap-0.5 ml-auto">
+        <button
+          v-for="opt in HORIZONTAL_ALIGNS"
+          :key="opt.value"
+          :title="opt.title"
+          class="p-1 rounded transition-colors"
+          :class="layer.text.align === opt.value
+            ? 'bg-towa-accent/20 text-towa-accent'
+            : 'text-towa-text-muted hover:bg-towa-surface-light hover:text-towa-text'"
+          @click.stop="$emit('updateText', { align: opt.value })"
+        >
+          <component :is="opt.icon" :size="13" />
+        </button>
+      </div>
+      <div class="flex items-center gap-0.5">
+        <button
+          v-for="opt in VERTICAL_ALIGNS"
+          :key="opt.value"
+          :title="opt.title"
+          class="p-1 rounded transition-colors"
+          :class="layer.text.verticalAlign === opt.value
+            ? 'bg-towa-accent/20 text-towa-accent'
+            : 'text-towa-text-muted hover:bg-towa-surface-light hover:text-towa-text'"
+          @click.stop="$emit('updateText', { verticalAlign: opt.value })"
+        >
+          <component :is="opt.icon" :size="13" />
+        </button>
+      </div>
     </div>
   </div>
 </template>
