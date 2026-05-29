@@ -8,11 +8,11 @@ const { queue, dismiss } = useErrorDialog()
 </script>
 
 <template>
-  <div class="fixed top-14 right-4 z-50 flex flex-col gap-2 pointer-events-none">
+  <div class="absolute top-3 right-3 z-40 flex flex-col gap-2 max-w-[min(360px,calc(100%-1.5rem))]">
     <div
       v-for="entry in queue"
       :key="entry.id"
-      class="pointer-events-auto max-w-md min-w-[280px] bg-towa-surface border border-towa-danger/60 rounded-md shadow-lg shadow-black/50 overflow-hidden"
+      class="min-w-[280px] bg-towa-surface border border-towa-danger/60 rounded-md shadow-lg shadow-black/50 overflow-hidden"
       role="alert"
     >
       <div class="flex items-start gap-2 px-3 py-2 border-b border-towa-border bg-towa-danger/15">
