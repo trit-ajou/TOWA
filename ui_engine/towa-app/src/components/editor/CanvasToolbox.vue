@@ -245,13 +245,13 @@ onBeforeUnmount(() => {
       <div
         class="absolute right-0 bottom-0 w-[22px] h-[22px] border-2 border-towa-text/80 cursor-pointer"
         :style="{ backgroundColor }"
-        title="배경색"
+        title="배경색 (Alt+드래그로 캔버스 색 추출)"
       />
       <!-- FG (앞, 좌상단) -->
       <div
         class="absolute left-0 top-0 w-[22px] h-[22px] border-2 border-towa-text/80 cursor-pointer shadow-[2px_2px_0_rgba(0,0,0,0.4)]"
         :style="{ backgroundColor: activeColor }"
-        title="전경색 (Alt+드래그로 캔버스 색 추출)"
+        title="전경색"
       />
       <!-- swap 화살표 (우상단 살짝 튀어나옴) -->
       <button

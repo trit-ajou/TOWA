@@ -4,7 +4,7 @@
 //   Alt down (캔버스 위) → 커서가 스포이드로 바뀜
 //   Alt+mousedown → 확대 미리보기(돋보기 원 + 색 ring) 표시 시작
 //   Alt+mousemove (드래그) → 미리보기 위치/색 실시간 갱신
-//   Alt+mouseup → 그 시점 색이 전경색(bmp/activeColor)으로 확정
+//   Alt+mouseup → 그 시점 색이 배경색(editor/backgroundColor)으로 확정
 //   ESC 또는 Alt up 도중 → 미리보기 닫고 색 확정 안 함
 //
 // CLONE 도구는 Alt+클릭이 source 샘플링과 겹치므로 양보.
@@ -140,7 +140,8 @@ function onMouseUp(e: MouseEvent) {
   // 최종 위치에서 한 번 더 샘플링한 색으로 전경색 확정
   sampleAndRender(e.clientX, e.clientY)
   if (preview.inside) {
-    store.commit('bmp/setActiveColor', preview.color)
+    // spec(canvas_ui_specs.md): 추출 색은 배경색(editor/backgroundColor)에 반영
+    store.commit('editor/SET_BACKGROUND_COLOR', preview.color)
   }
   dragging.value = false
   preview.inside = false
