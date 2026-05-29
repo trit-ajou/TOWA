@@ -8,7 +8,7 @@ import { useStore } from 'vuex'
 // @ts-expect-error bitmappery JS module
 import ToolTypes from '@bitmappery/definitions/tool-types'
 import type { Layer } from '@bitmappery/definitions/document'
-import { classifyLayer } from '@/utils/layer-classify'
+import { classifyLayer, isPaintableLayer } from '@/utils/layer-classify'
 import { useCanvasNotice } from '@/composables/useCanvasNotice'
 
 const store = useStore()
@@ -28,7 +28,6 @@ const activeLayer = computed<Layer | null>(() => {
 
 const MESSAGES: Record<string, string> = {
   text: '텍스트 레이어에는 그림을 그릴 수 없습니다',
-  inpaint: 'AI 인페인트 레이어에는 그림을 그릴 수 없습니다 (덮어쓰기됨)',
   original: '원본 레이어는 보호되어 있습니다 (커스텀 레이어를 추가하세요)',
 }
 
@@ -39,8 +38,13 @@ function onMouseDown(e: MouseEvent) {
   if (!area || !area.contains(e.target as Node)) return
   const layer = activeLayer.value
   if (!layer) return
+  // 숨김 상태면 paint 자체가 보이지 않아 사용자가 "왜 안 그려지지"로 혼란 — 안내 우선
+  if (!layer.visible) {
+    showNotice('숨겨진 레이어에는 그림을 그릴 수 없습니다 (눈 아이콘으로 표시)')
+    return
+  }
+  if (isPaintableLayer(layer)) return
   const group = classifyLayer(layer)
-  if (group === 'custom') return
   showNotice(MESSAGES[group] ?? '이 레이어에는 그림을 그릴 수 없습니다')
 }
 

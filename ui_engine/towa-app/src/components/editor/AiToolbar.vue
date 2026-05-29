@@ -5,6 +5,7 @@ import { ScanText, Eraser, Languages, ZoomIn, ZoomOut, Columns2, Square } from '
 import BaseButton from '@/components/common/BaseButton.vue'
 import { useAppBackend } from '@/composables/useAppBackend'
 import { usePageLoader } from '@/composables/usePageLoader'
+import { useErrorDialog } from '@/composables/useErrorDialog'
 import { DEPLOYMENT_MODE } from '@/config/deployment'
 import { BackendError } from '@/backend/errors'
 import type { AiJobCreateInput, AiJobSnapshot, AiOperationKind } from '@/backend/contracts'
@@ -20,6 +21,7 @@ import { canvasToBlob, resizeImage } from '@bitmappery/utils/canvas-util'
 const store = useStore()
 const backend = useAppBackend()
 const { savePage } = usePageLoader()
+const { showError } = useErrorDialog()
 const loading = ref<string | null>(null)
 const lastResult = ref<{ op: string; status: string; jobId: string } | null>(null)
 
@@ -138,6 +140,10 @@ async function runAction(action: AiOperationKind) {
       restorePreviousPage = false
       const reason = final.error?.message ? `: ${final.error.message}` : ''
       lastResult.value = { op: action, status: `${final.status}${reason}`, jobId: final.jobId }
+      showError(
+        `AI ${action} ${final.status === 'failed' ? '실패' : '부분 성공'}`,
+        final.error?.message ?? `상태: ${final.status} (jobId: ${final.jobId})`,
+      )
     }
     console.log(`[AiToolbar] ${action} →`, final)
   } catch (e) {
@@ -151,6 +157,7 @@ async function runAction(action: AiOperationKind) {
         : String(e)
     lastResult.value = { op: action, status: `error: ${msg}`, jobId: '' }
     console.error(`[AiToolbar] ${action} failed:`, e)
+    showError(`AI ${action} 오류`, msg)
   } finally {
     const sessionKey = (store.state as { auth?: { sessionKey: string | null } }).auth?.sessionKey ?? null
     if (sessionKey) {
