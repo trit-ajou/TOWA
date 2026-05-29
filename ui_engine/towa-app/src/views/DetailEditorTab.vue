@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, watch, ref } from 'vue'
+import { computed, watch, ref, provide } from 'vue'
 import { useStore } from 'vuex'
 import { useRoute } from 'vue-router'
 import { usePageLoader } from '@/composables/usePageLoader'
@@ -24,7 +24,11 @@ useSpacePanModifier()
 const store = useStore()
 const route = useRoute()
 const { switchPage } = usePageLoader()
-const { saveImmediately } = useAutoSave()
+const { saveImmediately, markDirty } = useAutoSave()
+// bmp/addLayer·removeLayer·reorderLayers 등은 bitmappery history에 안 들어가서
+// historyIndex watch가 못 잡는다. 자식 컴포넌트(LayerPanel 등)에서 수동으로
+// dirty 플래그를 세팅할 수 있도록 inject로 노출.
+provide('markDirty', markDirty)
 
 const projectId = computed(() => route.params.id as string)
 const pages = computed(() => store.getters['pages/forProject'](projectId.value))

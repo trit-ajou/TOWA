@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, inject } from 'vue'
 import { useStore } from 'vuex'
 import draggable from 'vuedraggable'
 import { Eye, EyeOff, Type, Image as ImageIcon, Trash2, Plus, ChevronDown, ChevronRight, GripVertical } from 'lucide-vue-next'
@@ -8,6 +8,9 @@ import { LayerTypes } from '@bitmappery/definitions/layer-types'
 import { classifyLayer, type LayerGroupId } from '@/utils/layer-classify'
 
 const store = useStore()
+// 부모(DetailEditorTab)에서 provide. reorder/add/remove 같이 bitmappery history에
+// 기록되지 않는 변경 후 호출해서 autoSave dirty 플래그를 세팅한다.
+const markDirty = inject<() => void>('markDirty', () => {})
 
 const layers = computed<Layer[]>(() => store.getters['bmp/activeDocument']?.layers ?? [])
 const activeLayerIndex = computed<number>(() => store.getters['bmp/activeLayerIndex'] ?? 0)
@@ -64,9 +67,11 @@ function selectLayer(index: number) {
 }
 function toggleVisibility(layer: Layer, index: number) {
   store.commit('bmp/updateLayer', { index, opts: { visible: !layer.visible } })
+  markDirty()
 }
 function removeLayer(index: number) {
   store.commit('bmp/removeLayer', index)
+  markDirty()
 }
 function addLayer() {
   if (!activeDocument.value) return
@@ -85,6 +90,7 @@ function addLayer() {
       left: 0, top: 0,
     },
   })
+  markDirty()
 }
 
 function entryForGroup(id: LayerGroupId): LayerEntry[] {
@@ -110,6 +116,7 @@ function commitReorder() {
   // 변화 없으면 noop (watch가 다시 호출하는 케이스 보호)
   if (originalOrder.length === newOrder.length && originalOrder.every((id, i) => id === newOrder[i])) return
   store.commit('bmp/reorderLayers', { document: doc, layerIds: newOrder })
+  markDirty()
 }
 
 function layerIcon(type: string) {
