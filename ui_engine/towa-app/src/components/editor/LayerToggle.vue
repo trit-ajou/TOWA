@@ -14,7 +14,7 @@ defineEmits<{
 <template>
   <div class="border-t border-towa-border">
     <div class="px-3 py-2 border-b border-towa-border">
-      <h3 class="text-xs font-semibold text-towa-text-muted uppercase tracking-wider">레이어</h3>
+      <div class="text-xs font-semibold text-towa-accent uppercase tracking-wider">레이어</div>
     </div>
     <div>
       <div
