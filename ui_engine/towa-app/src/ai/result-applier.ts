@@ -167,7 +167,11 @@ function createAiTextLayerFromPayload(
     transparent: true,
     visible: true,
     text: {
-      value: translated || original,
+      // text.value는 번역문 슬롯. 검출만 끝난 상태에선 빈 값으로 두고,
+      // canvas 렌더는 meta.original로 fallback (render-service.ts).
+      // panel textarea가 layer.text.value를 binding하므로 빈 값에서 시작해야
+      // 사용자가 어디에 번역문을 써야 할지 헷갈리지 않는다. (issue #29)
+      value: translated || '',
       font: AI_TEXT_FONT,
       size: AI_TEXT_SIZE,
       unit: 'px',
