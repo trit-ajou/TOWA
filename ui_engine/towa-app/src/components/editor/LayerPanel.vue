@@ -106,6 +106,31 @@ function entryForGroup(id: LayerGroupId): LayerEntry[] {
 function commitReorder() {
   const doc = activeDocument.value
   if (!doc) return
+
+  // 1) 드롭된 위치에 따라 meta.role을 그 그룹에 맞게 갱신.
+  //    그렇지 않으면 watch가 다음에 layers를 bucketize할 때 옛 role 기준으로 다시 분류돼
+  //    그룹 간 이동이 즉시 원래대로 되돌아간다.
+  for (const entry of inpaintList.value) {
+    const current = (entry.layer.meta as { role?: string } | undefined)?.role
+    if (current !== 'inpaint') {
+      store.commit('bmp/updateLayer', {
+        index: entry.index,
+        opts: { meta: { ...(entry.layer.meta ?? {}), role: 'inpaint' } },
+      })
+    }
+  }
+  for (const entry of customList.value) {
+    const current = (entry.layer.meta as { role?: string } | undefined)?.role
+    if (current === 'inpaint') {
+      const { role: _drop, ...rest } = (entry.layer.meta ?? {}) as Record<string, unknown>
+      store.commit('bmp/updateLayer', {
+        index: entry.index,
+        opts: { meta: rest },
+      })
+    }
+  }
+
+  // 2) z-order 자체도 반영.
   const newOrder = [
     ...[...originalList.value].reverse(),
     ...[...inpaintList.value].reverse(),
@@ -113,9 +138,10 @@ function commitReorder() {
     ...[...textList.value].reverse(),
   ].map((e) => e.layer.id as string)
   const originalOrder = layers.value.map((l) => (l as Layer).id as string)
-  // 변화 없으면 noop (watch가 다시 호출하는 케이스 보호)
-  if (originalOrder.length === newOrder.length && originalOrder.every((id, i) => id === newOrder[i])) return
-  store.commit('bmp/reorderLayers', { document: doc, layerIds: newOrder })
+  const orderChanged = !(originalOrder.length === newOrder.length && originalOrder.every((id, i) => id === newOrder[i]))
+  if (orderChanged) {
+    store.commit('bmp/reorderLayers', { document: doc, layerIds: newOrder })
+  }
   markDirty()
 }
 
