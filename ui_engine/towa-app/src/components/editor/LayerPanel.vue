@@ -47,6 +47,9 @@ function bucketize(): Record<LayerGroupId, LayerEntry[]> {
 // store layers가 바뀌면 draggable용 ref 배열을 동기화.
 // 단, 사용자가 드래그해서 reorderLayers를 막 부른 직후에도 watch가 다시 트리거되는데
 // 이때 같은 순서가 반영되므로 무한 루프는 안 생긴다.
+// deep: true 필요 — bmp/removeLayer는 splice(in-place)라 배열 reference가 안 바뀌고,
+// bmp/updateLayer는 element를 새 object로 갈아끼우므로 표면 reference만 보면 LayerEntry가
+// stale 상태로 남는다 (이전엔 페이지 전환해야 갱신됐던 원인).
 watch(
   layers,
   () => {
@@ -54,7 +57,7 @@ watch(
     customList.value = buckets.custom.reverse()
     inpaintList.value = buckets.inpaint.reverse()
   },
-  { immediate: true, deep: false },
+  { immediate: true, deep: true },
 )
 
 const collapsed = ref<Record<LayerGroupId, boolean>>({
