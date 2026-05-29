@@ -143,6 +143,12 @@ export function useAiActions() {
         restorePreviousPage = false
         const reason = final.error?.message ? `: ${final.error.message}` : ''
         lastResult.value = { op: action, status: `${final.status}${reason}`, jobId: final.jobId }
+        // 실패/부분 성공도 사용자가 진행 상황을 알 수 있게 토스트로 노출.
+        // 이전엔 spinner만 사라져서 "정상 처리됐는데 결과가 없는 건지, 호출이 실패한 건지" 구분 불가.
+        store.commit('bmp/showNotification', {
+          title: `AI ${action} ${final.status === 'failed' ? '실패' : '부분 성공'}`,
+          message: final.error?.message ?? `상태: ${final.status} (jobId: ${final.jobId})`,
+        })
       }
       console.log(`[AI] ${action} →`, final)
     } catch (e) {
@@ -156,6 +162,10 @@ export function useAiActions() {
           : String(e)
       lastResult.value = { op: action, status: `error: ${msg}`, jobId: '' }
       console.error(`[AI] ${action} failed:`, e)
+      store.commit('bmp/showNotification', {
+        title: `AI ${action} 오류`,
+        message: msg,
+      })
     } finally {
       const sessionKey = (store.state as { auth?: { sessionKey: string | null } }).auth?.sessionKey ?? null
       if (sessionKey) {

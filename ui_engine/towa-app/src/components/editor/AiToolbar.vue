@@ -138,6 +138,10 @@ async function runAction(action: AiOperationKind) {
       restorePreviousPage = false
       const reason = final.error?.message ? `: ${final.error.message}` : ''
       lastResult.value = { op: action, status: `${final.status}${reason}`, jobId: final.jobId }
+      store.commit('bmp/showNotification', {
+        title: `AI ${action} ${final.status === 'failed' ? '실패' : '부분 성공'}`,
+        message: final.error?.message ?? `상태: ${final.status} (jobId: ${final.jobId})`,
+      })
     }
     console.log(`[AiToolbar] ${action} →`, final)
   } catch (e) {
@@ -151,6 +155,10 @@ async function runAction(action: AiOperationKind) {
         : String(e)
     lastResult.value = { op: action, status: `error: ${msg}`, jobId: '' }
     console.error(`[AiToolbar] ${action} failed:`, e)
+    store.commit('bmp/showNotification', {
+      title: `AI ${action} 오류`,
+      message: msg,
+    })
   } finally {
     const sessionKey = (store.state as { auth?: { sessionKey: string | null } }).auth?.sessionKey ?? null
     if (sessionKey) {
