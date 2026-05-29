@@ -258,6 +258,12 @@ export default class InteractionPane extends sprite {
                 break;
 
             case InteractionModes.MODE_LAYER_SELECT:
+                // EYEDROPPER 도구가 활성이면 layer 자동 전환을 건너뜀.
+                // 색 추출 도중에 가장 위 비투명 layer로 active가 바뀌면 사용자가 의도와
+                // 무관하게 다른 layer로 이동하는 부작용이 생긴다 (towa issue #50).
+                if ( this._activeTool === ToolTypes.EYEDROPPER ) {
+                    break;
+                }
                 const layerRenderers: LayerRenderer[] = this.canvas.getChildren().filter(( s: sprite ) => s instanceof LayerRenderer );
                 // loop over all layer renderers in reverse (top of display list to bottom) order
                 let i = layerRenderers.length;

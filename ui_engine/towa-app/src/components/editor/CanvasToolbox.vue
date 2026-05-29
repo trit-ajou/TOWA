@@ -245,7 +245,7 @@ onBeforeUnmount(() => {
       <div
         class="absolute right-0 bottom-0 w-[22px] h-[22px] border-2 border-towa-text/80 cursor-pointer"
         :style="{ backgroundColor }"
-        title="배경색 (Alt+클릭으로 스포이드 추출)"
+        title="배경색 (Alt+드래그로 캔버스 색 추출)"
       />
       <!-- FG (앞, 좌상단) -->
       <div

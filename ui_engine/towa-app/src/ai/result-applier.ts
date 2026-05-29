@@ -113,8 +113,17 @@ export async function applyAiJobSnapshotToCurrentPage(
   for (const layer of textLayers) {
     options.store.commit('bmp/addLayer', layer)
   }
+  // 텍스트 레이어가 항상 최상단(배열 끝)에 오도록 graphic은 첫 텍스트 직전에 insert.
+  // bmp/addLayer는 무조건 push라서 그대로 부르면 graphic이 텍스트 위로 올라가 가린다.
   for (const layer of graphicLayers) {
-    options.store.commit('bmp/addLayer', layer)
+    const doc = options.store.getters['bmp/activeDocument'] as { layers?: Layer[] } | undefined
+    const layers = doc?.layers ?? []
+    const firstTextIdx = layers.findIndex((l) => l.type === LayerTypes.LAYER_TEXT)
+    if (firstTextIdx === -1) {
+      options.store.commit('bmp/addLayer', layer)
+    } else {
+      options.store.commit('bmp/insertLayerAtIndex', { index: firstTextIdx, layer })
+    }
   }
 
   options.store.commit('pages/UPDATE_PAGE', {
@@ -262,6 +271,10 @@ function createAiGraphicLayer(
     height: payloadHeight ?? canvas.height,
     transparent: true,
     visible: true,
+    // bitmap artifact는 현재 inpaint/pipeline operation에서만 생성됨.
+    // LayerPanel은 meta.role로 카테고리 분류 — 이게 없으면 'custom'으로 떨어져
+    // 텍스트 레이어 위에 쌓이면서 번역 텍스트가 가려진다 (issue #50).
+    meta: { role: 'inpaint' },
   })
 }
 
