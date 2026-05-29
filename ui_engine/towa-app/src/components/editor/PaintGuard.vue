@@ -38,6 +38,11 @@ function onMouseDown(e: MouseEvent) {
   if (!area || !area.contains(e.target as Node)) return
   const layer = activeLayer.value
   if (!layer) return
+  // 숨김 상태면 paint 자체가 보이지 않아 사용자가 "왜 안 그려지지"로 혼란 — 안내 우선
+  if (!layer.visible) {
+    showNotice('숨겨진 레이어에는 그림을 그릴 수 없습니다 (눈 아이콘으로 표시)')
+    return
+  }
   if (isPaintableLayer(layer)) return
   const group = classifyLayer(layer)
   showNotice(MESSAGES[group] ?? '이 레이어에는 그림을 그릴 수 없습니다')
