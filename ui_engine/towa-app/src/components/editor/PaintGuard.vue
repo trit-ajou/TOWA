@@ -8,7 +8,7 @@ import { useStore } from 'vuex'
 // @ts-expect-error bitmappery JS module
 import ToolTypes from '@bitmappery/definitions/tool-types'
 import type { Layer } from '@bitmappery/definitions/document'
-import { classifyLayer } from '@/utils/layer-classify'
+import { classifyLayer, isPaintableLayer } from '@/utils/layer-classify'
 import { useCanvasNotice } from '@/composables/useCanvasNotice'
 
 const store = useStore()
@@ -28,7 +28,6 @@ const activeLayer = computed<Layer | null>(() => {
 
 const MESSAGES: Record<string, string> = {
   text: '텍스트 레이어에는 그림을 그릴 수 없습니다',
-  inpaint: 'AI 인페인트 레이어에는 그림을 그릴 수 없습니다 (덮어쓰기됨)',
   original: '원본 레이어는 보호되어 있습니다 (커스텀 레이어를 추가하세요)',
 }
 
@@ -39,8 +38,8 @@ function onMouseDown(e: MouseEvent) {
   if (!area || !area.contains(e.target as Node)) return
   const layer = activeLayer.value
   if (!layer) return
+  if (isPaintableLayer(layer)) return
   const group = classifyLayer(layer)
-  if (group === 'custom') return
   showNotice(MESSAGES[group] ?? '이 레이어에는 그림을 그릴 수 없습니다')
 }
 

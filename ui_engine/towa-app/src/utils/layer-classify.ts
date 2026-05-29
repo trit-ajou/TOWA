@@ -15,5 +15,8 @@ export function classifyLayer(layer: Layer): LayerGroupId {
 
 export function isPaintableLayer(layer: Layer | null | undefined): boolean {
   if (!layer) return false
-  return classifyLayer(layer) === 'custom'
+  const group = classifyLayer(layer)
+  // 인페인트 결과도 사용자가 일부를 지우거나 수정할 수 있어야 한다 — 모델 결과가 항상
+  // 완벽하지 않으므로 후처리가 필요. 원본/텍스트는 여전히 보호 (issue #50)
+  return group === 'custom' || group === 'inpaint'
 }
