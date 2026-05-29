@@ -37,7 +37,7 @@ const brushOpacity = computed<number>({
 <template>
   <aside class="w-full h-full bg-towa-surface border-l border-towa-border flex flex-col">
     <header class="px-3 py-2 border-b border-towa-border">
-      <div class="text-xs uppercase tracking-wider text-towa-text-muted">도구 옵션</div>
+      <div class="text-xs uppercase tracking-wider font-semibold text-towa-accent">도구 옵션</div>
       <div class="text-sm font-medium text-towa-text mt-0.5">{{ label }}</div>
     </header>
 
