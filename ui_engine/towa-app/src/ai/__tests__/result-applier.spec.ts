@@ -139,9 +139,69 @@ describe('applyAiJobSnapshotToCurrentPage', () => {
         top: 8,
         width: 800,
         height: 1200,
+        meta: expect.objectContaining({ role: 'inpaint' }),
       }),
     )
     expect(store.commit).not.toHaveBeenCalledWith('bmp/removeLayer', expect.anything())
+  })
+
+  it('inserts inpaint graphic layer below existing text layers so text stays on top', async () => {
+    const page = makePage()
+    const existingText = { id: 'layer_99', type: 'text' }
+    const store = makeStore(page, { width: 800, height: 1200, layers: [existingText] })
+    const getArtifact = vi.fn().mockResolvedValue(new Blob(['png'], { type: 'image/png' }))
+    vi.mocked(blobToCanvas).mockResolvedValue({ width: 800, height: 1200 } as HTMLCanvasElement)
+    const snapshot = makeSnapshot({
+      operationKind: 'inpaint',
+      artifacts: {
+        'artifact://output/inpaint.png': {
+          artifact_ref: 'artifact://output/inpaint.png',
+          kind: 'bitmap',
+          media_type: 'image/png',
+          uri: 'file:///tmp/inpaint.png',
+        },
+      },
+      documentPatch: {
+        patches: [
+          {
+            op: 'add_layer',
+            payload: {
+              layer: {
+                id: 'g-1',
+                type: 'graphic',
+                left: 0,
+                top: 0,
+                width: 800,
+                height: 1200,
+                source_ref: 'artifact://output/inpaint.png',
+              },
+            },
+          },
+        ],
+      },
+    })
+
+    await applyAiJobSnapshotToCurrentPage({
+      store,
+      backend: { getArtifact },
+      snapshot,
+      projectId: page.projectId,
+      pageId: page.id,
+      savePage: vi.fn().mockResolvedValue(undefined),
+      appliedAt: new Date(2026, 4, 7, 15, 30),
+    })
+
+    // 기존 텍스트 인덱스 0 직전에 insert → graphic이 텍스트 아래로 깔림
+    expect(store.commit).toHaveBeenCalledWith(
+      'bmp/insertLayerAtIndex',
+      expect.objectContaining({
+        index: 0,
+        layer: expect.objectContaining({
+          type: 'graphic',
+          meta: expect.objectContaining({ role: 'inpaint' }),
+        }),
+      }),
+    )
   })
 
   it('accepts bbox in [x, y, w, h] array form from model engine', async () => {
@@ -219,7 +279,7 @@ describe('applyAiJobSnapshotToCurrentPage', () => {
   })
 })
 
-function makeStore(page: Page, activeDocument: { layers?: unknown[] } = {}): Store<unknown> {
+function makeStore(page: Page, activeDocument: { layers?: unknown[]; width?: number; height?: number } = {}): Store<unknown> {
   return {
     getters: {
       'pages/byId': (projectId: string, pageId: string) => (
