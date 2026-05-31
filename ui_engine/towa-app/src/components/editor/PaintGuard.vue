@@ -34,8 +34,12 @@ const MESSAGES: Record<string, string> = {
 function onMouseDown(e: MouseEvent) {
   if (e.button !== 0) return
   if (!activeTool.value || !PAINT_TOOLS.has(activeTool.value)) return
-  const area = document.getElementById('towa-canvas-area')
-  if (!area || !area.contains(e.target as Node)) return
+  const target = e.target as HTMLElement | null
+  if (!target) return
+  // bitmappery 캔버스 표면(.canvas-wrapper 내부)에서의 클릭만 paint 시도로 간주.
+  // 캔버스 영역 위에 떠 있는 툴박스/오버레이 버튼 클릭은 제외.
+  if (!target.closest('.canvas-wrapper')) return
+  if (target.closest('button, input, select, textarea, [role="button"]')) return
   const layer = activeLayer.value
   if (!layer) return
   // 숨김 상태면 paint 자체가 보이지 않아 사용자가 "왜 안 그려지지"로 혼란 — 안내 우선

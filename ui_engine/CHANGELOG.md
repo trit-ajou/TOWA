@@ -6,6 +6,12 @@
 
 ## 2026-05-29
 
+### 22:30 — PaintGuard 오발동 핫픽스
+- 배경: 사용자 검증 중 두 가지 오동작 발견. (1) brush 활성 상태에서 AI 드롭다운 버튼을 눌러도 "이 레이어에 그림을 그릴 수 없습니다" 토스트가 뜸. (2) 편집(역자) 모드에는 레이어 선택창 자체가 없는데도 보호 토스트가 뜸
+- `PaintGuard.vue`: `area.contains(e.target)` 범위가 너무 넓어 캔버스 위에 떠 있는 툴박스/AI 버튼 클릭도 paint 시도로 잡혔음. `target.closest('.canvas-wrapper')` 안 + `button/input/select/textarea/[role=button]` 바깥일 때만 안내 표시하도록 좁힘
+- `EditorTab.vue`: 편집 모드는 텍스트 도구 위주이고 레이어 선택 UI가 없으므로 `<PaintGuard />` 및 import 제거. 상세편집(`DetailEditorTab.vue`)에서만 유지
+- 검증: 사용자가 실제 브라우저에서 (1) AI 버튼 클릭 시 토스트 없음 (2) 편집 모드 보호 토스트 없음 (3) 상세편집 캔버스 직접 클릭 시 기존 안내 동작 유지 확인
+
 ### 00:31 — 편집 화면 UI 개편 후속: 단축키·도구 옵션·레이어 가드 (#22)
 - 배경: #22 1차분(35ef6a3 main 머지)에서 toolbox/패널/AI 드롭다운/Zoom 신규 구현까지 끝. 이번 후속에서 사용자 검증 통해 빠진 항목 채움
 - **Hand 도구 Space modifier** (`composables/useSpacePanModifier.ts`): 어떤 도구를 쓰고 있든 Space 누른 채 드래그하면 임시로 MOVE 도구로 전환, 떼면 복원. input/textarea focus 시 무시, window blur 시 자동 복원

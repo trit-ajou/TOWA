@@ -15,7 +15,6 @@ import AiProgressOverlay from '@/components/editor/AiProgressOverlay.vue'
 import BrushOptionsPopover from '@/components/editor/BrushOptionsPopover.vue'
 import EyedropperHandler from '@/components/editor/EyedropperHandler.vue'
 import CanvasNoticeToast from '@/components/editor/CanvasNoticeToast.vue'
-import PaintGuard from '@/components/editor/PaintGuard.vue'
 import ErrorDialogStack from '@/components/editor/ErrorDialogStack.vue'
 import { isTextLayer, mergeTextMeta } from '@/utils/text-layer'
 import type { Layer, Text } from '@bitmappery/definitions/document'
@@ -233,7 +232,6 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
       <AiProgressOverlay />
       <BrushOptionsPopover />
       <EyedropperHandler />
-      <PaintGuard />
       <CanvasNoticeToast />
       <ErrorDialogStack />
       <TextBoxCreator />
