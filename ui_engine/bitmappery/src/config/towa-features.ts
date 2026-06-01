@@ -34,7 +34,6 @@ export const TOWA_FEATURES = {
     FILE_IMAGE_EXPORT: true,
     FILE_PSD_IMPORT: true,
     FILE_PDF_IMPORT: true,
-    FILE_GIF_EXPORT: false,
     FILE_BPY_SAVE: true,
     FILE_BPY_LOAD: true,
 
