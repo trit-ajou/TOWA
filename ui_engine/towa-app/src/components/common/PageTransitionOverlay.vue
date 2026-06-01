@@ -37,15 +37,17 @@ onBeforeUnmount(clear)
 </script>
 
 <template>
-  <Teleport to="body">
+  <Teleport to="#towa-canvas-area" defer>
     <Transition name="towa-fade">
       <div
         v-if="shown"
-        class="fixed inset-0 z-40 flex items-center justify-center bg-black/60 backdrop-blur-sm pointer-events-none"
+        class="absolute inset-0 z-40 flex items-center justify-center bg-black/60 backdrop-blur-sm pointer-events-none"
         aria-live="polite"
         aria-busy="true"
       >
-        <!-- Incoming page's thumbnail as a progressive preview. -->
+        <!-- Incoming page's thumbnail as a progressive preview. Sized to the
+             canvas area, not the full viewport, so it matches the eventual
+             page dimensions instead of stretching across the whole screen. -->
         <img
           v-if="thumbUrl"
           :src="thumbUrl"
