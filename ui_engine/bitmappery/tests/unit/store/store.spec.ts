@@ -3,7 +3,6 @@ import { createMockCanvasElement, createState, mockZCanvas } from "../mocks";
 import { type Layer } from "@/definitions/document";
 import { type Dialog } from "@/definitions/editor";
 import { SAVE_DOCUMENT } from "@/definitions/modal-windows";
-import { STORAGE_TYPES } from "@/definitions/storage-types";
 import { PROJECT_FILE_EXTENSION } from "@/definitions/file-types";
 import { LayerTypes } from "@/definitions/layer-types";
 import DocumentFactory from "@/factories/document-factory";
@@ -234,24 +233,6 @@ describe( "Vuex store", () => {
             const height = 400;
             mutations.setWindowSize( state, { width, height });
             expect( state.windowSize ).toEqual({ width, height });
-        });
-
-        it( "should be able to set the storage type", () => {
-            const state = createState({ storageType: STORAGE_TYPES.LOCAL });
-            mutations.setStorageType( state, STORAGE_TYPES.S3 );
-            expect( state.storageType ).toEqual( STORAGE_TYPES.S3 );
-        });
-
-        it( "should be able to set the Dropbox connection status", () => {
-            const state = createState({ dropboxConnected: false });
-            mutations.setDropboxConnected( state, true );
-            expect( state.dropboxConnected ).toEqual( true );
-        });
-
-        it( "should be able to set the Google Drive connection status", () => {
-            const state = createState({ driveConnected: false });
-            mutations.setDriveConnected( state, true );
-            expect( state.driveConnected ).toEqual( true );
         });
     });
 

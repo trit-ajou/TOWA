@@ -1,7 +1,6 @@
 import { vi } from "vitest";
 import { type Store } from "vuex";
 import type { Shape, Selection } from "@/definitions/document";
-import { STORAGE_TYPES } from "@/definitions/storage-types";
 import type ZoomableCanvas from "@/rendering/actors/zoomable-canvas";
 import { type BitMapperyState } from "@/store";
 import { createCanvasState } from "@/store/modules/canvas-module";
@@ -173,9 +172,6 @@ export function createState( props?: Partial<BitMapperyState> ): BitMapperyState
         modal: null,
         loadingStates: [],
         notifications: [],
-        storageType: STORAGE_TYPES.LOCAL,
-        dropboxConnected: false,
-        driveConnected: false,
         windowSize: {
             width: 990,
             height: 600,
