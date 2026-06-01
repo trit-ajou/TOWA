@@ -1,6 +1,8 @@
 import { watch, onUnmounted, onMounted, ref } from 'vue'
 import { useStore } from 'vuex'
 import { usePageLoader } from './usePageLoader'
+// @ts-expect-error bitmappery JS module
+import { getRendererForLayer } from '@bitmappery/factories/renderer-factory'
 
 const DEBOUNCE_MS = 30_000  // 30초 — #39 Phase 0 결정: 5초보다 무거운 페이지
                             // binary 직렬화/업로드 부담을 줄이고 page-switch
@@ -50,7 +52,26 @@ export function useAutoSave() {
     () => flagDirty(),
   )
 
+  // bitmappery는 brush/eraser stroke 끝(handleRelease) 직후 storePaintState를
+  // 1초 debounce로 호출한다. canvasToBlob × 2가 async라 historyIndex 증가
+  // (=flagDirty 트리거) 가 1초+ 지연됨. 사용자가 그 사이 페이지를 이동하거나
+  // Ctrl+S를 누르면 doSave가 dirty=false를 보고 bail → 자동저장 누락.
+  // bitmappery 자신도 undo action 진입 직전에 동일한 flush를 한다
+  // (history-module.ts의 undo action 참고).
+  async function flushPendingPaint(): Promise<void> {
+    const layer = store.getters['bmp/activeLayer']
+    if (!layer) return
+    const renderer = getRendererForLayer(layer)
+    if (renderer?.storePaintState) {
+      try { await renderer.storePaintState() } catch { /* best-effort */ }
+    }
+  }
+
   async function doSave(explicitPageId?: string): Promise<void> {
+    // brush의 pending paint state를 먼저 commit해야 historyIndex가 최신이 되고
+    // dirty.value가 올바르게 반영됨. 페인트 없는 상태에서는 즉시 no-op.
+    await flushPendingPaint()
+
     if (!dirty.value) return
     // 우선순위: 명시 인자 > 현재 selectedPageId > 마지막 dirty 시 잡아둔 ID.
     // 마지막 옵션은 EditorTab unmount(라우터 이동) 시 selectedPageId가 reset된 케이스용.
