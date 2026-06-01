@@ -32,6 +32,8 @@ import DocumentFactory from '@bitmappery/factories/document-factory'
 import LayerFactory from '@bitmappery/factories/layer-factory'
 // @ts-expect-error bitmappery JS module
 import { getCanvasInstance } from '@bitmappery/services/canvas-service'
+// @ts-expect-error bitmappery JS module
+import { flushLayerRenderers } from '@bitmappery/factories/renderer-factory'
 
 // page binary cache replaces the legacy `PageCache` singleton; the BlobCache
 // instance is now user-namespaced via the cache-db layer.
@@ -243,7 +245,13 @@ export function usePageLoader() {
         if (docs) {
           const idx = docs.findIndex((d: { id: string }) => d.id === prevDocId)
           if (idx !== -1 && idx !== store.state.bmp.document.activeIndex) {
-            docs[idx].layers.forEach((layer: { source?: HTMLCanvasElement; mask?: HTMLCanvasElement }) => {
+            // bitmappery의 rendererCache는 layer.id 단일 키. 다음 페이지의 doc이
+            // 같은 layer id를 재발급하면 이전 doc의 sprite/renderer가 cache hit으로
+            // 재사용되어 새 doc 캔버스 위에 이전 doc의 잔여 paint(예: 텍스트 박스)가
+            // 그대로 그려진다. closeActiveDocument가 같은 cleanup을 수행하므로
+            // (document-module.ts:114) 우리도 splice 전 명시적으로 flush.
+            docs[idx].layers.forEach((layer: { id: string; source?: HTMLCanvasElement; mask?: HTMLCanvasElement }) => {
+              flushLayerRenderers(layer)
               if (layer.source) { layer.source.width = 0; layer.source = undefined as any }
               if (layer.mask) { layer.mask.width = 0; layer.mask = undefined as any }
             })
