@@ -77,6 +77,8 @@ UI 컴포넌트 17개 폴더 전부 towa-app import 0건 확인. 그중 살릴 �
 - `services/aws-s3-service.ts`, `services/dropbox-service.ts` — A-1 의존성 짝(`@aws-sdk/client-s3`, `dropbox`)과 함께 삭제 (이슈 본문 미명시). cloud-file-selector·file-menu·file-import에서만 사용되어 dead.
 - `workers/compression.worker.ts` + `services/compression-service.ts` — **gif와 무관, 보존**. 이슈 본문 A-4는 gif 카테고리로 잘못 묶었으나 실제로는 `factories/document-factory.ts`가 호출하는 `.bpy` 프로젝트 파일 JSON 압축 워커. gif 코드 0줄. 삭제 대상은 `services/gif-creation-service.ts` + `config/towa-features.ts`의 `FILE_GIF_EXPORT` flag만.
 - cloud 정리 부수 효과 — `utils/cloud-service-loader.ts`, `mixins/cloud-service-connector.ts`, `definitions/storage-types.ts`(STORAGE_TYPES enum + FileNode type) 모두 cloud 전용이라 같이 삭제 (이슈 본문 미명시).
+- **D-2 `flattenImage` 진입점은 자동 완료** — file-menu/header-menu 통째 삭제 시 진입점도 함께 사라짐. src 전체에 `flatten` 호출 0건 확인. 별도 commit 불필요.
+- **D-3 layer-effects 미사용 필터 정리는 본 PR 범위 밖으로 보류** — `Filters` 타입·factory·rendering·worker·UI·wasm까지 도메인 일관 변경이 필요하고, 보존 대상인 `layer-effects/`를 #56 D-1이 어떻게 활용할지 확정된 뒤에 정리해야 충돌 위험 없음. `.bpy` 파일 호환성도 영향 — follow-up 이슈로 분리.
 
 ---
 

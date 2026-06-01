@@ -23,9 +23,9 @@
 
 ## 정리 필요 (eocodn 변경사항)
 
-- [ ] 불필요한 bitmappery optional 의존성 정리 (`@aws-sdk/client-s3`, `dropbox`, `psd.js`, `gifshot`, `pdfjs-dist`, `tiny-script-loader`)
 - [ ] `vue-select` v4 beta → stable 전환 또는 대안 검토
 - [ ] zcanvas v5 다운그레이드 영향 확인
+- [ ] layer-effects 미사용 필터 정리 (#58 D-3 보류분 — `Filters` 타입·factory·rendering·worker·wasm·UI 일관 정리, #56 D-1 활용 방식 확정 후 follow-up 이슈로 진행)
 
 ## 완료
 
