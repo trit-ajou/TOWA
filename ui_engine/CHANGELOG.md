@@ -4,6 +4,21 @@
 
 ---
 
+## 2026-06-01
+
+### 14:22 — FileAdapter sync 레이어 재구성 (#39)
+- 배경: `projects` / `folders` / `pages` / `trash` 같은 서버 상태를 TanStack Query 기반 캐시 레이어로 이관하고, 페이지 binary·thumbnail에 prefetch + 영속 캐시 도입. PoC 단계의 단일 사용자/세션 가정으로 LWW 운영
+- **Phase 1 — 캐시 인프라**: `@tanstack/vue-query` + `@tanstack/query-persist-client-core` 설치. user-namespaced cache DB (`towa-cache-${userId}`) + 일반화된 `BlobCache(storeName, maxMemory, maxIDB)` + thumbnail-cache store. `QueryClient` (staleTime: Infinity, retry 3회 1s/2s/4s, 401 bail) + IDB persister
+- **Phase 2 — composable 신규 + Vuex 4개 모듈 제거**: `useProjects/useFolders/usePages/useTrash` + 공유 `queryKeys`. 모든 사용처(view·component·composable·result-applier) 마이그레이션. `result-applier`는 store가 아닌 `queryClient` prop으로 `pages` cache update
+- **Phase 3 — Thumbnail + prefetch + 점진적 표시**: `useThumbnailUrl(pageId)` (Object URL 라이프사이클 컴포넌트 단). `usePageBinaryPrefetch` (활성 ±3 sliding window + 프로젝트 전체 1GB hard cap). `PageTransitionOverlay`가 입장 페이지 thumbnail을 spinner 아래 깔아 점진적 표시
+- **Phase 4 — Auth & Sync**: `BackendError.statusCode` 추가 + 모든 throw site에 response.status 전달. 글로벌 401 handler가 query/mutation cache 구독 → auth/logout + `/login?expired=1` redirect + 안내. `listPageSummaries`도 404 흡수 → ProjectView가 not-found 시 라이브러리 redirect. 라이브러리/프로젝트 헤더에 새로고침 버튼. window focus 시 active project pages invalidate. 로그인 직후 `invalidateQueries()` 전체
+- **Phase 5 — 저장 모델**: `useAutoSave`에 capture-phase Ctrl/Cmd+S → `saveImmediately`. dirty 상태일 때 document.title prefix `* ` 자동 토글. bitmappery `keyboard-service.ts`의 Ctrl+S Save Document 모달 차단. `savePageSnapshot`은 `withPushRetry` (1s/2s/4s, 3회, 401 short-circuit)로 wrap; 최종 실패 시 기존 AI 에러 다이얼로그로 안내
+- **Phase 6 — Playwright e2e**: 6개 카테고리(library/cache/save/persist/auth/user-isolation) spec + helpers + README + vite.config의 e2e 제외. unit 42/42 PASS, typecheck PASS. PASS 확인은 service_engine + db docker 구동이 필요해 사용자 환경에서 별도 진행
+- 명세 외 작은 결정(사후 보고): @tanstack/query-persist-client-core 패키지명, 자동 저장 debounce 30초 유지(Phase 0 분석), page-cache L1=7/L2=1000 (sliding window 7+byte cap 1GB), 세션 만료 임박 토스트는 expiresAt 데이터 부재로 401 redirect만 구현
+- 관련: 후행 #23 bitmappery 1단계 통합 (본 PR 머지 후)
+
+---
+
 ## 2026-05-29
 
 ### 22:30 — PaintGuard 오발동 핫픽스
