@@ -6,6 +6,14 @@
 
 ## 2026-06-01
 
+### 23:55 — #39 cross-document layer-id 충돌 fix
+- 증상: 다중 페이지 프로젝트에서 페이지 N에 텍스트박스를 추가하고 저장 없이 페이지 N+1로 넘어가면, N+1의 캔버스에 N의 텍스트박스가 잔여로 그려진 채로 보임. 우측 패널은 "텍스트 블록이 없습니다"(=`activeDocument.layers`에는 없음) 라 데이터·렌더 mismatch
+- Root cause: `LayerFactory.deserialize`가 stored `layer.i`를 그대로 사용해 LayerFactory.create로 전달. 그런데 bitmappery의 UID_COUNTER는 page session 단위 module-level — 여러 페이지를 같은 세션에서 deserialize하면 두 doc이 동일한 layer.id (e.g. `"layer_2"`)를 갖게 됨. `renderer-factory.ts`의 rendererCache와 `document-canvas.vue`의 layerPool 모두 layer.id 단일 key라 두 doc이 같은 sprite를 공유 → 새 doc의 layer를 그릴 자리에 이전 doc의 sprite가 박혀 잔여 paint가 살아남음. document-canvas.vue:195의 "Atomic swap: don't pre-flush" 주석이 이 가정을 명시 (bitmappery 단일 doc 사용에서는 ID 충돌이 발생 안 함)
+- 수정:
+  - `bitmappery/src/factories/layer-factory.ts`: `deserialize`에서 `id: layer.i` 인자 제거 → LayerFactory.create가 UID_COUNTER로 새 unique ID 할당. 외부 reference는 `layer.meta.blockId`를 쓰니 영향 없음
+  - `ui_engine/towa-app/src/composables/usePageLoader.ts switchPage`: splice 전 outgoing doc의 layer마다 `flushLayerRenderers(layer)` 명시 호출 — bitmappery의 `closeActiveDocument` (document-module.ts:114) 와 동일 패턴. ID 충돌이 없어도 cache 정리 안전망
+- 검증: Playwright e2e 신규 4번째 회귀 시나리오로 "두 페이지의 layer.id 집합이 disjoint"인지 자동 검증 + 사용자 manual 재현 절차 정리. 전체 e2e 10/10 PASS
+
 ### 23:17 — #39 사용자 검증 라운드 fix 4건
 - **thumbnail 404 race**: `usePageLoader.savePage`에서 invalidate→refetch 대신 새 thumbnail Blob을 `thumbnailCache.set` + `qc.setQueryData`로 직접 cache에 주입. service-engine이 저장 직후 thumbnail endpoint에 짧게 404를 주면 query data가 null로 collapse돼 영구적으로 빈 상태가 되던 버그 제거
 - **brush race**: `useAutoSave.doSave` 진입 시 active layer renderer의 `storePaintState()`를 `await` 으로 flush. bitmappery의 brush stroke 완료는 `canvasToBlob × 2` async + 1초 batch debounce가 끼어 historyIndex 증가가 지연됨. 그 사이 페이지 이동/Ctrl+S가 떨어지면 `dirty.value=false`로 bail되어 자동저장 누락이 발생. bitmappery의 `undo` action이 이미 쓰는 패턴(`history-module.ts:119-122`)을 그대로 차용
