@@ -49,26 +49,6 @@
                 />
             </div>
         </section>
-        <!-- dialog window used for information messages, alerts and confirmations -->
-        <dialog-window
-            v-if="dialog"
-            :type="dialog.type"
-            :title="dialog.title"
-            :message="dialog.message"
-            :link="dialog.link"
-            :confirm-handler="dialog.confirm"
-            :cancel-handler="dialog.cancel"
-        />
-        <!-- overlays -->
-        <div v-if="blindActive" class="blind">
-            <component
-                :is="activeModal"
-                @close="closeModal()"
-            />
-        </div>
-        <loader v-if="showLoader" />
-        <!-- notifications -->
-        <notifications />
     </div>
 </template>
 
@@ -80,9 +60,6 @@ import HeaderMenu from "@/components/menus/header-menu/header-menu.vue";
 import ToolOptionsPanel from "@/components/tool-options-panel/tool-options-panel.vue";
 import LayerPanel from "@/components/layer-panel/layer-panel.vue";
 import Toolbox from "@/components/toolbox/toolbox.vue";
-import DialogWindow from "@/components/dialog-window/dialog-window.vue";
-import Notifications from "@/components/notifications/notifications.vue";
-import Loader from "@/components/loader/loader.vue";
 import type { Document } from "@/definitions/document";
 import ToolTypes from "@/definitions/tool-types";
 import DocumentFactory from "@/factories/document-factory";
@@ -124,9 +101,6 @@ export default {
     mixins: [ ImageToDocumentManager ],
     components: {
         HeaderMenu,
-        DialogWindow,
-        Loader,
-        Notifications,
         ToolOptionsPanel,
         LayerPanel,
         Toolbox,
