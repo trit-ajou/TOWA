@@ -5,7 +5,7 @@ import { useFileAdapter } from './useFileAdapter'
 import { queryKeys } from './queryKeys'
 import { isAuthError } from '@/query/query-client'
 import { useErrorDialog } from './useErrorDialog'
-import { pageBinaryCache } from '@/file-adapter/cache-instances'
+import { pageBinaryCache, thumbnailCache } from '@/file-adapter/cache-instances'
 import type { PageSummary } from '@/file-adapter'
 
 // Exponential backoff retry for push (savePageSnapshot). #39 §Push 실패 UX
@@ -168,11 +168,16 @@ export function usePageLoader() {
       throw e
     }
 
-    // Invalidate the page list and the thumbnail binary cache so consumers
-    // (PageGrid, sidebars) pick up the new server-side thumbnailUrl/updatedAt.
-    // Thumbnail Object URLs are managed by their owning components in Phase 3.
+    // Push the brand-new thumbnail Blob straight into the cache + query data.
+    // Invalidating the binary query and letting it refetch from the server is
+    // racy — service-engine may briefly 404 the thumbnail while it's writing
+    // the snapshot, which then collapses the cached blob to `null` and leaves
+    // an empty thumbnail until the next external invalidation.
+    await thumbnailCache.set(pageId, thumbnail)
+    qc.setQueryData(queryKeys.binary.thumbnail(pageId), thumbnail)
+
+    // Page list metadata (updatedAt etc.) still needs a refresh.
     qc.invalidateQueries({ queryKey: queryKeys.pages.byProject(projectId) })
-    qc.invalidateQueries({ queryKey: queryKeys.binary.thumbnail(pageId) })
   }
 
   /**
