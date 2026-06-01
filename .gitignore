@@ -4,6 +4,10 @@
 # Claude Code worktrees (per-session feature branches; not part of repo state)
 .claude/worktrees/
 
+# Playwright artifacts (#39 e2e)
+ui_engine/towa-app/test-results/
+ui_engine/towa-app/playwright-report/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

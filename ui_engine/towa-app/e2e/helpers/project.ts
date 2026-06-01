@@ -5,12 +5,15 @@ import type { Page } from '@playwright/test'
  * single in-memory PNG so the project has one page to navigate to.
  */
 export async function createProjectWithOnePage(page: Page, name: string): Promise<string> {
-  // Open the create project modal via AddMenu in the library header.
-  await page.getByRole('button', { name: '추가' }).first().click()
-  await page.getByRole('menuitem', { name: '새 프로젝트' }).click()
+  // Open the create project modal via AddMenu in the library header. The
+  // trigger is marked with data-add-menu-trigger; the toolbar variant is the
+  // pill button on the right of the header.
+  await page.locator('[data-add-menu-trigger]').first().click()
+  await page.locator('[data-add-menu-popover]').getByText('새 프로젝트').click()
 
-  // Fill the form.
-  await page.getByLabel('이름').fill(name)
+  // Fill the form. The project name input has no `for`/`id` binding so we
+  // address it via its placeholder which is unique to this modal.
+  await page.locator('input[placeholder*="원피스"]').fill(name)
   // Drop a synthesized PNG as the first page.
   const pngBytes = Uint8Array.from([
     0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
@@ -29,7 +32,8 @@ export async function createProjectWithOnePage(page: Page, name: string): Promis
     buffer: Buffer.from(pngBytes),
   })
 
-  await page.getByRole('button', { name: /만들기|생성|시작/ }).click()
+  // Submit button label is "생성 (Np)" once files are attached.
+  await page.getByRole('button', { name: /^생성/ }).click()
 
   // The library navigates to the new project on success.
   await page.waitForURL(/\/project\/[\w-]+/, { timeout: 15_000 })

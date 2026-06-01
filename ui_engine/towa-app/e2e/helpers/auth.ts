@@ -11,9 +11,13 @@ export async function devLogin(page: Page, email: string = DEFAULT_EMAIL, nickna
   await page.waitForURL(/\/library/, { timeout: 15_000 })
 }
 
-/** Clear browser-side state — fresh start, no auth/cache leakage between tests. */
+/** Clear browser-side state — fresh start, no auth/cache leakage between tests.
+ *  Storage APIs can only be touched from a real same-origin document, so we
+ *  navigate to the app's login page first.
+ */
 export async function clearBrowserState(page: Page): Promise<void> {
   await page.context().clearCookies()
+  await page.goto('/login', { waitUntil: 'domcontentloaded' })
   await page.evaluate(async () => {
     localStorage.clear()
     sessionStorage.clear()
