@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { devLogin, clearBrowserState } from './helpers/auth'
-import { createProjectWithOnePage } from './helpers/project'
+import { createProjectWithOnePage, createProjectWithPages } from './helpers/project'
 
 // Regression suite for the user-validation round fixes (CHANGELOG 23:17):
 //   - thumbnail race
@@ -87,6 +87,47 @@ test.describe('autosave regression', () => {
       return aside ? !!aside.querySelector('.bg-towa-warning') : false
     })
     expect(hasBadge).toBe(false)
+  })
+
+  test('layer ids are disjoint across pages (no cross-document sprite hijack)', async ({ page }) => {
+    // Regression for: bitmappery's rendererCache + document-canvas layerPool key
+    // on layer.id. If two documents share an id, the later document hits the
+    // cached sprite of the earlier one — the previous page's textbox stays
+    // painted on the next page's canvas while activeDocument.layers reports
+    // none. (Reproduced before the fix; this test guards the deserialize
+    // patch that allocates a fresh UID per loaded layer.)
+    await devLogin(page, `regress-${Date.now()}@towa.test`)
+    const projectId = await createProjectWithPages(page, `idconflict-${Date.now()}`, 2)
+
+    await page.goto(`/project/${projectId}/edit`)
+    await expect(page.locator('#towa-canvas-area')).toBeVisible()
+    await expect.poll(async () => await page.evaluate(() => {
+      const app = (document.querySelector('#app') as HTMLElement & { __vue_app__?: { config: { globalProperties: { $store: { getters: Record<string, unknown> } } } } })?.__vue_app__
+      return !!app?.config.globalProperties.$store.getters['bmp/activeDocument']
+    }), { timeout: 10_000 }).toBe(true)
+
+    // Add a text layer on page 1, capture its layer ids, click page 2, capture again.
+    const result = await page.evaluate(async () => {
+      const store = ((document.querySelector('#app') as HTMLElement & { __vue_app__?: { config: { globalProperties: { $store: unknown } } } })?.__vue_app__)
+        ?.config.globalProperties.$store as {
+          getters: Record<string, { layers?: { id: string }[] } | undefined>
+        }
+      ;(document.querySelector('#towa-right-panel button[title="텍스트 블록 추가"]') as HTMLButtonElement | null)?.click()
+      await new Promise((r) => setTimeout(r, 250))
+      const page1Ids = (store.getters['bmp/activeDocument']?.layers ?? []).map((l) => l.id)
+
+      const items = Array.from(document.querySelectorAll('aside button'))
+        .filter((b) => b.querySelector('img'))
+      ;(items[1] as HTMLButtonElement | undefined)?.click()
+      await new Promise((r) => setTimeout(r, 2500))
+      const page2Ids = (store.getters['bmp/activeDocument']?.layers ?? []).map((l) => l.id)
+      return { page1Ids, page2Ids }
+    })
+
+    expect(result.page1Ids.length).toBeGreaterThan(1) // at least graphic + the new text layer
+    expect(result.page2Ids.length).toBeGreaterThanOrEqual(1)
+    const intersection = result.page1Ids.filter((id) => result.page2Ids.includes(id))
+    expect(intersection).toEqual([])
   })
 
   test('text edit raises the badge on the active page card and clears after save', async ({ page }) => {
