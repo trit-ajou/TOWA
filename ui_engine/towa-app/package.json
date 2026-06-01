@@ -13,6 +13,8 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1030.0",
     "@simonwep/pickr": "^1.9.1",
+    "@tanstack/query-persist-client-core": "^5.100.14",
+    "@tanstack/vue-query": "^5.100.14",
     "buffer": "^6.0.3",
     "contactjs": "^2.1.7",
     "dropbox": "^10.34.0",
