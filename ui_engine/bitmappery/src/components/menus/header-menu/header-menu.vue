@@ -53,27 +53,6 @@
                             @click="openFileSelector()"
                         ></button>
                     </li>
-                    <li v-if="hasDropbox">
-                        <button
-                            v-t="'openDropboxDocument'"
-                            type="button"
-                            @click="initDropbox()"
-                        ></button>
-                    </li>
-                    <li v-if="hasDrive">
-                        <button
-                            v-t="'openDriveDocument'"
-                            type="button"
-                            @click="initDrive()"
-                        ></button>
-                    </li>
-                    <li v-if="hasS3">
-                        <button
-                            v-t="'openS3Document'"
-                            type="button"
-                            @click="initS3()"
-                        ></button>
-                    </li>
                     <li>
                         <button
                             v-t="'close'"
@@ -373,28 +352,22 @@ import {
     CREATE_DOCUMENT, RESIZE_DOCUMENT, SAVE_DOCUMENT, EXPORT_WINDOW, LOAD_SELECTION, SAVE_SELECTION,
     PREFERENCES, RESIZE_CANVAS, GRID_TO_LAYERS, STROKE_SELECTION
 } from "@/definitions/modal-windows";
-import CloudServiceConnector from "@/mixins/cloud-service-connector";
 import ImageToDocumentManager from "@/mixins/image-to-document-manager";
 import { getCanvasInstance } from "@/services/canvas-service";
 import { cropToSelection } from "@/store/actions/crop-to-selection";
 import { supportsFullscreen, setToggleButton } from "@/utils/environment-util";
-import { supportsDropbox, supportsGoogleDrive, supportsS3 } from "@/utils/cloud-service-loader";
 import { isFeatureEnabled } from "@/config/towa-features";
-import sharedMessages from "@/messages.json"; // for CloudServiceConnector
 import messages from "./messages.json";
 
 export default {
-    i18n: { messages, sharedMessages },
-    mixins: [ CloudServiceConnector, ImageToDocumentManager ],
+    i18n: { messages },
+    mixins: [ ImageToDocumentManager ],
     components: {
         LayerMenu : defineAsyncComponent({ loader: () => import( "@/components/menus/layer-menu/layer-menu.vue" ) }),
     },
     data: () => ({
         activeSubMenu: null, // used for mobile views collapsed / expanded view
         isFullscreen: false,
-        hasDropbox: supportsDropbox(),
-        hasDrive: supportsGoogleDrive(),
-        hasS3: supportsS3(),
     }),
     computed: {
         ...mapState("bmp", [

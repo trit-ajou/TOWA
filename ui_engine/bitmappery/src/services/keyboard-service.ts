@@ -27,7 +27,7 @@ import { LayerTypes } from "@/definitions/layer-types";
 import { ALL_PANELS } from "@/definitions/panel-types";
 import ToolTypes, { canDraw, MAX_BRUSH_SIZE, SELECTION_TOOLS } from "@/definitions/tool-types";
 import {
-    CREATE_DOCUMENT, ADD_LAYER, SAVE_DOCUMENT, DROPBOX_FILE_SELECTOR,
+    CREATE_DOCUMENT, ADD_LAYER, SAVE_DOCUMENT,
 } from "@/definitions/modal-windows";
 import { zoomIn, zoomOut } from "@/store/actions/canvas-zoom";
 import { addTextLayer } from "@/store/actions/layer-add-text-layer";
@@ -379,15 +379,6 @@ function handleKeyDown( event: KeyboardEvent ): void {
             if ( altDown ) {
                 preventDefault( event ); // new browser window
                 openModal( CREATE_DOCUMENT );
-            }
-            break;
-
-        case 79: // O
-            if ( altDown ) {
-                if ( state.dropboxConnected ) {
-                    openModal( DROPBOX_FILE_SELECTOR );
-                }
-                preventDefault( event );
             }
             break;
 

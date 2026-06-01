@@ -26,7 +26,6 @@ import type { Notification, Dialog, CopiedSelection } from "@/definitions/editor
 import { PROJECT_FILE_EXTENSION } from "@/definitions/file-types";
 import { LayerTypes } from "@/definitions/layer-types";
 import { PANEL_TOOL_OPTIONS, PANEL_LAYERS } from "@/definitions/panel-types";
-import { STORAGE_TYPES } from "@/definitions/storage-types";
 import DocumentFactory from "@/factories/document-factory";
 import LayerFactory from "@/factories/layer-factory";
 import { initHistory, enqueueState } from "@/factories/history-state-factory";
@@ -60,9 +59,6 @@ export interface BitMapperyState {
     modal: number | null;     // currently opened modal (see modal-windows definition)
     loadingStates: string[];  // wether one or more long running operations (identified by string key) are running
     notifications: Notification[]; // notification message queue
-    storageType: STORAGE_TYPES;
-    dropboxConnected: boolean;
-    driveConnected: boolean;
     windowSize: Size;
 
     // store sub-module states
@@ -108,9 +104,6 @@ const storeConfig = {
         modal: null,
         loadingStates: [],
         notifications: [],
-        storageType: STORAGE_TYPES.LOCAL,
-        dropboxConnected: false, // whether a Dropbox session has been authorized
-        driveConnected: false, // whether a Google Drive session has been authorized
         windowSize: {
             width: window.innerWidth,
             height: window.innerHeight
@@ -204,15 +197,6 @@ const storeConfig = {
          */
         setWindowSize( state: BitMapperyState, { width, height }: Size ): void {
             state.windowSize = { width, height };
-        },
-        setStorageType( state: BitMapperyState, value: STORAGE_TYPES ): void {
-            state.storageType = value;
-        },
-        setDropboxConnected( state: BitMapperyState, value: boolean ): void {
-            state.dropboxConnected = value;
-        },
-        setDriveConnected( state: BitMapperyState, value: boolean ): void {
-            state.driveConnected = value;
         },
     },
     actions: {

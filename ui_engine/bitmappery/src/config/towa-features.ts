@@ -38,11 +38,6 @@ export const TOWA_FEATURES = {
     FILE_BPY_SAVE: true,
     FILE_BPY_LOAD: true,
 
-    // ── 클라우드 스토리지 ──
-    CLOUD_DROPBOX: false,
-    CLOUD_GOOGLE_DRIVE: false,
-    CLOUD_S3: false,
-
     // ── 문서 조작 (Document) ──
     DOC_RESIZE: true,
     DOC_CANVAS_SIZE: true,
