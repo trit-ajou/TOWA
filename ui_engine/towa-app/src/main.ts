@@ -2,6 +2,7 @@ import { Buffer } from 'buffer'
 import { createApp } from 'vue'
 import FloatingVue, { vTooltip } from 'floating-vue'
 import { createI18n } from 'vue-i18n'
+import { VueQueryPlugin } from '@tanstack/vue-query'
 import App from './App.vue'
 import router from './router'
 import store from './store'
@@ -10,6 +11,7 @@ import { createFileAdapter } from './file-adapter'
 import { FILE_ADAPTER_KEY } from './composables/useFileAdapter'
 import { APP_BACKEND_KEY } from './composables/useAppBackend'
 import { DEPLOYMENT_MODE } from './config/deployment'
+import { queryClient, setQueryUser } from './query/query-client'
 import './app.css'
 import 'floating-vue/dist/style.css'
 
@@ -32,6 +34,7 @@ const app = createApp(App)
 app.use(router)
 app.use(store)
 app.use(i18n)
+app.use(VueQueryPlugin, { queryClient })
 app.directive('tooltip', vTooltip)
 
 // 1) Backend SDK (auth + aiJobs + files) — 모드 무관하게 항상 생성
@@ -55,11 +58,18 @@ store.dispatch('pages/init', fileAdapter)
 store.dispatch('folders/init', fileAdapter)
 store.dispatch('trash/init', fileAdapter)
 
-// 5) 세션 복원 → 로그인 상태이면 프로젝트·폴더 로드
+type AuthSliceShape = { auth?: { user?: { id?: string } } }
+function readUserId(): string | null {
+  return (store.state as AuthSliceShape).auth?.user?.id ?? null
+}
+
+// 5) 세션 복원 → 로그인 상태이면 query/cache user namespace 활성화 + 프로젝트·폴더 로드
 async function init() {
   await store.dispatch('auth/restoreFromStorage')
   const isLoggedIn = store.getters['auth/isLoggedIn']
   if (isLoggedIn) {
+    const userId = readUserId()
+    if (userId) await setQueryUser(userId)
     try {
       await Promise.all([
         store.dispatch('projects/loadAll'),
@@ -70,6 +80,20 @@ async function init() {
       console.warn('[init] loadAll failed on cloud boot:', e)
     }
   }
+
+  // 로그인/로그아웃 시점에 cache DB와 query persister를 동기화.
+  // setQueryUser는 async지만 mutation handler는 fire-and-forget.
+  store.subscribe((mutation, state) => {
+    if (mutation.type === 'auth/SET_SESSION') {
+      const uid = (state as AuthSliceShape).auth?.user?.id ?? null
+      if (uid) {
+        setQueryUser(uid).catch((e) => console.warn('[main] setQueryUser failed', e))
+      }
+    } else if (mutation.type === 'auth/CLEAR_SESSION') {
+      setQueryUser(null).catch((e) => console.warn('[main] setQueryUser(null) failed', e))
+    }
+  })
+
   app.mount('#app')
 }
 init()
