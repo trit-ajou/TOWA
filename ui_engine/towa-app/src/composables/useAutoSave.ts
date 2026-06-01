@@ -9,23 +9,29 @@ const DEBOUNCE_MS = 30_000  // 30초 — #39 Phase 0 결정: 5초보다 무거�
                             // 즉시 저장 안전망이 있어 catastrophic loss 한도가
                             // 30초로 제한됨. (운영 후 필요하면 줄임)
 
+// dirty 상태는 module-scope singleton — UI 뱃지가 어디 mount되든 (사이드패널,
+// 홈 그리드, 라이브러리) 같은 정보를 구독할 수 있어야 한다. dirtyPageId는
+// "지금 어떤 페이지에 미저장 변경분이 있는가"를 표시하기 위한 좌표.
+const dirty = ref(false)
+const dirtyPageId = ref<string | null>(null)
+
+/** UI(뱃지 등)에서 미저장 상태를 구독하기 위한 read-only 핸들. */
+export function useDirtyState() {
+  return { dirty, dirtyPageId }
+}
+
 /**
  * bitmappery history 변화를 감지하여 자동 저장. (#39 §저장 모델)
  * - 편집 후 debounce 30초 (auto)
  * - Ctrl/Cmd+S 즉시 저장 (수동) — bitmappery의 Save Document 모달은 차단됨
  * - 컴포넌트 해제(페이지 전환 등) 시 즉시 저장
  * - 브라우저 탭 닫기 전 저장 시도
- * - dirty 상태일 때 document.title 앞에 "*" prefix
+ * - dirty 페이지는 PageSidePanelItem / PageThumbnail 좌상단 뱃지로 표시
  */
 export function useAutoSave() {
   const store = useStore()
   const { savePage } = usePageLoader()
 
-  const dirty = ref(false)
-  // 마지막으로 dirty 처리된 페이지 ID. 라우터 이동으로 selectedPageId가 reset된 뒤
-  // onUnmounted가 돌면 selectedPageId가 null이라 저장이 누락된다. markDirty 시점에
-  // 떠나는 페이지를 잡아두고 fallback으로 쓴다.
-  let lastDirtyPageId: string | null = null
   let saveTimer: ReturnType<typeof setTimeout> | null = null
 
   function getCurrentPageId(): string | null {
@@ -33,12 +39,12 @@ export function useAutoSave() {
   }
 
   // dirty 플래그 세팅 + debounce 타이머 (재)시작 + 현재 페이지 ID capture.
-  // pageId capture는 라우터 이동으로 selectedPageId가 reset된 후 onUnmounted가 돌면
-  // doSave가 pageId=null로 bail out하는 케이스를 막기 위함. 편집/상세편집 탭 전환이
-  // 특히 이 패턴에 해당.
+  // dirtyPageId 캡처는 라우터 이동으로 selectedPageId가 reset된 후 onUnmounted가
+  // 돌면 doSave가 pageId=null로 bail out하는 케이스를 막기 위함이기도 하고,
+  // UI 뱃지가 어떤 페이지에 미저장 변경분이 있는지 가리키는 좌표가 되기도 한다.
   function flagDirty(): void {
     dirty.value = true
-    lastDirtyPageId = getCurrentPageId() ?? lastDirtyPageId
+    dirtyPageId.value = getCurrentPageId() ?? dirtyPageId.value
     if (saveTimer) clearTimeout(saveTimer)
     saveTimer = setTimeout(async () => {
       await doSave()
@@ -75,12 +81,12 @@ export function useAutoSave() {
     if (!dirty.value) return
     // 우선순위: 명시 인자 > 현재 selectedPageId > 마지막 dirty 시 잡아둔 ID.
     // 마지막 옵션은 EditorTab unmount(라우터 이동) 시 selectedPageId가 reset된 케이스용.
-    const pageId = explicitPageId ?? getCurrentPageId() ?? lastDirtyPageId
+    const pageId = explicitPageId ?? getCurrentPageId() ?? dirtyPageId.value
     if (!pageId) return
     try {
       await savePage(pageId)
       dirty.value = false
-      lastDirtyPageId = null
+      dirtyPageId.value = null
     } catch (e) {
       console.error('[AutoSave] Failed:', e)
     }
@@ -124,16 +130,6 @@ export function useAutoSave() {
     void saveImmediately()
   }
 
-  // dirty 상태일 때 document.title prefix에 "*" — 사용자가 미저장 변경이 있음을 인지.
-  const TITLE_DIRTY = '* '
-  function applyTitlePrefix(isDirty: boolean) {
-    const cur = document.title
-    const hasPrefix = cur.startsWith(TITLE_DIRTY)
-    if (isDirty && !hasPrefix) document.title = TITLE_DIRTY + cur
-    else if (!isDirty && hasPrefix) document.title = cur.slice(TITLE_DIRTY.length)
-  }
-  const stopTitleWatch = watch(dirty, applyTitlePrefix)
-
   onMounted(() => {
     window.addEventListener('beforeunload', onBeforeUnload)
     window.addEventListener('keydown', onKeydownCapture, { capture: true })
@@ -141,14 +137,11 @@ export function useAutoSave() {
 
   onUnmounted(() => {
     stopWatch()
-    stopTitleWatch()
     if (saveTimer) clearTimeout(saveTimer)
     window.removeEventListener('beforeunload', onBeforeUnload)
     window.removeEventListener('keydown', onKeydownCapture, { capture: true })
     // 컴포넌트 해제 시 즉시 저장
     doSave()
-    // title prefix 정리
-    applyTitlePrefix(false)
   })
 
   return { dirty, saveImmediately, markDirty }

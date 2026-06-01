@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, toRef } from 'vue'
+import { computed } from 'vue'
 import type { Page } from '@/types/page'
 import { Edit3, Paintbrush, Trash2 } from 'lucide-vue-next'
 import { useThumbnailUrl } from '@/composables/useThumbnailUrl'
+import { useDirtyState } from '@/composables/useAutoSave'
 
 const props = defineProps<{
   page: Page
@@ -20,6 +21,9 @@ defineEmits<{
 // URL that is revoked on unmount or pageId change.
 const pageId = computed(() => props.page.id)
 const { url: thumbUrl } = useThumbnailUrl(pageId)
+
+const { dirty, dirtyPageId } = useDirtyState()
+const isDirty = computed(() => dirty.value && dirtyPageId.value === props.page.id)
 
 const statusConfig = computed(() => {
   const map: Record<string, { label: string; color: string }> = {
@@ -47,6 +51,13 @@ const statusConfig = computed(() => {
       <div v-else class="w-full h-full flex items-center justify-center text-towa-text-muted text-sm">
         {{ page.index }}p
       </div>
+      <span
+        v-if="isDirty"
+        class="absolute top-2 left-2 text-[10px] font-medium text-white px-1.5 py-0.5 rounded-full bg-towa-warning"
+        title="저장되지 않은 변경분이 있습니다"
+      >
+        저장 안 됨
+      </span>
       <span
         class="absolute top-2 right-2 text-[10px] font-medium text-white px-1.5 py-0.5 rounded-full"
         :class="statusConfig.color"
