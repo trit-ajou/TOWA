@@ -54,7 +54,6 @@
 <script lang="ts">
 import { type Component, defineAsyncComponent } from "vue";
 import { mapState, mapGetters, mapMutations, mapActions } from "vuex";
-import { createI18n } from "vue-i18n";
 import ToolOptionsPanel from "@/components/tool-options-panel/tool-options-panel.vue";
 import LayerPanel from "@/components/layer-panel/layer-panel.vue";
 import Toolbox from "@/components/toolbox/toolbox.vue";
@@ -68,12 +67,6 @@ import { renderState } from "@/services/render-service";
 import ImageToDocumentManager from "@/mixins/image-to-document-manager";
 import { readClipboardFiles, readDroppedFiles } from "@/utils/file-util";
 import { truncate } from "@/utils/string-util";
-import messages from "./messages.json";
-
-// Create VueI18n instance with options
-const i18n = createI18n({
-    messages
-});
 let lastDocumentId = null;
 
 // wrapper for loading dynamic components with custom loading states

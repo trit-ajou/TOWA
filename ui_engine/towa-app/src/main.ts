@@ -22,9 +22,10 @@ globalThis.Buffer = Buffer
 // FloatingVue tooltip delay
 FloatingVue.options.themes.tooltip.delay.show = 500
 
-// bitmappery i18n
+// bitmappery i18n (Composition API mode + global injection for $t in templates)
 const i18n = createI18n({
-  legacy: true,
+  legacy: false,
+  globalInjection: true,
   messages: bmpMessages,
 })
 

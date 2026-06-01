@@ -13,9 +13,10 @@ import "floating-vue/dist/style.css"; // required for tooltips
 // required for psd.js
 globalThis.Buffer = Buffer;
 
-// Create VueI18n instance with options
+// Create VueI18n instance (Composition API mode + global injection for $t in templates)
 const i18n = createI18n({
-    legacy: true, // Options API
+    legacy: false,
+    globalInjection: true,
     messages
 });
 
