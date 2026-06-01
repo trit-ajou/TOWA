@@ -130,6 +130,53 @@ test.describe('autosave regression', () => {
     expect(intersection).toEqual([])
   })
 
+  test('fast delete clicks remove distinct layers, not the same stale one', async ({ page }) => {
+    // Bug: Vue flushes DOM on the next microtask. Without a synchronous
+    // guard, two clicks dispatched in the same tick on a text-block's
+    // delete button both fire emit('remove') with the same layer.id —
+    // the second one short-circuits in EditorTab.removeTextLayer because
+    // findLayerIndex returns -1. The user sees the row stay put.
+    // Fix: TextBlockItem flips its own `disabled` attribute synchronously
+    // inside onRemove. Subsequent same-tick clicks land on a disabled
+    // button and no-op; the click selector skips to the next live button.
+    await devLogin(page, `removerace-${Date.now()}@towa.test`)
+    const projectId = await createProjectWithOnePage(page, `removerace-${Date.now()}`)
+
+    await page.goto(`/project/${projectId}/edit`)
+    await expect(page.locator('#towa-canvas-area')).toBeVisible()
+    await expect.poll(async () => await page.evaluate(() => {
+      const app = (document.querySelector('#app') as HTMLElement & { __vue_app__?: { config: { globalProperties: { $store: { getters: Record<string, unknown> } } } } })?.__vue_app__
+      return !!app?.config.globalProperties.$store.getters['bmp/activeDocument']
+    }), { timeout: 10_000 }).toBe(true)
+
+    // Add 5 text layers then fire 5 synchronous delete clicks — the same
+    // shape as the original bug repro.
+    const result = await page.evaluate(async () => {
+      const app = (document.querySelector('#app') as HTMLElement & { __vue_app__?: { config: { globalProperties: { $store: unknown } } } })?.__vue_app__
+      const store = app?.config.globalProperties.$store as { getters: Record<string, { layers?: { type: string }[] } | undefined> }
+      const addBtn = document.querySelector('#towa-right-panel button[title="텍스트 블록 추가"]') as HTMLButtonElement | null
+      for (let i = 0; i < 5; i++) {
+        addBtn?.click()
+        await new Promise((r) => setTimeout(r, 80))
+      }
+      await new Promise((r) => setTimeout(r, 200))
+      const before = (store.getters['bmp/activeDocument']?.layers ?? []).filter((l) => l.type === 'text').length
+
+      const panel = document.querySelector('#towa-right-panel')
+      for (let i = 0; i < 5; i++) {
+        const buttons = panel ? Array.from(panel.querySelectorAll('button[title="삭제"]')) : []
+        const first = buttons.find((b) => !(b as HTMLButtonElement).disabled) as HTMLButtonElement | undefined
+        first?.click()
+      }
+      await new Promise((r) => setTimeout(r, 400))
+      const after = (store.getters['bmp/activeDocument']?.layers ?? []).filter((l) => l.type === 'text').length
+      return { before, after }
+    })
+
+    expect(result.before).toBe(5)
+    expect(result.after).toBe(0)
+  })
+
   test('tab navigation (edit ↔ detail-edit) preserves the active document', async ({ page }) => {
     // Regression for the bug where mounting either tab fired its
     // selectedPageId watcher with immediate:true, which called switchPage
