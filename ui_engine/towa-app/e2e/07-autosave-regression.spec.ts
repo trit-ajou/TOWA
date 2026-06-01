@@ -130,6 +130,73 @@ test.describe('autosave regression', () => {
     expect(intersection).toEqual([])
   })
 
+  test('tab navigation (edit ↔ detail-edit) preserves the active document', async ({ page }) => {
+    // Regression for the bug where mounting either tab fired its
+    // selectedPageId watcher with immediate:true, which called switchPage
+    // and bmp/addNewDocument — stranding the outgoing tab's edits in
+    // documents[0] while activeIndex moved to a freshly loaded (older)
+    // version of the same page. The fix: usePageLoader tracks
+    // currentLoadedPageId and switchPage no-ops when the requested page
+    // is already the active document.
+    await devLogin(page, `tabswap-${Date.now()}@towa.test`)
+    const projectId = await createProjectWithOnePage(page, `tabswap-${Date.now()}`)
+
+    await page.goto(`/project/${projectId}/edit`)
+    await expect(page.locator('#towa-canvas-area')).toBeVisible()
+    await expect.poll(async () => await page.evaluate(() => {
+      const app = (document.querySelector('#app') as HTMLElement & { __vue_app__?: { config: { globalProperties: { $store: { getters: Record<string, unknown> } } } } })?.__vue_app__
+      return !!app?.config.globalProperties.$store.getters['bmp/activeDocument']
+    }), { timeout: 10_000 }).toBe(true)
+
+    // Add 3 text layers on edit tab.
+    await page.evaluate(async () => {
+      const addBtn = document.querySelector('#towa-right-panel button[title="텍스트 블록 추가"]') as HTMLButtonElement | null
+      for (let i = 0; i < 3; i++) {
+        addBtn?.click()
+        await new Promise((r) => setTimeout(r, 80))
+      }
+    })
+    await page.waitForTimeout(200)
+
+    const editLayers = await page.evaluate(() => {
+      const app = (document.querySelector('#app') as HTMLElement & { __vue_app__?: { config: { globalProperties: { $store: unknown } } } })?.__vue_app__
+      const store = app?.config.globalProperties.$store as { getters: Record<string, { layers?: { id: string; type: string }[] } | undefined>; state: { bmp: { document: { documents: { id: string }[]; activeIndex: number } } } }
+      return {
+        activeDocId: store.getters['bmp/activeDocument']?.id,
+        layerCount: store.getters['bmp/activeDocument']?.layers?.length,
+        docCount: store.state.bmp.document.documents.length,
+      }
+    })
+    expect(editLayers.layerCount).toBe(4) // graphic + 3 text
+
+    // Switch to detail-edit tab via the navbar (SPA navigation; goto would
+    // do a full reload and reset module-scope state, masking the bug).
+    await page.evaluate(() => {
+      const btn = Array.from(document.querySelectorAll('nav button'))
+        .find((b) => (b.textContent ?? '').trim() === '상세 편집') as HTMLButtonElement | undefined
+      btn?.click()
+    })
+    await expect(page).toHaveURL(/\/detail$/, { timeout: 5_000 })
+    await page.waitForTimeout(500)
+
+    const detailState = await page.evaluate(() => {
+      const app = (document.querySelector('#app') as HTMLElement & { __vue_app__?: { config: { globalProperties: { $store: unknown } } } })?.__vue_app__
+      const store = app?.config.globalProperties.$store as { getters: Record<string, { id: string; layers?: { id: string; type: string }[] } | undefined>; state: { bmp: { document: { documents: { id: string }[]; activeIndex: number } } } }
+      return {
+        activeDocId: store.getters['bmp/activeDocument']?.id,
+        layerCount: store.getters['bmp/activeDocument']?.layers?.length,
+        docCount: store.state.bmp.document.documents.length,
+        activeIndex: store.state.bmp.document.activeIndex,
+      }
+    })
+
+    // Same doc, same layer count, documents array hasn't grown.
+    expect(detailState.activeDocId).toBe(editLayers.activeDocId)
+    expect(detailState.layerCount).toBe(4)
+    expect(detailState.docCount).toBe(1)
+    expect(detailState.activeIndex).toBe(0)
+  })
+
   test('text edit raises the badge on the active page card and clears after save', async ({ page }) => {
     await devLogin(page, `regress-${Date.now()}@towa.test`)
     const projectId = await createProjectWithOnePage(page, `badge-${Date.now()}`)

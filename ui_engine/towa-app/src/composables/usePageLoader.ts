@@ -46,6 +46,16 @@ const originalImageCache = new Map<string, Blob>()
 const isPageSwitching = ref(false)
 
 /**
+ * 현재 bitmappery에 로드돼 있는 페이지 id. loadPage 끝에서 set, switchPage 진입
+ * 시점에 toPageId와 일치하면 swap 자체를 skip한다. 편집 탭과 상세 편집 탭은
+ * router 전환 시 각각 unmount/mount 되면서 둘 다 selectedPageId watch를
+ * immediate:true로 fire하는데, 그 때마다 새 doc을 bmp/addNewDocument로 push
+ * 하면 이전 탭에서 진행한 변경이 documents 배열에 고립된 채로 남고 activeIndex
+ * 가 캐시/서버 fetch 결과(옛 상태)를 가리키게 된다.
+ */
+let currentLoadedPageId: string | null = null
+
+/**
  * bitmappery 캔버스와 FileAdapter(저장소) 사이의 오케스트레이션.
  * - loadPage: 저장소 → bitmappery에 문서 로드
  * - savePage: bitmappery 현재 상태 → 저장소에 snapshot 저장
@@ -103,6 +113,7 @@ export function usePageLoader() {
     }
 
     store.commit('bmp/addNewDocument', doc)
+    currentLoadedPageId = pageId
     // bitmappery activeDocument watcher가 자동으로 calcIdealDimensions(true)를
     // 호출하여 캔버스 크기를 재계산하므로 별도 트리거 불필요.
     // 이전 코드의 window.dispatchEvent('resize')는 bitmappery.handleResize를 호출하는데,
@@ -215,6 +226,16 @@ export function usePageLoader() {
    * 3. 새 페이지 로드
    */
   async function switchPage(fromPageId: string | null, toPageId: string): Promise<void> {
+    // Tab navigation (편집 ↔ 상세 편집) unmounts one tab and mounts the other,
+    // both of which fire their selectedPageId watcher with immediate:true.
+    // Without this guard the new tab pushes another doc for the same page,
+    // stranding the outgoing tab's edits in documents[idx] while activeIndex
+    // points at a fresh doc loaded from the cache/server (i.e. an older
+    // version of the same page). The user sees deleted layers reappear.
+    if (toPageId === currentLoadedPageId && store.getters['bmp/activeDocument']) {
+      return
+    }
+
     isPageSwitching.value = true
     try {
       // 1. 현재 페이지 캐시. 서버 저장은 호출자(EditorTab 등)가 useAutoSave의
@@ -269,6 +290,15 @@ export function usePageLoader() {
   }
 
   return { loadPage, savePage, switchPage, pageCache, isPageSwitching }
+}
+
+/**
+ * Reset the page-loader's module-scope state. Call from ProjectView's
+ * onBeforeUnmount after closeActiveDocument so the next project entry doesn't
+ * mistakenly skip loadPage for a page whose doc was just torn down.
+ */
+export function resetPageLoaderState(): void {
+  currentLoadedPageId = null
 }
 
 // --- helpers ---

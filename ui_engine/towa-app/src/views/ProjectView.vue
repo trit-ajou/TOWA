@@ -6,7 +6,7 @@ import { useStore } from 'vuex'
 import BitMappery from '@bitmappery/bitmappery.vue'
 import { setTowaMode } from '@bitmappery/config/towa-mode-presets'
 import PageTransitionOverlay from '@/components/common/PageTransitionOverlay.vue'
-import { usePageLoader } from '@/composables/usePageLoader'
+import { usePageLoader, resetPageLoaderState } from '@/composables/usePageLoader'
 import { useProjects } from '@/composables/useProjects'
 
 const route = useRoute()
@@ -76,6 +76,8 @@ onBeforeUnmount(() => {
       store.commit('bmp/closeActiveDocument')
     }
   }
+  // documents가 비워졌으니 다음 진입에서 switchPage가 loadPage를 건너뛰지 않도록 트래킹 리셋
+  resetPageLoaderState()
 })
 </script>
 
