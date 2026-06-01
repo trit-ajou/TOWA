@@ -61,7 +61,6 @@ export const TOWA_FEATURES = {
     VIEW_SNAP: true,
     VIEW_ANTIALIAS: true,
     VIEW_PIXEL_GRID: true,
-    UI_PREFERENCES: true,
     UI_HEADER_MENU: true,
     UI_TOOLBOX: true,
     UI_TOOL_OPTIONS_PANEL: true,
