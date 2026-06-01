@@ -20,14 +20,4 @@
  * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
-export const CREATE_DOCUMENT            = 1;
-export const RESIZE_DOCUMENT            = 2;
-export const SAVE_DOCUMENT              = 3;
-export const EXPORT_WINDOW              = 4;
-export const ADD_LAYER                  = 8;
-export const SAVE_SELECTION             = 9;
-export const LOAD_SELECTION             = 10;
-export const PREFERENCES                = 11;
-export const RESIZE_CANVAS              = 12;
-export const GRID_TO_LAYERS             = 13;
-export const STROKE_SELECTION           = 14;
+export const ADD_LAYER = 8;

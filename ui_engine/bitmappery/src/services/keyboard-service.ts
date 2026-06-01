@@ -26,9 +26,7 @@ import type { Shape } from "@/definitions/document";
 import { LayerTypes } from "@/definitions/layer-types";
 import { ALL_PANELS } from "@/definitions/panel-types";
 import ToolTypes, { canDraw, MAX_BRUSH_SIZE, SELECTION_TOOLS } from "@/definitions/tool-types";
-import {
-    CREATE_DOCUMENT, ADD_LAYER, SAVE_DOCUMENT,
-} from "@/definitions/modal-windows";
+import { ADD_LAYER } from "@/definitions/modal-windows";
 import { zoomIn, zoomOut } from "@/store/actions/canvas-zoom";
 import { addTextLayer } from "@/store/actions/layer-add-text-layer";
 import { toggleLayerFilters } from "@/store/actions/layer-toggle-filters";
@@ -312,9 +310,7 @@ function handleKeyDown( event: KeyboardEvent ): void {
             break;
 
         case 69: // E
-            if ( altDown ) {
-                openModal( SAVE_DOCUMENT );
-            } else if ( canDrawOnActiveLayer() ) {
+            if ( canDrawOnActiveLayer() ) {
                 setActiveTool( ToolTypes.ERASER );
             }
             break;
@@ -370,14 +366,6 @@ function handleKeyDown( event: KeyboardEvent ): void {
             }
             break;
 
-        case 78: // N
-            // new document
-            if ( altDown ) {
-                preventDefault( event ); // new browser window
-                openModal( CREATE_DOCUMENT );
-            }
-            break;
-
         case 80: // P
             if ( getters.activeDocument ) {
                 setActiveTool( ToolTypes.MOVE );
@@ -390,9 +378,6 @@ function handleKeyDown( event: KeyboardEvent ): void {
 
         case 83: // S
             if ( nativeModifier ) {
-                if ( getters.activeDocument ) {
-                    openModal( SAVE_DOCUMENT );
-                }
                 preventDefault( event ); // page save
             } else if ( canDrawOnActiveLayer() ) {
                 setActiveTool( ToolTypes.CLONE );

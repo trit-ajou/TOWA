@@ -37,10 +37,7 @@ export const TOWA_FEATURES = {
     FILE_BPY_LOAD: true,
 
     // ── 문서 조작 (Document) ──
-    DOC_RESIZE: true,
-    DOC_CANVAS_SIZE: true,
     DOC_CROP_SELECTION: true,
-    DOC_GRID_TO_LAYERS: true,
 
     // ── 레이어 ──
     LAYER_BASIC: true,
@@ -53,7 +50,6 @@ export const TOWA_FEATURES = {
     // ── 편집 ──
     EDIT_HISTORY: true,
     EDIT_CLIPBOARD: true,
-    EDIT_STROKE_SELECTION: true,
     EDIT_SELECTION_SAVE: true,
     EDIT_DELETE: true,
 
@@ -61,7 +57,6 @@ export const TOWA_FEATURES = {
     VIEW_SNAP: true,
     VIEW_ANTIALIAS: true,
     VIEW_PIXEL_GRID: true,
-    UI_HEADER_MENU: true,
     UI_TOOLBOX: true,
     UI_TOOL_OPTIONS_PANEL: true,
     UI_LAYER_PANEL: true,

@@ -21,8 +21,7 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 <template>
-    <div id="bitmappery-app" ref="app" :class="{ 'header-hidden': !showHeaderMenu }">
-        <header-menu v-if="showHeaderMenu" />
+    <div id="bitmappery-app" ref="app">
         <section class="main">
             <toolbox
                 v-if="showToolbox"
@@ -56,7 +55,6 @@
 import { type Component, defineAsyncComponent } from "vue";
 import { mapState, mapGetters, mapMutations, mapActions } from "vuex";
 import { createI18n } from "vue-i18n";
-import HeaderMenu from "@/components/menus/header-menu/header-menu.vue";
 import ToolOptionsPanel from "@/components/tool-options-panel/tool-options-panel.vue";
 import LayerPanel from "@/components/layer-panel/layer-panel.vue";
 import Toolbox from "@/components/toolbox/toolbox.vue";
@@ -100,7 +98,6 @@ function asyncComponent( key: string, importFn: () => Promise<any> ): IAsyncComp
 export default {
     mixins: [ ImageToDocumentManager ],
     components: {
-        HeaderMenu,
         ToolOptionsPanel,
         LayerPanel,
         Toolbox,
@@ -130,7 +127,6 @@ export default {
             return this.isLoading || renderState.pending > 0;
         },
         // TOWA: bitmappery 기본 UI는 mode preset으로 일괄 off, towa-app이 대체
-        showHeaderMenu(): boolean { return isFeatureEnabled( "UI_HEADER_MENU" ); },
         showToolbox(): boolean { return isFeatureEnabled( "UI_TOOLBOX" ); },
         showOptionsPanel(): boolean { return isFeatureEnabled( "UI_TOOL_OPTIONS_PANEL" ); },
         showLayerPanel(): boolean { return isFeatureEnabled( "UI_LAYER_PANEL" ); },

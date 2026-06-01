@@ -28,7 +28,6 @@ export const MODE_PRESETS: Record<TowaMode, Partial<Record<FeatureKey, boolean>>
         TOOL_ERASER: false,
         TOOL_CLONE: false,
         // bitmappery 기본 UI 전체 숨김 (towa-app이 대체)
-        UI_HEADER_MENU: false,
         UI_TOOLBOX: false,
         UI_TOOL_OPTIONS_PANEL: false,
         UI_LAYER_PANEL: false,
@@ -43,7 +42,6 @@ export const MODE_PRESETS: Record<TowaMode, Partial<Record<FeatureKey, boolean>>
     },
     typesetter: {
         // bitmappery 기본 UI 전체 숨김 (towa-app이 대체)
-        UI_HEADER_MENU: false,
         UI_TOOLBOX: false,
         UI_TOOL_OPTIONS_PANEL: false,
         UI_LAYER_PANEL: false,
