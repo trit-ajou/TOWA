@@ -6,6 +6,14 @@
 
 ## 2026-06-02
 
+### 07:45 — 편집 ↔ 상세편집 탭 swap freeze fix (vuejs/core#8509)
+- 증상: 편집 탭에서 텍스트 추가/삭제 작업 후 상세편집 ↔ 편집 탭을 왕복하면 UI가 먹통(이전 탭이 안 사라지고 새 탭도 안 mount). 콘솔에 `Failed to execute 'insertBefore' on 'Node'` NotFoundError + `parentNode null` / `subTree null` Vue warn이 `usePageLoader.ts:193` (invalidateQueries) 트레이스에서 발생
+- Root cause: `ProjectView`의 `<keep-alive :include="['ProjectHomeTab']">` wrapper. EditorTab/DetailEditorTab은 cache 대상이 아니지만 KeepAlive wrapper *안에* 있다는 사실만으로 [vuejs/core#8509](https://github.com/vuejs/core/issues/8509) 증상(KeepAlive 안 자식이 외부로 Teleport한 DOM이 swap 시 stale하게 남아 다음 mount에서 insertBefore mismatch)이 발생. include 여부와 무관하게 wrapper 자체가 자식 lifecycle을 통제하기 때문
+- 잘못된 시도(되돌림): `<Teleport defer>` 제거. defer는 ProjectView template에서 `#towa-right-panel`이 router-view 뒤에 있어 EditorTab setup 시점엔 target이 DOM에 없는 문제를 해결하던 필수 prop이라 e2e 5건 회귀
+- 수정: `ProjectView`의 KeepAlive 제거 → `<router-view />` 단순 사용. ProjectHomeTab 캐시 효과는 TanStack Query 캐시가 즉시 hit하므로 비용 거의 0. `onActivated/onDeactivated` 사용 코드 없음 확인
+- 안전망: `useAutoSave`에 `onBeforeRouteLeave`/`onBeforeRouteUpdate`로 save를 await — `onUnmounted`에서 fire-and-forget으로 doSave를 돌리면 invalidateQueries가 unmount 진행 중인 컴포넌트에 reactive update를 흘려 router-view swap DOM race를 악화시킴
+- 검증: 전체 e2e 12/12 PASS (07-autosave-regression 6/6 포함), typecheck PASS, 사용자 manual 검증 OK
+
 ### 00:50 — AI 결과 적용에 active/background 분기 도입
 - 잠재 버그: AI job은 최대 5분 polling. 그 동안 사용자가 다른 페이지로 이동하면 `applyAiJobSnapshotToCurrentPage`의 `bmp/addLayer` mutation이 `state.documents[activeIndex]`(=새 활성 doc)에 layer를 박고, 그 다음 `savePage`가 활성 doc을 직렬화해 **시작 페이지 ID**로 PUT → 다른 페이지의 binary가 시작 페이지 자리에 덮어쓰기 + AI 결과 layer가 엉뚱한 doc에 들어가는 데이터 손실
 - 수정: `result-applier.ts` 진입 시 `store.state.editor.selectedPageId === pageId` 확인
