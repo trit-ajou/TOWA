@@ -6,6 +6,12 @@
 
 ## 2026-06-02
 
+### 08:24 — ProjectView unmount cascade fix (먹통 재발 케이스)
+- 증상: 라이브러리로 돌아갈 때 간헐적으로 `insertBefore NotFoundError` + `parentNode null` 콘솔 에러. 트레이스는 `at <RouterView> at <ProjectView onVnodeUnmounted=...> at <RouterView> at <App>`. KeepAlive 제거(07:45 freeze fix) 이후에도 *별도 트리거*로 같은 증상이 남아 있었음
+- Root cause: `ProjectView.onBeforeUnmount`의 `while (activeDocument) closeActiveDocument` 루프가 unmount 진행 중에 실행. `bmp/closeActiveDocument`는 `state.documents`를 splice + `flushLayerRenderers` + resource-manager의 blob URL dispose cascade를 발사하는데, 이게 inner router-view가 자식(EditorTab/DetailEditorTab) DOM을 정리하려는 시점과 race
+- 수정: cleanup을 `onBeforeRouteLeave`로 옮김. route를 떠나는 시점엔 ProjectView/자식이 아직 mount 상태라 cascade가 정상 처리. child route 전환(편집 ↔ 상세편집)에서는 호출되지 않으므로 docs가 잘못 닫히지 않음. `onBeforeUnmount`는 비-router 경로(테스트 등) 안전망으로 idempotent 유지
+- 검증: typecheck PASS, e2e 6/6 PASS, 사용자 manual 검증 대기
+
 ### 07:53 — Thumbnail 비율 깨짐 fix (viewport → doc snapshot)
 - 증상: 페이지 저장 후 일부 페이지의 썸네일이 원본 doc 비율을 따르지 않고 가로/세로가 달라짐. `PageThumbnail`의 `aspect-[2/3]` 컨테이너 + `object-cover`와 결합되어 만화 가운데 영역만 잘려 보임. 사용자 스크린샷에서 작업/저장된 페이지(4p~7p)만 비율이 깨져 보임 (저장 trigger된 페이지만 잘못 갱신)
 - Root cause: `usePageLoader.captureThumbnail`이 `zCanvas.getElement()`의 *viewport* 캔버스를 그대로 캡처. viewport는 캔버스 영역 div 크기에 맞춰진 가로 박스라 세로 만화 doc과 비율이 다름
