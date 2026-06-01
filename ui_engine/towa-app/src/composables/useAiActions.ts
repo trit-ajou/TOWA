@@ -2,7 +2,8 @@ import { computed, ref } from 'vue'
 import { useStore } from 'vuex'
 import { useQueryClient } from '@tanstack/vue-query'
 import { useAppBackend } from '@/composables/useAppBackend'
-import { usePageLoader } from '@/composables/usePageLoader'
+import { useAutoSave } from '@/composables/useAutoSave'
+import { useFileAdapter } from '@/composables/useFileAdapter'
 import { useErrorDialog } from '@/composables/useErrorDialog'
 import { queryKeys } from '@/composables/queryKeys'
 import { DEPLOYMENT_MODE } from '@/config/deployment'
@@ -33,7 +34,8 @@ export function useAiActions() {
   const store = useStore()
   const backend = useAppBackend()
   const qc = useQueryClient()
-  const { savePage } = usePageLoader()
+  const fileAdapter = useFileAdapter()
+  const { markDirty, saveImmediately } = useAutoSave()
   const { showError } = useErrorDialog()
 
   function patchPageInCache(proj: string, pageId: string, patch: Partial<PageSummary>) {
@@ -140,10 +142,18 @@ export function useAiActions() {
           store,
           queryClient: qc,
           backend: backend.aiJobs,
+          fileAdapter,
           snapshot: final,
           projectId: proj,
           pageId,
-          savePage,
+          markDirty,
+          saveImmediately,
+          onBackgroundApplied: (index) => {
+            store.commit('bmp/showNotification', {
+              title: 'AI 작업 완료',
+              message: `${index}페이지의 AI ${action} 결과가 적용되었습니다.`,
+            })
+          },
           sessionKey,
         })
         restorePreviousPage = false

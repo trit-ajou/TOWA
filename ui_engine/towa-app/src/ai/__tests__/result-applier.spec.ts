@@ -3,6 +3,7 @@ import type { Store } from 'vuex'
 import { QueryClient } from '@tanstack/vue-query'
 
 import type { AiJobSnapshot } from '@/backend/contracts'
+import type { FileAdapter } from '@/file-adapter'
 import type { Page } from '@/types/page'
 import type { PageSummary } from '@/file-adapter'
 import { applyAiJobSnapshotToCurrentPage } from '@/ai/result-applier'
@@ -22,8 +23,31 @@ function makeQueryClient(page: Page): QueryClient {
   return qc
 }
 
+// Minimal stub — background path is exercised by e2e, unit tests only cover
+// the active path which never touches fileAdapter.
+const stubFileAdapter = {} as FileAdapter
+
+function makeAutoSaveStubs() {
+  return {
+    markDirty: vi.fn(),
+    saveImmediately: vi.fn().mockResolvedValue(undefined),
+  }
+}
+
 vi.mock('@bitmappery/utils/canvas-util', () => ({
   blobToCanvas: vi.fn(),
+  canvasToBlob: vi.fn().mockResolvedValue(new Blob()),
+}))
+
+vi.mock('@bitmappery/utils/document-util', () => ({
+  createSyncSnapshot: vi.fn(() => document.createElement('canvas')),
+}))
+
+vi.mock('@bitmappery/factories/document-factory', () => ({
+  default: {
+    fromBlob: vi.fn(),
+    toBlob: vi.fn().mockResolvedValue(new Blob()),
+  },
 }))
 
 describe('applyAiJobSnapshotToCurrentPage', () => {
@@ -31,7 +55,7 @@ describe('applyAiJobSnapshotToCurrentPage', () => {
     const page = makePage()
     const existingTextLayer = { id: 'layer_99', type: 'text' }
     const store = makeStore(page, { layers: [existingTextLayer] })
-    const savePage = vi.fn().mockResolvedValue(undefined)
+    const autosave = makeAutoSaveStubs()
     const snapshot = makeSnapshot({
       operationKind: 'translate',
       documentPatch: {
@@ -61,7 +85,9 @@ describe('applyAiJobSnapshotToCurrentPage', () => {
       snapshot,
       projectId: page.projectId,
       pageId: page.id,
-      savePage,
+      fileAdapter: stubFileAdapter,
+      markDirty: autosave.markDirty,
+      saveImmediately: autosave.saveImmediately,
       appliedAt: new Date(2026, 4, 7, 15, 30),
     })
 
@@ -93,7 +119,7 @@ describe('applyAiJobSnapshotToCurrentPage', () => {
     // page status는 이제 query cache에 기록된다 (Vuex 모듈 제거됨).
     const cached = qc.getQueryData<PageSummary[]>(queryKeys.pages.byProject(page.projectId)) ?? []
     expect(cached.find((p) => p.id === page.id)?.status).toBe('in-progress')
-    expect(savePage).toHaveBeenCalledWith(page.id)
+    expect(autosave.saveImmediately).toHaveBeenCalledWith(page.id)
   })
 
   it('adds bitmap artifact results as new graphic layers without replacing existing layers', async () => {
@@ -138,7 +164,9 @@ describe('applyAiJobSnapshotToCurrentPage', () => {
       snapshot,
       projectId: page.projectId,
       pageId: page.id,
-      savePage: vi.fn().mockResolvedValue(undefined),
+      fileAdapter: stubFileAdapter,
+      markDirty: vi.fn(),
+      saveImmediately: vi.fn().mockResolvedValue(undefined),
       appliedAt: new Date(2026, 4, 7, 15, 30),
     })
 
@@ -202,7 +230,9 @@ describe('applyAiJobSnapshotToCurrentPage', () => {
       snapshot,
       projectId: page.projectId,
       pageId: page.id,
-      savePage: vi.fn().mockResolvedValue(undefined),
+      fileAdapter: stubFileAdapter,
+      markDirty: vi.fn(),
+      saveImmediately: vi.fn().mockResolvedValue(undefined),
       appliedAt: new Date(2026, 4, 7, 15, 30),
     })
 
@@ -249,7 +279,9 @@ describe('applyAiJobSnapshotToCurrentPage', () => {
       snapshot,
       projectId: page.projectId,
       pageId: page.id,
-      savePage: vi.fn().mockResolvedValue(undefined),
+      fileAdapter: stubFileAdapter,
+      markDirty: vi.fn(),
+      saveImmediately: vi.fn().mockResolvedValue(undefined),
       appliedAt: new Date(2026, 4, 7, 15, 30),
     })
 
@@ -268,7 +300,7 @@ describe('applyAiJobSnapshotToCurrentPage', () => {
   it('does not apply partial jobs automatically', async () => {
     const page = makePage()
     const store = makeStore(page)
-    const savePage = vi.fn()
+    const autosave = makeAutoSaveStubs()
     const snapshot = makeSnapshot({
       status: 'partial',
       documentPatch: {
@@ -288,17 +320,22 @@ describe('applyAiJobSnapshotToCurrentPage', () => {
       snapshot,
       projectId: 'proj-1',
       pageId: 'page-1',
-      savePage,
+      fileAdapter: stubFileAdapter,
+      markDirty: autosave.markDirty,
+      saveImmediately: autosave.saveImmediately,
     })
 
     expect(result).toMatchObject({ applied: false, reason: 'status_not_succeeded' })
     expect(store.commit).not.toHaveBeenCalled()
-    expect(savePage).not.toHaveBeenCalled()
+    expect(autosave.saveImmediately).not.toHaveBeenCalled()
   })
 })
 
 function makeStore(page: Page, activeDocument: { layers?: unknown[]; width?: number; height?: number } = {}): Store<unknown> {
   return {
+    // Active-path branch checks state.editor.selectedPageId to decide whether
+    // to mutate the live store or go via the detached background path.
+    state: { editor: { selectedPageId: page.id } },
     getters: {
       'pages/byId': (projectId: string, pageId: string) => (
         projectId === page.projectId && pageId === page.id ? page : undefined
