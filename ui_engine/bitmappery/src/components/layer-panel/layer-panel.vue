@@ -123,25 +123,19 @@
                 </div>
                 <p
                     v-else
-                    v-t="'noLayers'"
-                    class="no-layers-text"
-                ></p>
+                    class="no-layers-text">{{ $t('noLayers') }}</p>
             </div>
             <div v-if="!showEffects" class="component__actions">
                 <button
-                    v-t="'addLayer'"
                     type="button"
                     class="button button--small"
                     :disabled="!activeDocument"
-                    @click="requestLayerAdd()"
-                ></button>
+                    @click="requestLayerAdd()">{{ $t('addLayer') }}</button>
                 <button
-                    v-t="'addMask'"
                     type="button"
                     class="button button--small"
                     :disabled="!activeLayer || currentLayerHasMask"
-                    @click="requestMaskAdd()"
-                ></button>
+                    @click="requestMaskAdd()">{{ $t('addMask') }}</button>
             </div>
         </template>
     </div>

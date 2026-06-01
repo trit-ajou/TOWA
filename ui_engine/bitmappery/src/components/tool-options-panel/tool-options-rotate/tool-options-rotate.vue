@@ -22,7 +22,7 @@
  */
 <template>
     <div class="tool-option">
-        <h3 v-t="'rotation'"></h3>
+        <h3>{{ $t('rotation') }}</h3>
         <div class="wrapper full slider">
             <slider
                 v-model="rotation"
@@ -36,33 +36,25 @@
         </div>
         <div class="actions">
             <button
-                v-t="'reset'"
                 type="button"
                 class="button button--small"
                 :disabled="!activeLayer || rotation === 0"
-                @click="reset()"
-            ></button>
+                @click="reset()">{{ $t('reset') }}</button>
             <button
-                v-t="'90degLeft'"
                 type="button"
                 class="button button--small"
                 :disabled="!activeLayer"
-                @click="rotate(270)"
-            ></button>
+                @click="rotate(270)">{{ $t('90degLeft') }}</button>
             <button
-                v-t="'flip'"
                 type="button"
                 class="button button--small"
                 :disabled="!activeLayer"
-                @click="rotate(180)"
-            ></button>
+                @click="rotate(180)">{{ $t('flip') }}</button>
             <button
-                v-t="'90degRight'"
                 type="button"
                 class="button button--small"
                 :disabled="!activeLayer"
-                @click="rotate(90)"
-            ></button>
+                @click="rotate(90)">{{ $t('90degRight') }}</button>
         </div>
     </div>
 </template>

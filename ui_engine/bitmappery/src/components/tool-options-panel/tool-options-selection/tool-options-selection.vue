@@ -26,11 +26,11 @@
         @focusin="handleFocus"
         @focusout="handleBlur"
     >
-        <h3 v-t="'selection'"></h3>
-        <p v-if="isLassoSelection" v-t="'lassoExpl'"></p>
+        <h3>{{ $t('selection') }}</h3>
+        <p v-if="isLassoSelection">{{ $t('lassoExpl') }}</p>
         <template v-else>
             <div class="wrapper input">
-                <label v-t="'lockRatio'" v-tooltip="$t('shiftKey')"></label>
+                <label v-tooltip="$t('shiftKey')">{{ $t('lockRatio') }}</label>
                 <toggle-button
                     v-model="maintainRatio"
                     name="ratio"
@@ -39,7 +39,7 @@
                 />
             </div>
             <div class="wrapper input">
-                <label v-t="'widthToHeight'"></label>
+                <label>{{ $t('widthToHeight') }}</label>
                 <input
                     type="number"
                     v-model.number="xRatio"
@@ -54,9 +54,9 @@
                 />
             </div>
         </template>
-        <p v-t="'existingSelection'"></p>
+        <p>{{ $t('existingSelection') }}</p>
         <div class="wrapper input">
-            <label v-t="'coordinates'"></label>
+            <label>{{ $t('coordinates') }}</label>
             <input
                 type="number"
                 v-model.number="x"
@@ -76,7 +76,7 @@
         </div>
         <template v-if="!isLassoSelection">
             <div class="wrapper input">
-                <label v-t="'dimensions'"></label>
+                <label>{{ $t('dimensions') }}</label>
                 <input
                     type="number"
                     v-model.number="width"

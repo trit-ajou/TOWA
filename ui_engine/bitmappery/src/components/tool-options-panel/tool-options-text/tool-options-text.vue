@@ -36,7 +36,7 @@
             />
         </div>
         <div class="wrapper input">
-            <label v-t="'font'"></label>
+            <label>{{ $t('font') }}</label>
             <vue-select
                 v-model="font"
                 :options="fonts"
@@ -51,7 +51,7 @@
             </vue-select>
         </div>
         <div class="wrapper slider">
-            <label v-t="'size'"></label>
+            <label>{{ $t('size') }}</label>
             <div class="wrapper shared-inputs">
                 <input
                     v-model="size"
@@ -67,7 +67,7 @@
             </div>
         </div>
         <div class="wrapper slider">
-            <label v-t="'lineHeight'"></label>
+            <label>{{ $t('lineHeight') }}</label>
             <slider
                 v-model="lineHeight"
                 :min="0"
@@ -77,7 +77,7 @@
             />
         </div>
         <div class="wrapper slider">
-            <label v-t="'letterSpacing'"></label>
+            <label>{{ $t('letterSpacing') }}</label>
             <slider
                 v-model="spacing"
                 :min="0"
@@ -87,7 +87,7 @@
             />
         </div>
         <div class="wrapper input">
-            <label v-t="'color'"></label>
+            <label>{{ $t('color') }}</label>
             <component
                 :is="colorPicker"
                 v-model="color"

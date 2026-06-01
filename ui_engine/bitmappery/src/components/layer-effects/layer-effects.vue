@@ -24,7 +24,7 @@
     <div class="layer-effects" ref="effectsPanel">
         <div class="component__content form" ref="effectsList">
             <div class="wrapper input">
-                <label v-t="'enabled'"></label>
+                <label>{{ $t('enabled') }}</label>
                 <toggle-button
                     v-model="internalValue.enabled"
                     name="enabled"
@@ -32,9 +32,9 @@
                 />
             </div>
             <fieldset class="fieldset">
-                <legend v-t="'compositing'" />
+                <legend>{{ $t('compositing') }}</legend>
                 <div class="wrapper input">
-                    <label v-t="'blendMode'"></label>
+                    <label>{{ $t('blendMode') }}</label>
                     <select-box
                         v-model="internalValue.blendMode"
                         :options="blendModes"
@@ -42,7 +42,7 @@
                     />
                 </div>
                 <div class="wrapper slider">
-                    <label v-t="'opacity'"></label>
+                    <label>{{ $t('opacity') }}</label>
                     <slider
                         v-model="opacity"
                         :min="0"
@@ -52,9 +52,9 @@
                 </div>
             </fieldset>
             <fieldset class="fieldset">
-                <legend v-t="'toneAdjustments'" />
+                <legend>{{ $t('toneAdjustments') }}</legend>
                 <div class="wrapper slider">
-                    <label v-t="'gamma'"></label>
+                    <label>{{ $t('gamma') }}</label>
                     <slider
                         v-model="gamma"
                         :min="0"
@@ -63,7 +63,7 @@
                     />
                 </div>
                 <div class="wrapper slider">
-                    <label v-t="'brightness'"></label>
+                    <label>{{ $t('brightness') }}</label>
                     <slider
                         v-model="brightness"
                         :min="0"
@@ -72,7 +72,7 @@
                     />
                 </div>
                 <div class="wrapper slider">
-                    <label v-t="'contrast'"></label>
+                    <label>{{ $t('contrast') }}</label>
                     <slider
                         v-model="contrast"
                         :min="0"
@@ -82,9 +82,9 @@
                 </div>
             </fieldset>
             <fieldset class="fieldset">
-                <legend v-t="'colorAdjustments'" />
+                <legend>{{ $t('colorAdjustments') }}</legend>
                 <div class="wrapper slider">
-                    <label v-t="'vibrance'"></label>
+                    <label>{{ $t('vibrance') }}</label>
                     <slider
                         v-model="vibrance"
                         :min="0"
@@ -93,7 +93,7 @@
                     />
                 </div>
                 <div class="wrapper input">
-                    <label v-t="'invert'"></label>
+                    <label>{{ $t('invert') }}</label>
                     <toggle-button
                         v-model="internalValue.invert"
                         name="invert"
@@ -101,7 +101,7 @@
                     />
                 </div>
                 <div class="wrapper input">
-                    <label v-t="'desaturate'"></label>
+                    <label>{{ $t('desaturate') }}</label>
                     <toggle-button
                         v-model="internalValue.desaturate"
                         name="desaturate"
@@ -110,9 +110,9 @@
                 </div>
             </fieldset>
             <fieldset class="fieldset">
-                <legend v-t="'filters'" />
+                <legend>{{ $t('filters') }}</legend>
                 <div class="wrapper input">
-                    <label v-t="'threshold'"></label>
+                    <label>{{ $t('threshold') }}</label>
                     <slider
                         v-model="internalValue.threshold"
                         :min="-1"
@@ -122,9 +122,7 @@
                 </div>
                 <div class="wrapper input">
                     <label
-                        for="duotone"
-                        v-t="'duotone'"
-                    ></label>
+                        for="duotone">{{ $t('duotone') }}</label>
                     <toggle-button
                         v-model="internalValue.duotone.enabled"
                         name="duotone"
@@ -148,23 +146,17 @@
         </div>
         <div class="component__actions">
             <button
-                v-t="'reset'"
                 type="button"
                 class="button button--small"
-                @click="reset()"
-            ></button>
+                @click="reset()">{{ $t('reset') }}</button>
             <button
-                v-t="'cancel'"
                 type="button"
                 class="button button--small"
-                @click="cancel()"
-            ></button>
+                @click="cancel()">{{ $t('cancel') }}</button>
             <button
-                v-t="'save'"
                 type="button"
                 class="button button--small"
-                @click="save()"
-            ></button>
+                @click="save()">{{ $t('save') }}</button>
         </div>
     </div>
 </template>

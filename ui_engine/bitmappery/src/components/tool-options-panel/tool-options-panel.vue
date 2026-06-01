@@ -27,10 +27,8 @@
     >
         <div class="component__header">
             <h2
-                v-t="'toolOptions'"
                 v-tooltip="'(Tab)'"
-                class="component__title"
-            ></h2>
+                class="component__title">{{ $t('toolOptions') }}</h2>
             <button
                 type="button"
                 class="component__header-button button--ghost"
@@ -46,9 +44,7 @@
             <!-- active tool section -->
             <p
                 v-if="!activeToolOptions"
-                v-t="'noToolOptions'"
-                class="no-tools-text"
-            ></p>
+                class="no-tools-text">{{ $t('noToolOptions') }}</p>
             <component v-else :is="activeToolOptions" />
         </div>
     </div>

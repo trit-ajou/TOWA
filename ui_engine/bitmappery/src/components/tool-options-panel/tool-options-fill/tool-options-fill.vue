@@ -22,16 +22,16 @@
  */
 <template>
     <div class="tool-option">
-        <h3 v-t="'fill'"></h3>
+        <h3>{{ $t('fill') }}</h3>
         <div class="wrapper full slider">
-            <label v-t="'smartFill'"></label>
+            <label>{{ $t('smartFill') }}</label>
             <toggle-button
                 v-model="smartFill"
                 name="smartFill"
                 :disabled="disabled"
             />
         </div>
-        <p v-t="'smartFillExpl'" class="expl"></p>
+        <p class="expl">{{ $t('smartFillExpl') }}</p>
     </div>
 </template>
 

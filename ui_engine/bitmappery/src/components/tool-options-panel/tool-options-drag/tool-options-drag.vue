@@ -26,9 +26,9 @@
         @focusin="handleFocus()"
         @focusout="handleBlur()"
     >
-        <h3 v-t="isMask ? 'maskPosition' : 'layerPosition'"></h3>
+        <h3>{{ $t(isMask ? 'maskPosition' : 'layerPosition') }}</h3>
         <div class="wrapper input">
-            <label v-t="'coordinates'"></label>
+            <label>{{ $t('coordinates') }}</label>
             <input
                 type="number"
                 v-model.number="left"
@@ -48,19 +48,15 @@
         </div>
         <div class="actions">
             <button
-                v-t="'reset'"
                 type="button"
                 class="button button--small"
                 :disabled="disabled || !hasCustomOffset"
-                @click="reset()"
-            ></button>
+                @click="reset()">{{ $t('reset') }}</button>
             <button
-                v-t="'center'"
                 type="button"
                 class="button button--small"
                 :disabled="disabled || !canCenter"
-                @click="center()"
-            ></button>
+                @click="center()">{{ $t('center') }}</button>
         </div>
     </div>
 </template>
