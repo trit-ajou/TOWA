@@ -95,7 +95,7 @@ import { readClipboardFiles, readDroppedFiles } from "@/utils/file-util";
 import { truncate } from "@/utils/string-util";
 import messages from "./messages.json";
 import {
-    CREATE_DOCUMENT, RESIZE_DOCUMENT, SAVE_DOCUMENT, EXPORT_WINDOW,
+    RESIZE_DOCUMENT,
     ADD_LAYER, LOAD_SELECTION, SAVE_SELECTION, PREFERENCES, RESIZE_CANVAS,
     GRID_TO_LAYERS, STROKE_SELECTION
 } from "@/definitions/modal-windows";
@@ -158,17 +158,8 @@ export default {
             switch ( this.modal ) {
                 default:
                     return null;
-                case CREATE_DOCUMENT:
-                    loadFn = () => import( "@/components/file-menu/create-document/create-document.vue" );
-                    break;
                 case RESIZE_DOCUMENT:
                     loadFn = () => import( "@/components/resize-document-window/resize-document-window.vue" );
-                    break;
-                case SAVE_DOCUMENT:
-                    loadFn = () => import( "@/components/file-menu/save-document/save-document.vue" );
-                    break;
-                case EXPORT_WINDOW:
-                    loadFn = () => import( "@/components/file-menu/export-window/export-window.vue" );
                     break;
                 case ADD_LAYER:
                     loadFn = () => import( "@/components/new-layer-window/new-layer-window.vue" );
