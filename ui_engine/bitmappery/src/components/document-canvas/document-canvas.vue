@@ -61,7 +61,6 @@
                 @input="panViewport"
             />
         </template>
-        <file-import v-else />
     </div>
 </template>
 
@@ -70,7 +69,6 @@ import { mapState, mapGetters, mapMutations, mapActions } from "vuex";
 import { type Viewport } from "zcanvas";
 import ZoomableCanvas from "@/rendering/actors/zoomable-canvas";
 import GuideRenderer from "@/rendering/actors/guide-renderer";
-import FileImport from "@/components/file-import/file-import.vue";
 import type { Document, Layer } from "@/definitions/document";
 import { HEADER_HEIGHT } from "@/definitions/editor-properties";
 import { PROJECT_FILE_EXTENSION } from "@/definitions/file-types";
@@ -118,7 +116,6 @@ function calculateCanvasBoundingBox() {
 export default {
     components: {
         Scrollbars,
-        FileImport,
     },
     mixins: [ TouchDecorator ],
     data: () => ({
