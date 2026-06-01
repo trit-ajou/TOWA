@@ -2,13 +2,18 @@ import { watch, onUnmounted, onMounted, ref } from 'vue'
 import { useStore } from 'vuex'
 import { usePageLoader } from './usePageLoader'
 
-const DEBOUNCE_MS = 30_000  // 30초
+const DEBOUNCE_MS = 30_000  // 30초 — #39 Phase 0 결정: 5초보다 무거운 페이지
+                            // binary 직렬화/업로드 부담을 줄이고 page-switch
+                            // 즉시 저장 안전망이 있어 catastrophic loss 한도가
+                            // 30초로 제한됨. (운영 후 필요하면 줄임)
 
 /**
- * bitmappery history 변화를 감지하여 자동 저장.
- * - 편집 후 30초 동안 추가 편집 없으면 저장
+ * bitmappery history 변화를 감지하여 자동 저장. (#39 §저장 모델)
+ * - 편집 후 debounce 30초 (auto)
+ * - Ctrl/Cmd+S 즉시 저장 (수동) — bitmappery의 Save Document 모달은 차단됨
  * - 컴포넌트 해제(페이지 전환 등) 시 즉시 저장
  * - 브라우저 탭 닫기 전 저장 시도
+ * - dirty 상태일 때 document.title 앞에 "*" prefix
  */
 export function useAutoSave() {
   const store = useStore()
@@ -87,16 +92,42 @@ export function useAutoSave() {
     }
   }
 
+  // Ctrl/Cmd+S 수동 저장. capture phase로 등록해 bitmappery의 keyboard-service
+  // 보다 먼저 이벤트를 잡고 stopPropagation으로 차단한다. (bitmappery 측 핸들러
+  // 자체는 #39 phase 5에서 무력화되어 있지만 capture phase가 명시적으로 안전.)
+  function onKeydownCapture(e: KeyboardEvent) {
+    const isSaveCombo = (e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')
+    if (!isSaveCombo) return
+    e.preventDefault()
+    e.stopPropagation()
+    void saveImmediately()
+  }
+
+  // dirty 상태일 때 document.title prefix에 "*" — 사용자가 미저장 변경이 있음을 인지.
+  const TITLE_DIRTY = '* '
+  function applyTitlePrefix(isDirty: boolean) {
+    const cur = document.title
+    const hasPrefix = cur.startsWith(TITLE_DIRTY)
+    if (isDirty && !hasPrefix) document.title = TITLE_DIRTY + cur
+    else if (!isDirty && hasPrefix) document.title = cur.slice(TITLE_DIRTY.length)
+  }
+  const stopTitleWatch = watch(dirty, applyTitlePrefix)
+
   onMounted(() => {
     window.addEventListener('beforeunload', onBeforeUnload)
+    window.addEventListener('keydown', onKeydownCapture, { capture: true })
   })
 
   onUnmounted(() => {
     stopWatch()
+    stopTitleWatch()
     if (saveTimer) clearTimeout(saveTimer)
     window.removeEventListener('beforeunload', onBeforeUnload)
+    window.removeEventListener('keydown', onKeydownCapture, { capture: true })
     // 컴포넌트 해제 시 즉시 저장
     doSave()
+    // title prefix 정리
+    applyTitlePrefix(false)
   })
 
   return { dirty, saveImmediately, markDirty }

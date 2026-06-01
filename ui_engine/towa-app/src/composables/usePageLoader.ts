@@ -3,8 +3,29 @@ import { useStore } from 'vuex'
 import { useQueryClient } from '@tanstack/vue-query'
 import { useFileAdapter } from './useFileAdapter'
 import { queryKeys } from './queryKeys'
+import { isAuthError } from '@/query/query-client'
+import { useErrorDialog } from './useErrorDialog'
 import { pageBinaryCache } from '@/file-adapter/cache-instances'
 import type { PageSummary } from '@/file-adapter'
+
+// Exponential backoff retry for push (savePageSnapshot). #39 §Push 실패 UX
+// — 1s / 2s / 4s, 3 attempts. Auth errors short-circuit so the global 401
+// handler can take over routing.
+async function withPushRetry<T>(fn: () => Promise<T>): Promise<T> {
+  const delays = [1000, 2000, 4000]
+  let lastErr: unknown
+  for (let attempt = 0; attempt <= delays.length; attempt++) {
+    try {
+      return await fn()
+    } catch (e) {
+      lastErr = e
+      if (isAuthError(e)) throw e
+      if (attempt >= delays.length) throw e
+      await new Promise((r) => setTimeout(r, delays[attempt]))
+    }
+  }
+  throw lastErr
+}
 // @ts-expect-error bitmappery JS module
 import DocumentFactory from '@bitmappery/factories/document-factory'
 // @ts-expect-error bitmappery JS module
@@ -32,6 +53,7 @@ export function usePageLoader() {
   const store = useStore()
   const fileAdapter = useFileAdapter()
   const qc = useQueryClient()
+  const { showError } = useErrorDialog()
 
   /**
    * pageId에 해당하는 페이지를 bitmappery에 로드.
@@ -121,17 +143,30 @@ export function usePageLoader() {
     const page = summaries.find((p) => p.id === pageId)
     if (!page) return
 
-    await fileAdapter.savePageSnapshot({
-      page: {
-        id: pageId,
-        projectId: page.projectId,
-        index: page.index,
-        status: page.status,
-      },
-      originalImage,
-      layerBlob,
-      thumbnail,
-    })
+    try {
+      await withPushRetry(() =>
+        fileAdapter.savePageSnapshot({
+          page: {
+            id: pageId,
+            projectId: page.projectId,
+            index: page.index,
+            status: page.status,
+          },
+          originalImage,
+          layerBlob,
+          thumbnail,
+        }),
+      )
+    } catch (e) {
+      // Auth errors are already handled globally by the 401 redirect; everything
+      // else surfaces as a user-visible error (#39 §Push 실패 UX — reuse AI
+      // error popup pattern).
+      if (!isAuthError(e)) {
+        const message = e instanceof Error ? e.message : String(e)
+        showError('저장 실패', `잠시 후 다시 시도해주세요.\n${message}`)
+      }
+      throw e
+    }
 
     // Invalidate the page list and the thumbnail binary cache so consumers
     // (PageGrid, sidebars) pick up the new server-side thumbnailUrl/updatedAt.
