@@ -132,6 +132,14 @@ export function useAiActions() {
       patchPageInCache(proj, pageId, { status: 'ai-processing' satisfies PageStatus })
       restorePreviousPage = true
 
+      // Start-of-job toast — tells the user which page kicked off the job so
+      // the AiProgressOverlay spinner has a labeled origin even after they
+      // navigate to another page (background path).
+      store.commit('bmp/showNotification', {
+        title: `AI ${aiActionLabel(action)} 시작`,
+        message: `${pageRecord.index}페이지 처리 중...`,
+      })
+
       const input = await buildInput(action)
       const sessionKey = (store.state as { auth?: { sessionKey: string | null } }).auth?.sessionKey ?? null
       const opts = sessionKey ? { sessionKey } : undefined
@@ -151,12 +159,18 @@ export function useAiActions() {
           onBackgroundApplied: (index) => {
             store.commit('bmp/showNotification', {
               title: 'AI 작업 완료',
-              message: `${index}페이지의 AI ${action} 결과가 적용되었습니다.`,
+              message: `${index}페이지의 AI ${aiActionLabel(action)} 결과가 적용되었습니다.`,
             })
           },
           sessionKey,
         })
         restorePreviousPage = false
+        if (applied.appliedMode === 'active') {
+          store.commit('bmp/showNotification', {
+            title: 'AI 작업 완료',
+            message: `${pageRecord.index}페이지의 AI ${aiActionLabel(action)} 결과가 적용되었습니다.`,
+          })
+        }
         lastResult.value = {
           op: action,
           status: `${final.status}: +${applied.textLayerCount} text, +${applied.graphicLayerCount} image`,
@@ -219,4 +233,8 @@ export function useAiActions() {
   }
 
   return { loading, lastResult, runAction }
+}
+
+function aiActionLabel(action: AiOperationKind): string {
+  return { detect: '검출', inpaint: '지움', translate: '번역', pipeline: '파이프라인' }[action] ?? action
 }
