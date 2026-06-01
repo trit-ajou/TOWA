@@ -51,12 +51,13 @@ export function useAutoSave() {
     }, DEBOUNCE_MS)
   }
 
-  // bitmappery history 변화 감지. bmp/history 모듈의 실제 필드명은 historyIndex.
-  // 상세 편집 탭의 브러시/지우개 등 bitmappery history API를 거치는 편집을 잡는다.
-  const stopWatch = watch(
-    () => store.state.bmp?.history?.historyIndex,
-    () => flagDirty(),
-  )
+  // dirty trigger는 bmp/saveState mutation에 1:1 매칭. historyIndex 값 변화를
+  // watch했더니 페이지 진입 시 bitmappery.vue의 activeDocument watch가 부르는
+  // resetHistory → setHistoryIndex(-1) 까지 잡아 거짓 dirty가 트리거됐다.
+  // saveState는 history에 새 entry가 push되는 단 한 가지 경우 — 정확한 신호다.
+  const stopWatch = store.subscribe((mutation) => {
+    if (mutation.type === 'bmp/saveState') flagDirty()
+  })
 
   // bitmappery는 brush/eraser stroke 끝(handleRelease) 직후 storePaintState를
   // 1초 debounce로 호출한다. canvasToBlob × 2가 async라 historyIndex 증가
