@@ -1,5 +1,6 @@
 import { watch, onUnmounted, onMounted, ref } from 'vue'
 import { useStore } from 'vuex'
+import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
 import { usePageLoader } from './usePageLoader'
 // @ts-expect-error bitmappery JS module
 import { getRendererForLayer } from '@bitmappery/factories/renderer-factory'
@@ -136,13 +137,23 @@ export function useAutoSave() {
     window.addEventListener('keydown', onKeydownCapture, { capture: true })
   })
 
+  // route 변경 직전에 await 저장 — 자식 라우트 전환(편집 ↔ 상세편집)도 cover.
+  // onUnmounted에서 fire-and-forget으로 doSave를 돌리면 invalidateQueries가
+  // 이미 unmount 진행 중인 컴포넌트에 reactive update를 흘려보내며 router-view
+  // swap이 DOM 조작 race로 stuck됐다 (insertBefore NotFoundError, KeepAlive
+  // 안의 EditorTab ref=null이라는 Vue warn). guard로 await하면 unmount 전에
+  // savePage + invalidateQueries가 다 끝나서 race가 사라진다.
+  onBeforeRouteLeave(async () => { await doSave() })
+  onBeforeRouteUpdate(async () => { await doSave() })
+
   onUnmounted(() => {
     stopWatch()
     if (saveTimer) clearTimeout(saveTimer)
     window.removeEventListener('beforeunload', onBeforeUnload)
     window.removeEventListener('keydown', onKeydownCapture, { capture: true })
-    // 컴포넌트 해제 시 즉시 저장
-    doSave()
+    // route guard가 이미 await 처리했으므로 여기서는 추가 저장 불필요. 만약
+    // 사용자가 라이브러리로 가는 게 아니라 다른 비-router 경로로 컴포넌트가
+    // 사라지는 케이스(테스트 등)는 onBeforeUnload가 best-effort로 막는다.
   })
 
   return { dirty, saveImmediately, markDirty }
