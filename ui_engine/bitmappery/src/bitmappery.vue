@@ -94,11 +94,6 @@ import ImageToDocumentManager from "@/mixins/image-to-document-manager";
 import { readClipboardFiles, readDroppedFiles } from "@/utils/file-util";
 import { truncate } from "@/utils/string-util";
 import messages from "./messages.json";
-import {
-    RESIZE_DOCUMENT,
-    ADD_LAYER, RESIZE_CANVAS,
-    GRID_TO_LAYERS, STROKE_SELECTION
-} from "@/definitions/modal-windows";
 
 // Create VueI18n instance with options
 const i18n = createI18n({
@@ -154,27 +149,8 @@ export default {
             return asyncComponent( "dc", () => import( "@/components/document-canvas/document-canvas.vue" ));
         },
         activeModal(): IAsyncComponent | null {
-            let loadFn: () => Promise<any>;
-            switch ( this.modal ) {
-                default:
-                    return null;
-                case RESIZE_DOCUMENT:
-                    loadFn = () => import( "@/components/resize-document-window/resize-document-window.vue" );
-                    break;
-                case ADD_LAYER:
-                    loadFn = () => import( "@/components/new-layer-window/new-layer-window.vue" );
-                    break;
-                case RESIZE_CANVAS:
-                    loadFn = () => import( "@/components/resize-canvas-window/resize-canvas-window.vue" );
-                    break;
-                case GRID_TO_LAYERS:
-                    loadFn = () => import( "@/components/grid-to-layers-window/grid-to-layers-window.vue" );
-                    break;
-                case STROKE_SELECTION:
-                    loadFn = () => import( "@/components/stroke-selection-window/stroke-selection-window.vue" );
-                    break;
-            }
-            return asyncComponent( "mw", loadFn );
+            // 모든 modal 컴포넌트가 정리됨 (#58). 호출이 와도 항상 null 반환.
+            return null;
         },
         showLoader(): boolean {
             return this.isLoading || renderState.pending > 0;
