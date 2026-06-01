@@ -16,18 +16,14 @@
     "@simonwep/pickr": "^1.8.0",
     "buffer": "^6.0.3",
     "contactjs": "^2.1.7",
-    "dropbox": "^10.26.0",
     "floating-vue": "^5.2.2",
-    "gifshot": "^0.4.5",
     "psd.js": "^3.4.1-bata.3",
-    "tiny-script-loader": "^2.2.1",
     "vue": "^3.5.13",
     "vue-select": "^4.0.0-beta.6",
     "vuedraggable": "^4.1.0",
     "vuex": "^4.1.0"
   },
   "devDependencies": {
-    "@aws-sdk/client-s3": "^3.315.0",
     "@esbuild-plugins/node-globals-polyfill": "^0.2.3",
     "@vitejs/plugin-vue": "^5.2.1",
     "bowser": "^2.11.0",
