@@ -8,6 +8,8 @@ import { useAppBackend } from '@/composables/useAppBackend'
 import { useAutoSave } from '@/composables/useAutoSave'
 import { useFileAdapter } from '@/composables/useFileAdapter'
 import { useErrorDialog } from '@/composables/useErrorDialog'
+import { useCanvasNotice } from '@/composables/useCanvasNotice'
+import { useAiActions } from '@/composables/useAiActions'
 import { queryKeys } from '@/composables/queryKeys'
 import { DEPLOYMENT_MODE } from '@/config/deployment'
 import { BackendError } from '@/backend/errors'
@@ -28,6 +30,12 @@ const qc = useQueryClient()
 const fileAdapter = useFileAdapter()
 const { markDirty, saveImmediately } = useAutoSave()
 const { showError } = useErrorDialog()
+const { showNotice } = useCanvasNotice()
+// useAiActions exposes module-scope state (loading + activePageIndex) that
+// AiProgressOverlay subscribes to. AiToolbar runs its own copy of the AI
+// flow but mirrors that state so the overlay shows for toolbar-initiated
+// jobs too — not just the toolbox.
+const { activePageIndex, loading: progressLoading } = useAiActions()
 
 function patchPageStatusInCache(proj: string, pageId: string, patch: Partial<PageSummary>) {
   qc.setQueryData<PageSummary[]>(queryKeys.pages.byProject(proj), (old) => {
@@ -126,11 +134,8 @@ async function runAction(action: AiOperationKind) {
     previousPage = { ...pageRecord }
     patchPageStatusInCache(proj, pageId, { status: 'ai-processing' satisfies PageStatus })
     restorePreviousPage = true
-
-    store.commit('bmp/showNotification', {
-      title: `AI ${aiActionLabel(action)} 시작`,
-      message: `${pageRecord.index}페이지 처리 중...`,
-    })
+    activePageIndex.value = pageRecord.index
+    progressLoading.value = action
 
     const input = await buildInput(action, pageRecord)
     const sessionKey = (store.state as { auth?: { sessionKey: string | null } }).auth?.sessionKey ?? null
@@ -149,20 +154,11 @@ async function runAction(action: AiOperationKind) {
         markDirty,
         saveImmediately,
         onBackgroundApplied: (index) => {
-          store.commit('bmp/showNotification', {
-            title: 'AI 작업 완료',
-            message: `${index}페이지의 AI ${aiActionLabel(action)} 결과가 적용되었습니다.`,
-          })
+          showNotice(`${index}페이지 AI ${aiActionLabel(action)} 완료`)
         },
         sessionKey,
       })
       restorePreviousPage = false
-      if (applied.appliedMode === 'active') {
-        store.commit('bmp/showNotification', {
-          title: 'AI 작업 완료',
-          message: `${pageRecord.index}페이지의 AI ${aiActionLabel(action)} 결과가 적용되었습니다.`,
-        })
-      }
       lastResult.value = {
         op: action,
         status: `${final.status}: +${applied.textLayerCount} text, +${applied.graphicLayerCount} image`,
@@ -197,6 +193,8 @@ async function runAction(action: AiOperationKind) {
       void store.dispatch('auth/refreshCredit')
     }
     loading.value = null
+    activePageIndex.value = null
+    progressLoading.value = null
   }
 }
 

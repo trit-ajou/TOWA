@@ -5,6 +5,7 @@ import { useAppBackend } from '@/composables/useAppBackend'
 import { useAutoSave } from '@/composables/useAutoSave'
 import { useFileAdapter } from '@/composables/useFileAdapter'
 import { useErrorDialog } from '@/composables/useErrorDialog'
+import { useCanvasNotice } from '@/composables/useCanvasNotice'
 import { queryKeys } from '@/composables/queryKeys'
 import { DEPLOYMENT_MODE } from '@/config/deployment'
 import { BackendError } from '@/backend/errors'
@@ -28,6 +29,10 @@ export interface AiActionResult {
 // AI 진행 상태는 module-scope singleton. 여러 컴포넌트(toolbox + 진행 알림 오버레이)가
 // 같은 상태를 구독해야 하므로 useAiActions() 호출마다 새 ref를 만들면 안 됨.
 const loading = ref<AiOperationKind | null>(null)
+// AiProgressOverlay가 spinner 옆에 "N페이지 ... 중" 형태로 활성 페이지를 표시할 수
+// 있도록 노출. background path에서 사용자가 페이지를 이동한 뒤에도 어디서 시작된
+// 작업인지 추적된다.
+const activePageIndex = ref<number | null>(null)
 const lastResult = ref<AiActionResult | null>(null)
 
 export function useAiActions() {
@@ -37,6 +42,7 @@ export function useAiActions() {
   const fileAdapter = useFileAdapter()
   const { markDirty, saveImmediately } = useAutoSave()
   const { showError } = useErrorDialog()
+  const { showNotice } = useCanvasNotice()
 
   function patchPageInCache(proj: string, pageId: string, patch: Partial<PageSummary>) {
     qc.setQueryData<PageSummary[]>(queryKeys.pages.byProject(proj), (old) => {
@@ -132,13 +138,10 @@ export function useAiActions() {
       patchPageInCache(proj, pageId, { status: 'ai-processing' satisfies PageStatus })
       restorePreviousPage = true
 
-      // Start-of-job toast — tells the user which page kicked off the job so
-      // the AiProgressOverlay spinner has a labeled origin even after they
-      // navigate to another page (background path).
-      store.commit('bmp/showNotification', {
-        title: `AI ${aiActionLabel(action)} 시작`,
-        message: `${pageRecord.index}페이지 처리 중...`,
-      })
+      // Expose the originating page index so AiProgressOverlay can label its
+      // spinner with "N페이지 ...중" — important on the background path where
+      // the user may have moved on to a different page.
+      activePageIndex.value = pageRecord.index
 
       const input = await buildInput(action)
       const sessionKey = (store.state as { auth?: { sessionKey: string | null } }).auth?.sessionKey ?? null
@@ -157,20 +160,11 @@ export function useAiActions() {
           markDirty,
           saveImmediately,
           onBackgroundApplied: (index) => {
-            store.commit('bmp/showNotification', {
-              title: 'AI 작업 완료',
-              message: `${index}페이지의 AI ${aiActionLabel(action)} 결과가 적용되었습니다.`,
-            })
+            showNotice(`${index}페이지 AI ${aiActionLabel(action)} 완료`)
           },
           sessionKey,
         })
         restorePreviousPage = false
-        if (applied.appliedMode === 'active') {
-          store.commit('bmp/showNotification', {
-            title: 'AI 작업 완료',
-            message: `${pageRecord.index}페이지의 AI ${aiActionLabel(action)} 결과가 적용되었습니다.`,
-          })
-        }
         lastResult.value = {
           op: action,
           status: `${final.status}: +${applied.textLayerCount} text, +${applied.graphicLayerCount} image`,
@@ -207,6 +201,7 @@ export function useAiActions() {
         void store.dispatch('auth/refreshCredit')
       }
       loading.value = null
+      activePageIndex.value = null
     }
   }
 
@@ -232,7 +227,7 @@ export function useAiActions() {
     return state.auth?.user?.email ?? null
   }
 
-  return { loading, lastResult, runAction }
+  return { loading, activePageIndex, lastResult, runAction }
 }
 
 function aiActionLabel(action: AiOperationKind): string {
