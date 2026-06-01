@@ -19,11 +19,12 @@ ui_engine/
 
 ## 기술 스택
 
-- **Vue 3** + **TypeScript** + **Vuex 4** + **Vue Router**
-- **Vite** (빌드)
+- **Vue 3.5** + **TypeScript 5.6** + **Vue Router 4**
+- **Vuex 4** — UI/Editor in-memory 상태 (bitmappery store와 공존, `bmp/` namespace)
+- **TanStack Query v5 (Vue Query)** — 서버 상태 (projects/pages), `@tanstack/query-persist-client-core` + `idb` 로 IndexedDB 영속화. per-user namespace (`towa-query-${userId}`, `towa-cache-${userId}`)
+- **Vite 6** (빌드) / **Tailwind CSS 4** (스타일)
 - **zCanvas** (캔버스 렌더링, bitmappery 내부)
-- **IndexedDB** (standalone 모드 로컬 저장)
-- **Tailwind CSS** (스타일링)
+- **Vitest** (unit) + **Playwright** (e2e)
 
 ## 로컬 실행
 
