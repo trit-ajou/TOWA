@@ -119,9 +119,6 @@ export default {
                 case ToolTypes.SCALE:
                     loader =  () => import( "./tool-options-scale/tool-options-scale.vue" );
                     break;
-                case ToolTypes.MIRROR:
-                    loader =  () => import( "./tool-options-mirror/tool-options-mirror.vue" );
-                    break;
                 case ToolTypes.TEXT:
                     loader =  () => import( "./tool-options-text/tool-options-text.vue" );
                     break;

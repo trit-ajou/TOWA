@@ -325,12 +325,8 @@ function handleKeyDown( event: KeyboardEvent ): void {
                     toggleFullscreen();
                 }
             }
-            else if ( getters.activeLayer ) {
-                if ( altDown ) {
-                    toggleLayerFilters( store, getters.activeLayer, getters.activeLayerIndex );
-                } else {
-                    setActiveTool( ToolTypes.MIRROR );
-                }
+            else if ( getters.activeLayer && altDown ) {
+                toggleLayerFilters( store, getters.activeLayer, getters.activeLayerIndex );
             }
             break;
 

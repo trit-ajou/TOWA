@@ -23,7 +23,6 @@ export const MODE_PRESETS: Record<TowaMode, Partial<Record<FeatureKey, boolean>>
         TOOL_WAND: false,
         TOOL_EYEDROPPER: false,
         TOOL_ROTATE: false,
-        TOOL_MIRROR: false,
         TOOL_FILL: false,
         TOOL_BRUSH: false,
         TOOL_ERASER: false,

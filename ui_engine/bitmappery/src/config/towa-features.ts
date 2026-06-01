@@ -21,7 +21,6 @@ export const TOWA_FEATURES = {
     TOOL_SCALE: true,
     TOOL_EYEDROPPER: true,
     TOOL_ROTATE: true,
-    TOOL_MIRROR: true,
     TOOL_FILL: true,
     TOOL_BRUSH: true,
     TOOL_ERASER: true,

@@ -208,11 +208,6 @@ export default {
                     disabled: !this.activeLayer, hasOptions: false
                 },
                 {
-                    type: ToolTypes.MIRROR,
-                    i18n: "mirrorLayer", icon: "mirror", key: "F",
-                    disabled: !this.activeLayer, hasOptions: true
-                },
-                {
                     type: ToolTypes.ROTATE,
                     i18n: "rotateLayer", icon: "rotate", key: "R",
                     disabled: !this.activeLayer, hasOptions: true

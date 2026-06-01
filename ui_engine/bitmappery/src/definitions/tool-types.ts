@@ -35,7 +35,6 @@ enum ToolTypes {
     SCALE      = "scale",
     EYEDROPPER = "eyedropper",
     ROTATE     = "rotate",
-    MIRROR     = "mirror",
     FILL       = "fill",
     BRUSH      = "brush",
     ERASER     = "eraser",
