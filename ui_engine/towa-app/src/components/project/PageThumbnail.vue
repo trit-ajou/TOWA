@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, toRef } from 'vue'
 import type { Page } from '@/types/page'
 import { Edit3, Paintbrush, Trash2 } from 'lucide-vue-next'
+import { useThumbnailUrl } from '@/composables/useThumbnailUrl'
 
 const props = defineProps<{
   page: Page
@@ -13,6 +14,12 @@ defineEmits<{
   openDetail: []
   delete: []
 }>()
+
+// Per #39 Object URLs are owned by the displaying component. The composable
+// fetches the thumbnail blob (memory → IDB → server) and returns a reactive
+// URL that is revoked on unmount or pageId change.
+const pageId = computed(() => props.page.id)
+const { url: thumbUrl } = useThumbnailUrl(pageId)
 
 const statusConfig = computed(() => {
   const map: Record<string, { label: string; color: string }> = {
@@ -32,8 +39,8 @@ const statusConfig = computed(() => {
   >
     <div class="relative aspect-[2/3] bg-towa-bg overflow-hidden">
       <img
-        v-if="page.thumbnail"
-        :src="page.thumbnail"
+        v-if="thumbUrl"
+        :src="thumbUrl"
         :alt="`페이지 ${page.index}`"
         class="w-full h-full object-cover"
       />

@@ -6,6 +6,7 @@ import { usePageLoader } from '@/composables/usePageLoader'
 import { useAutoSave } from '@/composables/useAutoSave'
 import { useSpacePanModifier } from '@/composables/useSpacePanModifier'
 import { usePages } from '@/composables/usePages'
+import { usePageBinaryPrefetch } from '@/composables/usePageBinaryPrefetch'
 import PageSidePanel from '@/components/editor/PageSidePanel.vue'
 import TranslationPanel from '@/components/editor/TranslationPanel.vue'
 import CanvasToolbox from '@/components/editor/CanvasToolbox.vue'
@@ -38,6 +39,12 @@ const projectId = computed(() => route.params.id as string)
 const pagesApi = usePages(projectId)
 const pages = pagesApi.list
 const selectedPageId = computed(() => store.getters['editor/selectedPageId'])
+
+// Drive page-binary prefetch off the active page (#39 §page-binary-prefetch).
+usePageBinaryPrefetch({
+  pageIds: computed(() => pages.value.map((p) => p.id)),
+  activePageId: selectedPageId,
+})
 const currentPage = computed(() =>
   selectedPageId.value ? pagesApi.byId(selectedPageId.value) : null
 )

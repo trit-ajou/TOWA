@@ -11,6 +11,7 @@ import { usePageLoader } from '@/composables/usePageLoader'
 const route = useRoute()
 const store = useStore()
 const { isPageSwitching } = usePageLoader()
+const selectedPageIdForOverlay = computed<string | null>(() => store.getters['editor/selectedPageId'] ?? null)
 
 const projectId = computed(() => route.params.id as string)
 const activeTab = computed(() => route.name as string)
@@ -92,7 +93,7 @@ onBeforeUnmount(() => {
     <!-- 페이지 전환 시 캔버스 깜빡임을 가리는 overlay. 짧은 전환에 거슬리지 않도록
          delay를 300ms로 설정 — NN/g UX 가이드: 100ms는 즉각 인지(불필요), 300ms부터
          사용자가 명확히 기다림을 인지. cache hit 단순 전환은 100ms 근처라 overlay 미노출. -->
-    <PageTransitionOverlay :visible="isPageSwitching" :delay="300" />
+    <PageTransitionOverlay :visible="isPageSwitching" :delay="300" :page-id="selectedPageIdForOverlay" />
   </div>
 </template>
 
