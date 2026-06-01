@@ -1,6 +1,31 @@
 @import "tailwindcss";
 
-/* Fonts (Bricolage Grotesque, Pretendard Variable) loaded via index.html <link> */
+/* === 통합 폰트 시스템 (self-hosted) === */
+/* NanumSquare: 한·영 / NotoSansJP: 일본어 fallback */
+
+@font-face {
+  font-family: "NanumSquare";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("@/assets/fonts/NanumSquareR.woff") format("woff");
+}
+
+@font-face {
+  font-family: "NanumSquare";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("@/assets/fonts/NanumSquareB.woff") format("woff");
+}
+
+@font-face {
+  font-family: "Noto Sans JP";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("@/assets/fonts/NotoSansJP-Variable.ttf") format("truetype-variations");
+}
 
 @theme {
   --color-towa-bg: var(--towa-bg);
@@ -43,7 +68,7 @@ body {
   min-height: 100vh;
   background-color: var(--towa-bg);
   color: var(--towa-text);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-family: 'NanumSquare', 'Noto Sans JP', sans-serif;
 }
 
 /* Scrollbar styling */
@@ -68,13 +93,12 @@ body {
 /* === 랜딩/로그인 디자인 보조 유틸 === */
 
 .font-display {
-  font-family: 'Bricolage Grotesque', 'Pretendard Variable', system-ui, sans-serif;
-  font-feature-settings: 'ss01' on;
+  font-family: 'NanumSquare', 'Noto Sans JP', sans-serif;
   letter-spacing: -0.02em;
 }
 
 .font-korean {
-  font-family: 'Pretendard Variable', 'Pretendard', system-ui, sans-serif;
+  font-family: 'NanumSquare', 'Noto Sans JP', sans-serif;
 }
 
 /* Halftone dot grid */

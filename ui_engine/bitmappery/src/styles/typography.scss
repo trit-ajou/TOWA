@@ -3,7 +3,7 @@
 @use "colors";
 
 @mixin customFont() {
-    font-family: "Nunito", sans-serif;
+    font-family: 'NanumSquare', 'Noto Sans JP', sans-serif;
 }
 
 @mixin bodyFont() {
