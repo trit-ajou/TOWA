@@ -18,7 +18,7 @@ import MoveToFolderModal from '@/components/home/MoveToFolderModal.vue'
 import AddMenu from '@/components/home/AddMenu.vue'
 import BaseModal from '@/components/common/BaseModal.vue'
 import BaseButton from '@/components/common/BaseButton.vue'
-import { ChevronLeft } from 'lucide-vue-next'
+import { ChevronLeft, RefreshCw } from 'lucide-vue-next'
 
 const store = useStore()
 const router = useRouter()
@@ -201,6 +201,17 @@ function goToParent() {
 function startCreateFolderHere() {
   sidebar.value?.openCreateModal(currentFolderId.value)
 }
+
+const refreshing = ref(false)
+async function refreshLibrary() {
+  if (refreshing.value) return
+  refreshing.value = true
+  try {
+    await Promise.all([projectsApi.refetch(), foldersApi.refetch()])
+  } finally {
+    refreshing.value = false
+  }
+}
 </script>
 
 <template>
@@ -222,6 +233,14 @@ function startCreateFolderHere() {
           <span v-else>전체</span>
         </div>
         <div class="flex items-center gap-3">
+          <button
+            class="p-1.5 rounded text-towa-text-muted hover:text-towa-text hover:bg-towa-surface transition-colors"
+            title="서버에서 다시 불러오기"
+            :disabled="refreshing"
+            @click="refreshLibrary"
+          >
+            <RefreshCw :size="14" :class="{ 'animate-spin': refreshing }" />
+          </button>
           <div class="flex items-center gap-1 bg-towa-surface rounded-lg p-0.5">
             <button
               v-for="opt in statusOptions"

@@ -20,6 +20,10 @@ const redirectTarget = computed(() => {
   return typeof r === 'string' && r.startsWith('/') ? r : '/library'
 })
 
+// When the global 401 handler redirects here, surface a clear message so the
+// user knows why they were bounced. (#39 §401 분기)
+const sessionExpired = computed(() => route.query.expired === '1')
+
 onMounted(() => {
   if (isLoggedIn.value) {
     router.replace(redirectTarget.value)
@@ -181,6 +185,15 @@ async function submit() {
             <input type="checkbox" class="accent-towa-accent" />
             로그인 상태 유지
           </label>
+
+          <!-- Session-expired notice (from a 401 redirect) -->
+          <div
+            v-if="sessionExpired && !authError"
+            class="px-3 py-2 bg-towa-warning/10 text-sm text-towa-text"
+            style="border: 2px solid var(--towa-warning)"
+          >
+            세션이 만료되어 로그인이 필요합니다. 다시 로그인해주세요.
+          </div>
 
           <!-- Error -->
           <div

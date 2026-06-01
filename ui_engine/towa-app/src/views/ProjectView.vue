@@ -1,19 +1,36 @@
 <script setup lang="ts">
 import { computed, watch, nextTick, onBeforeUnmount } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useStore } from 'vuex'
 // @ts-expect-error bitmappery component (JS/Vue)
 import BitMappery from '@bitmappery/bitmappery.vue'
 import { setTowaMode } from '@bitmappery/config/towa-mode-presets'
 import PageTransitionOverlay from '@/components/common/PageTransitionOverlay.vue'
 import { usePageLoader } from '@/composables/usePageLoader'
+import { useProjects } from '@/composables/useProjects'
 
 const route = useRoute()
+const router = useRouter()
 const store = useStore()
 const { isPageSwitching } = usePageLoader()
 const selectedPageIdForOverlay = computed<string | null>(() => store.getters['editor/selectedPageId'] ?? null)
 
 const projectId = computed(() => route.params.id as string)
+const projectsApi = useProjects()
+
+// Project not-found / soft-deleted detection (#39 §404 흡수). Once the project
+// list has loaded and the requested id isn't there, redirect to /library so
+// the user lands somewhere sensible.
+watch(
+  [() => projectsApi.isLoading.value, projectId, () => projectsApi.all.value.length],
+  () => {
+    if (projectsApi.isLoading.value) return
+    if (!projectsApi.byId(projectId.value)) {
+      router.replace('/library').catch(() => {})
+    }
+  },
+  { immediate: true },
+)
 const activeTab = computed(() => route.name as string)
 const showCanvas = computed(() => activeTab.value === 'editor' || activeTab.value === 'detail-editor')
 

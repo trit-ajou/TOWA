@@ -12,6 +12,7 @@ import PageGrid from '@/components/project/PageGrid.vue'
 import BaseModal from '@/components/common/BaseModal.vue'
 import BaseButton from '@/components/common/BaseButton.vue'
 import { buildPageSnapshotFromFile } from '@/utils/page-from-file'
+import { RefreshCw } from 'lucide-vue-next'
 
 defineOptions({ name: 'ProjectHomeTab' })
 
@@ -97,6 +98,17 @@ function selectAndDetail(pageId: string) {
   router.push(`/project/${projectId.value}/detail`)
 }
 
+const refreshing = ref(false)
+async function refreshPages() {
+  if (refreshing.value) return
+  refreshing.value = true
+  try {
+    await pagesApi.refetch()
+  } finally {
+    refreshing.value = false
+  }
+}
+
 async function addPages(files: File[]) {
   const pid = projectId.value
   for (const file of files) {
@@ -131,8 +143,16 @@ async function addPages(files: File[]) {
           />
         </div>
         <div class="flex-1 overflow-y-auto px-6 pb-6">
-          <!-- Status filter chips -->
-          <div class="flex items-center justify-end mb-3">
+          <!-- Status filter chips + refresh -->
+          <div class="flex items-center justify-end gap-2 mb-3">
+            <button
+              class="p-1.5 rounded text-towa-text-muted hover:text-towa-text hover:bg-towa-surface transition-colors"
+              title="서버에서 다시 불러오기"
+              :disabled="refreshing"
+              @click="refreshPages"
+            >
+              <RefreshCw :size="14" :class="{ 'animate-spin': refreshing }" />
+            </button>
             <div class="flex items-center gap-1 bg-towa-surface rounded-lg p-0.5">
               <button
                 v-for="chip in statusChips"

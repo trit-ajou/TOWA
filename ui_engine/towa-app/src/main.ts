@@ -11,7 +11,8 @@ import { createFileAdapter } from './file-adapter'
 import { FILE_ADAPTER_KEY } from './composables/useFileAdapter'
 import { APP_BACKEND_KEY } from './composables/useAppBackend'
 import { DEPLOYMENT_MODE } from './config/deployment'
-import { queryClient, setQueryUser } from './query/query-client'
+import { queryClient, setQueryUser, isAuthError } from './query/query-client'
+import { queryKeys } from './composables/queryKeys'
 import './app.css'
 import 'floating-vue/dist/style.css'
 
@@ -81,6 +82,39 @@ async function init() {
       }
     } else if (mutation.type === 'auth/CLEAR_SESSION') {
       setQueryUser(null).catch((e) => console.warn('[main] setQueryUser(null) failed', e))
+    }
+  })
+
+  // 401 안전망: 어떤 query/mutation이든 인증 만료가 떨어지면 세션을 정리하고
+  // 로그인 화면으로 보낸다. (#39 §401 분기)
+  let redirectingDueTo401 = false
+  function on401() {
+    if (redirectingDueTo401) return
+    redirectingDueTo401 = true
+    setTimeout(() => { redirectingDueTo401 = false }, 1000)
+    store.dispatch('auth/logout').catch(() => {})
+    if (router.currentRoute.value.name !== 'login') {
+      router.replace({ path: '/login', query: { expired: '1' } }).catch(() => {})
+    }
+  }
+  queryClient.getQueryCache().subscribe((event) => {
+    if (event.type === 'updated' && event.action.type === 'error') {
+      if (isAuthError(event.action.error)) on401()
+    }
+  })
+  queryClient.getMutationCache().subscribe((event) => {
+    if (event.type === 'updated' && event.action.type === 'error') {
+      if (isAuthError(event.action.error)) on401()
+    }
+  })
+
+  // Window focus 안전망: 사용자가 다른 탭에서 작업하고 돌아오면 현재 프로젝트의
+  // 페이지 목록 메타가 outdated일 수 있음. staleTime: Infinity의 보조 트리거.
+  window.addEventListener('focus', () => {
+    if (!store.getters['auth/isLoggedIn']) return
+    const pid = store.getters['editor/currentProjectId']
+    if (pid) {
+      queryClient.invalidateQueries({ queryKey: queryKeys.pages.byProject(pid) })
     }
   })
 

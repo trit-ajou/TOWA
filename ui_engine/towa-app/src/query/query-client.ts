@@ -3,6 +3,7 @@ import { persistQueryClient } from '@tanstack/query-persist-client-core'
 import { createIDBPersister } from './idb-persister'
 import { setCacheUser, getCacheUserId } from '@/file-adapter/cache-db'
 import { clearAllBlobCacheMemory } from '@/file-adapter/cache-instances'
+import { BackendError } from '@/backend/errors'
 
 // Shared QueryClient. Per #39:
 //   - staleTime: Infinity for all server-state queries
@@ -62,14 +63,28 @@ export async function setQueryUser(userId: string | null): Promise<void> {
   // Surface restore errors but don't block the caller.
   restored.catch((e) => console.warn('[QueryPersister] restore failed', e))
   detachPersister = unsubscribe
+
+  // After hydrating from persisted state, force a refresh so that whatever
+  // changed on other devices since the snapshot was written gets picked up
+  // (#39 §sync — "로그인 직후 queryClient.invalidateQueries() 전체").
+  try {
+    await restored
+  } catch {
+    // already logged above
+  }
+  await queryClient.invalidateQueries()
 }
 
 export function getActiveQueryUserId(): string | null {
   return getCacheUserId()
 }
 
-function isAuthError(error: unknown): boolean {
+export function isAuthError(error: unknown): boolean {
+  if (error instanceof BackendError) {
+    return error.statusCode === 401 || error.payload.code === 'session_key_required'
+  }
   if (!error || typeof error !== 'object') return false
-  const status = (error as { status?: number }).status
+  const status = (error as { status?: number; statusCode?: number }).statusCode
+    ?? (error as { status?: number }).status
   return status === 401
 }
