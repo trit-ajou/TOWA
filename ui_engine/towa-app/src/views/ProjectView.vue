@@ -97,11 +97,13 @@ onBeforeUnmount(() => {
           <div v-show="showCanvas" class="bitmappery-layer">
             <BitMappery />
           </div>
-          <router-view v-slot="{ Component }">
-            <keep-alive :include="['ProjectHomeTab']">
-              <component :is="Component" />
-            </keep-alive>
-          </router-view>
+          <!-- KeepAlive 제거: vuejs/core#8509 — KeepAlive wrapper 안의 Teleport(defer)는
+               빠른 자식 컴포넌트 swap 시 DOM이 stale하게 남아 다음 mount에서 insertBefore
+               NotFoundError를 일으킨다. 우리는 EditorTab/DetailEditorTab을 캐시하지 않고
+               ProjectHomeTab만 캐시했지만, KeepAlive 자체가 자식 lifecycle을 통제하므로
+               include 여부와 무관하게 wrapper만으로도 #8509 증상이 발생한다.
+               ProjectHomeTab 캐시 효과는 TanStack Query 캐시가 즉시 hit하므로 거의 0. -->
+          <router-view />
         </div>
 
         <!-- 캔버스 우측 옵션/번역 패널 -->

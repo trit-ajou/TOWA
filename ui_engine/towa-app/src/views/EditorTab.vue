@@ -235,6 +235,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 
 <template>
   <div>
+    <!-- defer 필요: ProjectView template에서 #towa-right-panel이 router-view 뒤에 있어
+         EditorTab의 setup 시점엔 target이 아직 없다. defer가 현재 render cycle 후에
+         teleport를 처리해 ProjectView가 full DOM을 만든 뒤 target을 점유하게 한다. -->
     <Teleport to="#towa-canvas-area" defer>
       <ZoomToolHandler />
       <CanvasToolbox />
