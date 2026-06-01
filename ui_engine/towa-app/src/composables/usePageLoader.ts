@@ -31,7 +31,7 @@ import DocumentFactory from '@bitmappery/factories/document-factory'
 // @ts-expect-error bitmappery JS module
 import LayerFactory from '@bitmappery/factories/layer-factory'
 // @ts-expect-error bitmappery JS module
-import { getCanvasInstance } from '@bitmappery/services/canvas-service'
+import { createSyncSnapshot } from '@bitmappery/utils/document-util'
 // @ts-expect-error bitmappery JS module
 import { flushLayerRenderers } from '@bitmappery/factories/renderer-factory'
 
@@ -194,25 +194,36 @@ export function usePageLoader() {
   }
 
   /**
-   * 현재 bitmappery 캔버스를 캡처하여 썸네일 Blob 반환.
+   * 현재 bitmappery 문서를 캡처하여 썸네일 Blob 반환.
+   *
+   * zCanvas의 viewport element는 화면(=캔버스 영역 div)에 맞춰진 크기라
+   * doc 원본 비율과 무관하다. 세로 만화 페이지가 가로 넓은 영역에 보이면
+   * viewport는 가로로 넓은 채로 존재하고, 그 canvas를 그대로 캡처하면
+   * 썸네일도 가로로 넓게 잘못 저장된다. (사용자 보고: "작업중" 페이지만
+   * 비율이 깨져 보임 — 저장된 thumbnail이 doc 비율을 따르지 않아서)
+   *
+   * createSyncSnapshot은 doc.width × doc.height의 offscreen canvas에
+   * layer를 모두 렌더하므로 doc 원본 비율이 정확히 유지된다. AI 결과
+   * 적용 background 경로(result-applier.ts)도 같은 패턴.
    */
   function captureThumbnail(): Promise<Blob | null> {
-    const zCanvas = getCanvasInstance()
-    if (!zCanvas) return Promise.resolve(null)
-    const canvasEl = zCanvas.getElement() as HTMLCanvasElement
-    if (!canvasEl) return Promise.resolve(null)
+    const doc = store.getters['bmp/activeDocument']
+    if (!doc) return Promise.resolve(null)
+
+    const composedCanvas = createSyncSnapshot(doc) as HTMLCanvasElement
+    if (!composedCanvas) return Promise.resolve(null)
 
     const maxW = 200
     const maxH = 300
-    const scale = Math.min(maxW / canvasEl.width, maxH / canvasEl.height, 1)
-    const w = Math.round(canvasEl.width * scale)
-    const h = Math.round(canvasEl.height * scale)
+    const scale = Math.min(maxW / composedCanvas.width, maxH / composedCanvas.height, 1)
+    const w = Math.max(1, Math.round(composedCanvas.width * scale))
+    const h = Math.max(1, Math.round(composedCanvas.height * scale))
 
     const thumbCanvas = document.createElement('canvas')
     thumbCanvas.width = w
     thumbCanvas.height = h
     const ctx = thumbCanvas.getContext('2d')!
-    ctx.drawImage(canvasEl, 0, 0, w, h)
+    ctx.drawImage(composedCanvas, 0, 0, w, h)
 
     return new Promise<Blob | null>((resolve) => {
       thumbCanvas.toBlob((blob) => resolve(blob), 'image/png')
