@@ -6,6 +6,12 @@
 
 ## 2026-06-02
 
+### 07:53 — Thumbnail 비율 깨짐 fix (viewport → doc snapshot)
+- 증상: 페이지 저장 후 일부 페이지의 썸네일이 원본 doc 비율을 따르지 않고 가로/세로가 달라짐. `PageThumbnail`의 `aspect-[2/3]` 컨테이너 + `object-cover`와 결합되어 만화 가운데 영역만 잘려 보임. 사용자 스크린샷에서 작업/저장된 페이지(4p~7p)만 비율이 깨져 보임 (저장 trigger된 페이지만 잘못 갱신)
+- Root cause: `usePageLoader.captureThumbnail`이 `zCanvas.getElement()`의 *viewport* 캔버스를 그대로 캡처. viewport는 캔버스 영역 div 크기에 맞춰진 가로 박스라 세로 만화 doc과 비율이 다름
+- 수정: `result-applier.ts` background 경로가 이미 쓰던 패턴 그대로 `createSyncSnapshot(doc)`으로 교체. `doc.width × doc.height`의 offscreen canvas에 모든 layer를 렌더하므로 doc 원본 비율 정확 유지. 미사용된 `getCanvasInstance` import 정리
+- 기존에 잘못 저장된 thumbnail은 다음 저장 시점에 자동 갱신됨
+
 ### 07:45 — 편집 ↔ 상세편집 탭 swap freeze fix (vuejs/core#8509)
 - 증상: 편집 탭에서 텍스트 추가/삭제 작업 후 상세편집 ↔ 편집 탭을 왕복하면 UI가 먹통(이전 탭이 안 사라지고 새 탭도 안 mount). 콘솔에 `Failed to execute 'insertBefore' on 'Node'` NotFoundError + `parentNode null` / `subTree null` Vue warn이 `usePageLoader.ts:193` (invalidateQueries) 트레이스에서 발생
 - Root cause: `ProjectView`의 `<keep-alive :include="['ProjectHomeTab']">` wrapper. EditorTab/DetailEditorTab은 cache 대상이 아니지만 KeepAlive wrapper *안에* 있다는 사실만으로 [vuejs/core#8509](https://github.com/vuejs/core/issues/8509) 증상(KeepAlive 안 자식이 외부로 Teleport한 DOM이 swap 시 stale하게 남아 다음 mount에서 insertBefore mismatch)이 발생. include 여부와 무관하게 wrapper 자체가 자식 lifecycle을 통제하기 때문
