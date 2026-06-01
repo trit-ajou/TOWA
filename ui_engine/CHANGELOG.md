@@ -6,6 +6,13 @@
 
 ## 2026-06-01
 
+### 23:17 — #39 사용자 검증 라운드 fix 4건
+- **thumbnail 404 race**: `usePageLoader.savePage`에서 invalidate→refetch 대신 새 thumbnail Blob을 `thumbnailCache.set` + `qc.setQueryData`로 직접 cache에 주입. service-engine이 저장 직후 thumbnail endpoint에 짧게 404를 주면 query data가 null로 collapse돼 영구적으로 빈 상태가 되던 버그 제거
+- **brush race**: `useAutoSave.doSave` 진입 시 active layer renderer의 `storePaintState()`를 `await` 으로 flush. bitmappery의 brush stroke 완료는 `canvasToBlob × 2` async + 1초 batch debounce가 끼어 historyIndex 증가가 지연됨. 그 사이 페이지 이동/Ctrl+S가 떨어지면 `dirty.value=false`로 bail되어 자동저장 누락이 발생. bitmappery의 `undo` action이 이미 쓰는 패턴(`history-module.ts:119-122`)을 그대로 차용
+- **action-based dirty trigger**: `useAutoSave`가 `historyIndex` 값 변화 watch 대신 `bmp/saveState` mutation을 `store.subscribe`로 listen. 페이지 진입 시 bitmappery의 `activeDocument` watch가 호출하는 `resetHistory()`가 historyIndex를 -1로 강제 reset해 거짓 dirty가 트리거되던 문제 제거. + bitmappery `layer-renderer.storePaintState` 끝에서 `forceProcess()` (=enqueueState queue flush) 호출 — brush/eraser/fill 같은 mouseup-based action은 즉시 commit해 Photoshop/Krita식 행동 단위 history로 맞춤 (텍스트/slider 같은 keystroke 기반 입력의 1초 batching은 유지)
+- **per-page "저장 안 됨" 뱃지**: `useAutoSave`의 `dirty` + `dirtyPageId`를 module-scope ref로 끌어올려 `useDirtyState()`로 export. PageSidePanelItem + PageThumbnail 좌상단에 노란 뱃지(`bg-towa-warning`). `document.title`의 `* ` prefix는 시인성이 낮아 제거
+- 관련 파일: ui_engine/towa-app/src/composables/useAutoSave.ts, usePageLoader.ts, components/editor/PageSidePanelItem.vue, components/project/PageThumbnail.vue, bitmappery/src/rendering/actors/layer-renderer.ts
+
 ### 14:22 — FileAdapter sync 레이어 재구성 (#39)
 - 배경: `projects` / `folders` / `pages` / `trash` 같은 서버 상태를 TanStack Query 기반 캐시 레이어로 이관하고, 페이지 binary·thumbnail에 prefetch + 영속 캐시 도입. PoC 단계의 단일 사용자/세션 가정으로 LWW 운영
 - **Phase 1 — 캐시 인프라**: `@tanstack/vue-query` + `@tanstack/query-persist-client-core` 설치. user-namespaced cache DB (`towa-cache-${userId}`) + 일반화된 `BlobCache(storeName, maxMemory, maxIDB)` + thumbnail-cache store. `QueryClient` (staleTime: Infinity, retry 3회 1s/2s/4s, 401 bail) + IDB persister
