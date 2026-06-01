@@ -72,6 +72,12 @@ UI 컴포넌트 17개 폴더 전부 towa-app import 0건 확인. 그중 살릴 �
   - D. commitEffects, flattenImage 진입점, layer-effects 미사용 필터(opacity·blendMode 외 전체) — UI·rendering·store 일관 삭제
   - **보존**: layer-effects/, layer-panel/ (#56 D-1이 활용), psd.js + psd-import-service, pdfjs-dist + pdf-import-service
 
+**보강** (구현 단계에서 확인된 분류 정정)
+
+- `services/aws-s3-service.ts`, `services/dropbox-service.ts` — A-1 의존성 짝(`@aws-sdk/client-s3`, `dropbox`)과 함께 삭제 (이슈 본문 미명시). cloud-file-selector·file-menu·file-import에서만 사용되어 dead.
+- `workers/compression.worker.ts` + `services/compression-service.ts` — **gif와 무관, 보존**. 이슈 본문 A-4는 gif 카테고리로 잘못 묶었으나 실제로는 `factories/document-factory.ts`가 호출하는 `.bpy` 프로젝트 파일 JSON 압축 워커. gif 코드 0줄. 삭제 대상은 `services/gif-creation-service.ts` + `config/towa-features.ts`의 `FILE_GIF_EXPORT` flag만.
+- cloud 정리 부수 효과 — `utils/cloud-service-loader.ts`, `mixins/cloud-service-connector.ts`, `definitions/storage-types.ts`(STORAGE_TYPES enum + FileNode type) 모두 cloud 전용이라 같이 삭제 (이슈 본문 미명시).
+
 ---
 
 ## 점검 자료 (raw data — 결정 아님)
