@@ -33,11 +33,10 @@ async function submit() {
       email: email.value.trim(),
       nickname: nickname.value.trim() || undefined,
     })
-    try {
-      await store.dispatch('projects/loadAll')
-    } catch (e) {
-      console.warn('[LoginView] loadAll after login failed:', e)
-    }
+    // Server state is now driven by TanStack Query. The auth/SET_SESSION
+    // subscription in main.ts wires the new user namespace; the cross-cutting
+    // invalidate-on-login (#39 §sync) lives there too. No imperative load
+    // needed here.
     router.replace(redirectTarget.value)
   } catch {
     // store가 error 관리

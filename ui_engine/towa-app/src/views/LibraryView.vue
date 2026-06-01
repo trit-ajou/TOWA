@@ -6,6 +6,9 @@ import type { Project, ProjectStatus } from '@/types/project'
 import type { Folder, FolderNode } from '@/types/folder'
 import type { PreviewItem } from '@/components/home/FolderCard.vue'
 import { useModal } from '@/composables/useModal'
+import { useProjects } from '@/composables/useProjects'
+import { useFolders } from '@/composables/useFolders'
+import { usePages } from '@/composables/usePages'
 import { createUlid } from '@/utils/ulid'
 import { buildPageSnapshotFromFile } from '@/utils/page-from-file'
 import HomeSidebar from '@/components/home/HomeSidebar.vue'
@@ -19,6 +22,8 @@ import { ChevronLeft } from 'lucide-vue-next'
 
 const store = useStore()
 const router = useRouter()
+const projectsApi = useProjects()
+const foldersApi = useFolders()
 const createModal = useModal()
 const deleteModal = useModal()
 const moveModal = useModal()
@@ -42,15 +47,17 @@ const currentFolderId = computed<string | null>(() => store.getters['library/cur
 const statusFilter = computed<ProjectStatus | 'all'>(() => store.getters['library/statusFilter'])
 const searchQuery = computed<string>(() => store.getters['library/searchQuery'])
 
-const allProjects = computed<Project[]>(() => store.getters['projects/all'])
-const allFolders = computed<Folder[]>(() => store.getters['folders/all'])
-const childrenOf = computed(() => store.getters['folders/childrenOf'] as (parentId: string | null) => Folder[])
+const allProjects = projectsApi.all
 const currentFolder = computed<Folder | undefined>(() =>
-  currentFolderId.value ? (store.getters['folders/byId'](currentFolderId.value) as Folder | undefined) : undefined,
+  currentFolderId.value ? foldersApi.byId(currentFolderId.value) : undefined,
 )
 const folderPath = computed<string>(() =>
-  currentFolderId.value ? (store.getters['folders/pathOf'](currentFolderId.value) as string) : '',
+  currentFolderId.value ? foldersApi.pathOf(currentFolderId.value) : '',
 )
+
+// usePages 인스턴스를 동적으로 만들기 위한 helper. addPage 시 active project 기준.
+const pagesProjectIdForCreate = ref<string>('')
+const pagesForCreate = usePages(pagesProjectIdForCreate)
 
 const statusOptions = [
   { value: 'all' as const, label: '전체' },
@@ -64,11 +71,11 @@ function setStatusFilter(filter: ProjectStatus | 'all') {
 }
 
 const subfolders = computed<FolderNode[]>(() =>
-  childrenOf.value(currentFolderId.value).map((f) => ({
+  foldersApi.childrenOf(currentFolderId.value).map((f) => ({
     id: f.id,
     name: f.name,
     parentId: f.parentId,
-    children: childrenOf.value(f.id).map((c) => ({ id: c.id, name: c.name, parentId: c.parentId, children: [] })),
+    children: foldersApi.childrenOf(f.id).map((c) => ({ id: c.id, name: c.name, parentId: c.parentId, children: [] })),
   })),
 )
 
@@ -132,14 +139,15 @@ async function createProject(form: { name: string; sourceLang: string; targetLan
       inferenceMode: form.inferenceMode,
     },
   }
-  await store.dispatch('projects/create', newProject)
+  await projectsApi.create(newProject)
 
+  pagesProjectIdForCreate.value = projectId
   for (let i = 0; i < form.files.length; i++) {
     const snapshot = await buildPageSnapshotFromFile(form.files[i], projectId, i + 1)
-    await store.dispatch('pages/addPage', { projectId, snapshot })
+    await pagesForCreate.addPage({ projectId, snapshot })
   }
   if (form.files.length > 0) {
-    await store.dispatch('projects/update', {
+    await projectsApi.update({
       ...newProject,
       pageCount: form.files.length,
       updatedAt: new Date().toISOString(),
@@ -160,7 +168,7 @@ function confirmDeleteProject(project: Project) {
 
 async function deleteProject() {
   if (!projectToDelete.value) return
-  await store.dispatch('projects/remove', projectToDelete.value.id)
+  await projectsApi.remove(projectToDelete.value.id)
   deleteModal.close()
   projectToDelete.value = null
 }
@@ -172,16 +180,16 @@ function openMoveModal(project: Project) {
 
 async function submitMove(folderId: string | null) {
   if (!projectToMove.value) return
-  await store.dispatch('projects/update', { ...projectToMove.value, folderId })
+  await projectsApi.update({ ...projectToMove.value, folderId })
   moveModal.close()
   projectToMove.value = null
 }
 
 async function onDropOnFolder(folderId: string, projectId: string) {
-  const project = store.getters['projects/byId'](projectId) as Project | undefined
+  const project = projectsApi.byId(projectId)
   if (!project) return
   if ((project.folderId ?? null) === folderId) return
-  await store.dispatch('projects/update', { ...project, folderId })
+  await projectsApi.update({ ...project, folderId })
 }
 
 function goToParent() {

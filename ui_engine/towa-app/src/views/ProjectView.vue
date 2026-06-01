@@ -18,7 +18,8 @@ const showCanvas = computed(() => activeTab.value === 'editor' || activeTab.valu
 
 watch(projectId, (id) => {
   store.commit('editor/SET_CURRENT_PROJECT', id)
-  store.dispatch('pages/loadForProject', id)
+  // Pages are fetched lazily by the consumer composable (usePages) when each
+  // tab mounts. No imperative pre-load needed.
 }, { immediate: true })
 
 watch(

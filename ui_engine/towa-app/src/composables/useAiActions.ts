@@ -1,12 +1,15 @@
 import { computed, ref } from 'vue'
 import { useStore } from 'vuex'
+import { useQueryClient } from '@tanstack/vue-query'
 import { useAppBackend } from '@/composables/useAppBackend'
 import { usePageLoader } from '@/composables/usePageLoader'
 import { useErrorDialog } from '@/composables/useErrorDialog'
+import { queryKeys } from '@/composables/queryKeys'
 import { DEPLOYMENT_MODE } from '@/config/deployment'
 import { BackendError } from '@/backend/errors'
 import type { AiJobCreateInput, AiJobSnapshot, AiOperationKind } from '@/backend/contracts'
 import type { Page, PageStatus } from '@/types/page'
+import type { PageSummary } from '@/file-adapter'
 import { applyAiJobSnapshotToCurrentPage } from '@/ai/result-applier'
 import { getTextMeta, isTextLayer } from '@/utils/text-layer'
 import type { Layer } from '@bitmappery/definitions/document'
@@ -29,8 +32,16 @@ const lastResult = ref<AiActionResult | null>(null)
 export function useAiActions() {
   const store = useStore()
   const backend = useAppBackend()
+  const qc = useQueryClient()
   const { savePage } = usePageLoader()
   const { showError } = useErrorDialog()
+
+  function patchPageInCache(proj: string, pageId: string, patch: Partial<PageSummary>) {
+    qc.setQueryData<PageSummary[]>(queryKeys.pages.byProject(proj), (old) => {
+      if (!old) return old
+      return old.map((p) => (p.id === pageId ? { ...p, ...patch } : p))
+    })
+  }
 
   const projectId = computed(() => store.getters['editor/currentProjectId'] as string | null)
   const selectedPageId = computed(() => store.getters['editor/selectedPageId'] as string | null)
@@ -116,7 +127,7 @@ export function useAiActions() {
       const pageId = requirePageId()
       const pageRecord = requireCurrentPage(proj, pageId)
       previousPage = { ...pageRecord }
-      store.commit('pages/UPDATE_PAGE', { ...pageRecord, status: 'ai-processing' satisfies PageStatus })
+      patchPageInCache(proj, pageId, { status: 'ai-processing' satisfies PageStatus })
       restorePreviousPage = true
 
       const input = await buildInput(action)
@@ -127,6 +138,7 @@ export function useAiActions() {
       if (final.status === 'succeeded') {
         const applied = await applyAiJobSnapshotToCurrentPage({
           store,
+          queryClient: qc,
           backend: backend.aiJobs,
           snapshot: final,
           projectId: proj,
@@ -183,12 +195,13 @@ export function useAiActions() {
     return selectedPageId.value
   }
   function requireCurrentPage(proj: string, pageId: string): Page {
-    const pageRecord = store.getters['pages/byId'](proj, pageId) as Page | undefined
-    if (!pageRecord) throw new Error(`Page ${pageId} is not loaded`)
-    return pageRecord
+    const list = qc.getQueryData<PageSummary[]>(queryKeys.pages.byProject(proj)) ?? []
+    const summary = list.find((p) => p.id === pageId)
+    if (!summary) throw new Error(`Page ${pageId} is not loaded`)
+    return { id: summary.id, projectId: summary.projectId, index: summary.index, status: summary.status }
   }
   function restorePage(pageRecord: Page | null): void {
-    if (pageRecord) store.commit('pages/UPDATE_PAGE', pageRecord)
+    if (pageRecord) patchPageInCache(pageRecord.projectId, pageRecord.id, { status: pageRecord.status })
   }
   function currentUserEmail(): string | null {
     const state = store.state as { auth?: { user?: { email?: string } | null } }

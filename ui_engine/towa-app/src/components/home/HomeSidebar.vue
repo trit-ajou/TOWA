@@ -10,8 +10,9 @@ import FolderTreeNode from '@/components/home/FolderTreeNode.vue'
 import MoveToFolderModal from '@/components/home/MoveToFolderModal.vue'
 import AddMenu from '@/components/home/AddMenu.vue'
 import { useModal } from '@/composables/useModal'
-import type { Folder, FolderNode } from '@/types/folder'
-import type { Project } from '@/types/project'
+import { useProjects } from '@/composables/useProjects'
+import { useFolders } from '@/composables/useFolders'
+import type { Folder } from '@/types/folder'
 import { validateFolderNameSyntax, MAX_FOLDER_DEPTH } from '@/types/folder'
 
 const emit = defineEmits<{
@@ -21,6 +22,8 @@ const emit = defineEmits<{
 
 const store = useStore()
 const router = useRouter()
+const projectsApi = useProjects()
+const foldersApi = useFolders()
 
 const searchInput = ref<string>(store.getters['library/searchQuery'] ?? '')
 function syncSearch(v: string) {
@@ -28,10 +31,9 @@ function syncSearch(v: string) {
   store.commit('library/SET_SEARCH_QUERY', v)
 }
 
-const tree = computed<FolderNode[]>(() => store.getters['folders/tree'])
-const childrenOf = computed(() => store.getters['folders/childrenOf'] as (parentId: string | null) => Array<{ id: string; name: string }>)
+const tree = foldersApi.tree
 const currentFolderId = computed<string | null>(() => store.getters['library/currentFolderId'])
-const recentProjects = computed(() => store.getters['projects/recentlyEdited'](3))
+const recentProjects = computed(() => projectsApi.recentlyEdited(3))
 
 const expanded = ref<Set<string>>(new Set())
 function toggleExpand(folderId: string) {
@@ -81,11 +83,11 @@ function validateNameForCreate(name: string, parentId: string | null): string | 
   if (syntaxErr === 'empty') return '이름을 입력해주세요.'
   if (syntaxErr === 'too-long') return '폴더 이름이 너무 깁니다 (100자 이내).'
   if (syntaxErr === 'forbidden-char') return '슬래시 / 백슬래시 등은 사용할 수 없습니다.'
-  const siblings = childrenOf.value(parentId)
+  const siblings = foldersApi.childrenOf(parentId)
   if (siblings.some((f) => f.name.trim().toLowerCase() === name.trim().toLowerCase())) {
     return '같은 위치에 동일한 이름의 폴더가 이미 있습니다.'
   }
-  if ((store.getters['folders/wouldExceedMaxDepth'] as (p: string | null) => boolean)(parentId)) {
+  if (foldersApi.wouldExceedMaxDepth(parentId)) {
     return `폴더 깊이는 최대 ${MAX_FOLDER_DEPTH}단계까지 가능합니다.`
   }
   return null
@@ -95,7 +97,7 @@ async function submitCreateFolder() {
   const err = validateNameForCreate(newFolderName.value, createParentId.value)
   if (err) { createError.value = err; return }
   try {
-    await store.dispatch('folders/create', { name: newFolderName.value.trim(), parentId: createParentId.value })
+    await foldersApi.create({ name: newFolderName.value.trim(), parentId: createParentId.value })
     createModal.close()
   } catch (e) {
     createError.value = e instanceof Error ? e.message : '폴더 생성 실패'
@@ -110,7 +112,7 @@ const renameInput = ref('')
 const renameError = ref<string | null>(null)
 
 function openRenameModal(folderId: string) {
-  const f = store.getters['folders/byId'](folderId)
+  const f = foldersApi.byId(folderId)
   if (!f) return
   renameTargetId.value = folderId
   renameInput.value = f.name
@@ -121,7 +123,7 @@ function openRenameModal(folderId: string) {
 
 async function submitRename() {
   if (!renameTargetId.value) return
-  const f = store.getters['folders/byId'](renameTargetId.value)
+  const f = foldersApi.byId(renameTargetId.value)
   if (!f) return
   const err = validateNameForCreate(renameInput.value, f.parentId)
   // 자기 자신과 같은 이름이면 OK
@@ -129,7 +131,7 @@ async function submitRename() {
     renameError.value = err; return
   }
   try {
-    await store.dispatch('folders/rename', { id: renameTargetId.value, name: renameInput.value.trim() })
+    await foldersApi.rename({ id: renameTargetId.value, name: renameInput.value.trim() })
     renameModal.close()
   } catch (e) {
     renameError.value = e instanceof Error ? e.message : '이름 변경 실패'
@@ -141,27 +143,25 @@ async function submitRename() {
 const deleteModal = useModal()
 const deleteTargetId = ref<string | null>(null)
 const deleteError = ref<string | null>(null)
-const deleteTarget = computed(() => deleteTargetId.value ? store.getters['folders/byId'](deleteTargetId.value) : null)
+const deleteTarget = computed(() => deleteTargetId.value ? foldersApi.byId(deleteTargetId.value) : null)
 const deleteHasChildren = computed(() => {
   if (!deleteTargetId.value) return false
-  const childFolders = childrenOf.value(deleteTargetId.value).length
-  const childProjects = (store.getters['projects/all'] as { folderId: string | null }[]).filter((p) => p.folderId === deleteTargetId.value).length
+  const childFolders = foldersApi.childrenOf(deleteTargetId.value).length
+  const childProjects = projectsApi.all.value.filter((p) => p.folderId === deleteTargetId.value).length
   return (childFolders + childProjects) > 0
 })
 const deleteChildCount = computed(() => {
   if (!deleteTargetId.value) return 0
-  const childFolders = (store.getters['folders/descendantIds'] as (id: string) => string[])(deleteTargetId.value).length
-  const childProjects = (store.getters['projects/all'] as { folderId: string | null }[]).filter((p) => {
-    const descSet = new Set([deleteTargetId.value!, ...(store.getters['folders/descendantIds'] as (id: string) => string[])(deleteTargetId.value!)])
-    return p.folderId && descSet.has(p.folderId)
-  }).length
+  const childFolders = foldersApi.descendantIds(deleteTargetId.value).length
+  const descSet = new Set([deleteTargetId.value, ...foldersApi.descendantIds(deleteTargetId.value)])
+  const childProjects = projectsApi.all.value.filter((p) => p.folderId && descSet.has(p.folderId)).length
   return childFolders + childProjects
 })
 const deleteParentName = computed(() => {
   const f = deleteTarget.value
   if (!f) return '루트'
   if (!f.parentId) return '루트'
-  return store.getters['folders/byId'](f.parentId)?.name ?? '루트'
+  return foldersApi.byId(f.parentId)?.name ?? '루트'
 })
 
 function openDeleteDialog(folderId: string) {
@@ -174,7 +174,7 @@ function openDeleteDialog(folderId: string) {
 async function deleteFolder(mode: 'empty' | 'cascade-trash' | 'reparent') {
   if (!deleteTargetId.value) return
   try {
-    await store.dispatch('folders/remove', { id: deleteTargetId.value, mode })
+    await foldersApi.remove({ id: deleteTargetId.value, mode })
     // 만약 현재 폴더가 삭제됐다면 루트로 이동
     if (currentFolderId.value === deleteTargetId.value) {
       store.commit('library/SET_CURRENT_FOLDER', null)
@@ -194,11 +194,11 @@ function goToTrash() {
 const moveModal = useModal()
 const moveTargetId = ref<string | null>(null)
 const moveTarget = computed<Folder | null>(() =>
-  moveTargetId.value ? (store.getters['folders/byId'](moveTargetId.value) as Folder | undefined) ?? null : null,
+  moveTargetId.value ? foldersApi.byId(moveTargetId.value) ?? null : null,
 )
 const moveDisabledIds = computed<Set<string>>(() => {
   if (!moveTargetId.value) return new Set()
-  const descIds = (store.getters['folders/descendantIds'] as (id: string) => string[])(moveTargetId.value)
+  const descIds = foldersApi.descendantIds(moveTargetId.value)
   return new Set([moveTargetId.value, ...descIds])
 })
 
@@ -211,7 +211,7 @@ function openMoveFolderModal(folderId: string) {
 async function submitMoveFolder(parentId: string | null) {
   if (!moveTargetId.value) return
   try {
-    await store.dispatch('folders/move', { id: moveTargetId.value, parentId })
+    await foldersApi.move({ id: moveTargetId.value, parentId })
     moveModal.close()
     moveTargetId.value = null
   } catch (e) {
@@ -222,11 +222,11 @@ async function submitMoveFolder(parentId: string | null) {
 // --- Drag & drop handlers (project → folder) ---
 
 async function moveProjectTo(folderId: string | null, projectId: string) {
-  const project = store.getters['projects/byId'](projectId) as Project | undefined
+  const project = projectsApi.byId(projectId)
   if (!project) return
   if ((project.folderId ?? null) === folderId) return
   try {
-    await store.dispatch('projects/update', { ...project, folderId })
+    await projectsApi.update({ ...project, folderId })
   } catch (e) {
     console.warn('[projects/update folder]', e)
   }

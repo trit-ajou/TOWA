@@ -5,6 +5,7 @@ import { useRoute } from 'vue-router'
 import { usePageLoader } from '@/composables/usePageLoader'
 import { useAutoSave } from '@/composables/useAutoSave'
 import { useSpacePanModifier } from '@/composables/useSpacePanModifier'
+import { usePages } from '@/composables/usePages'
 import PageSidePanel from '@/components/editor/PageSidePanel.vue'
 import TranslationPanel from '@/components/editor/TranslationPanel.vue'
 import CanvasToolbox from '@/components/editor/CanvasToolbox.vue'
@@ -34,10 +35,11 @@ const { switchPage } = usePageLoader()
 const { saveImmediately, markDirty } = useAutoSave()
 
 const projectId = computed(() => route.params.id as string)
-const pages = computed(() => store.getters['pages/forProject'](projectId.value))
+const pagesApi = usePages(projectId)
+const pages = pagesApi.list
 const selectedPageId = computed(() => store.getters['editor/selectedPageId'])
 const currentPage = computed(() =>
-  selectedPageId.value ? store.getters['pages/byId'](projectId.value, selectedPageId.value) : null
+  selectedPageId.value ? pagesApi.byId(selectedPageId.value) : null
 )
 const selectedLayerId = computed<string | null>(() => store.getters['editor/selectedLayerId'])
 const pagePanelCollapsed = computed(() => store.getters['editor/pagePanelCollapsed'])

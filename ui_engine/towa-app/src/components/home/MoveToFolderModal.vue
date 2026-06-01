@@ -1,11 +1,10 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { useStore } from 'vuex'
 import { Home } from 'lucide-vue-next'
 import BaseButton from '@/components/common/BaseButton.vue'
 import BaseModal from '@/components/common/BaseModal.vue'
 import FolderPickerNode from '@/components/home/FolderPickerNode.vue'
-import type { FolderNode } from '@/types/folder'
+import { useFolders } from '@/composables/useFolders'
 
 const props = defineProps<{
   open: boolean
@@ -25,8 +24,8 @@ const emit = defineEmits<{
   submit: [folderId: string | null]
 }>()
 
-const store = useStore()
-const tree = computed<FolderNode[]>(() => store.getters['folders/tree'])
+const foldersApi = useFolders()
+const tree = foldersApi.tree
 
 const expanded = ref<Set<string>>(new Set())
 function toggle(id: string) {

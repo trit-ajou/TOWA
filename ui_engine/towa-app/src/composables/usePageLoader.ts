@@ -1,7 +1,10 @@
 import { nextTick, ref } from 'vue'
 import { useStore } from 'vuex'
+import { useQueryClient } from '@tanstack/vue-query'
 import { useFileAdapter } from './useFileAdapter'
-import { PageCache } from '@/file-adapter/page-cache'
+import { queryKeys } from './queryKeys'
+import { pageBinaryCache } from '@/file-adapter/cache-instances'
+import type { PageSummary } from '@/file-adapter'
 // @ts-expect-error bitmappery JS module
 import DocumentFactory from '@bitmappery/factories/document-factory'
 // @ts-expect-error bitmappery JS module
@@ -9,7 +12,9 @@ import LayerFactory from '@bitmappery/factories/layer-factory'
 // @ts-expect-error bitmappery JS module
 import { getCanvasInstance } from '@bitmappery/services/canvas-service'
 
-const pageCache = new PageCache()
+// page binary cache replaces the legacy `PageCache` singleton; the BlobCache
+// instance is now user-namespaced via the cache-db layer.
+const pageCache = pageBinaryCache
 
 /** 원본 이미지 세션 캐시. 탭 종료 시 소멸. */
 const originalImageCache = new Map<string, Blob>()
@@ -26,6 +31,7 @@ const isPageSwitching = ref(false)
 export function usePageLoader() {
   const store = useStore()
   const fileAdapter = useFileAdapter()
+  const qc = useQueryClient()
 
   /**
    * pageId에 해당하는 페이지를 bitmappery에 로드.
@@ -109,9 +115,10 @@ export function usePageLoader() {
       return
     }
 
-    // page metadata 조회
+    // page metadata 조회: query cache가 PageSummary[]을 갖고 있음.
     const projectId = store.getters['editor/currentProjectId']
-    const page = store.getters['pages/byId'](projectId, pageId)
+    const summaries = qc.getQueryData<PageSummary[]>(queryKeys.pages.byProject(projectId)) ?? []
+    const page = summaries.find((p) => p.id === pageId)
     if (!page) return
 
     await fileAdapter.savePageSnapshot({
@@ -126,15 +133,11 @@ export function usePageLoader() {
       thumbnail,
     })
 
-    // Vuex store의 페이지 thumbnail Blob URL 갱신
-    const url = URL.createObjectURL(thumbnail)
-    store.commit('pages/SET_THUMBNAIL_URL', { pageId, url })
-    if (projectId) {
-      const pageObj = store.getters['pages/byId'](projectId, pageId)
-      if (pageObj) {
-        store.commit('pages/UPDATE_PAGE', { ...pageObj, thumbnail: url })
-      }
-    }
+    // Invalidate the page list and the thumbnail binary cache so consumers
+    // (PageGrid, sidebars) pick up the new server-side thumbnailUrl/updatedAt.
+    // Thumbnail Object URLs are managed by their owning components in Phase 3.
+    qc.invalidateQueries({ queryKey: queryKeys.pages.byProject(projectId) })
+    qc.invalidateQueries({ queryKey: queryKeys.binary.thumbnail(pageId) })
   }
 
   /**

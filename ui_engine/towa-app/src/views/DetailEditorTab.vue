@@ -5,6 +5,7 @@ import { useRoute } from 'vue-router'
 import { usePageLoader } from '@/composables/usePageLoader'
 import { useAutoSave } from '@/composables/useAutoSave'
 import { useSpacePanModifier } from '@/composables/useSpacePanModifier'
+import { usePages } from '@/composables/usePages'
 import PageSidePanel from '@/components/editor/PageSidePanel.vue'
 import CanvasToolbox from '@/components/editor/CanvasToolbox.vue'
 import ToolOptionsPanel from '@/components/editor/ToolOptionsPanel.vue'
@@ -32,7 +33,8 @@ const { saveImmediately, markDirty } = useAutoSave()
 provide('markDirty', markDirty)
 
 const projectId = computed(() => route.params.id as string)
-const pages = computed(() => store.getters['pages/forProject'](projectId.value))
+const pagesApi = usePages(projectId)
+const pages = pagesApi.list
 const selectedPageId = computed(() => store.getters['editor/selectedPageId'])
 const pagePanelCollapsed = computed(() => store.getters['editor/pagePanelCollapsed'])
 const switching = ref(false)

@@ -1,15 +1,18 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useStore } from 'vuex'
+import { useQueryClient } from '@tanstack/vue-query'
 import { ScanText, Eraser, Languages, ZoomIn, ZoomOut, Columns2, Square } from 'lucide-vue-next'
 import BaseButton from '@/components/common/BaseButton.vue'
 import { useAppBackend } from '@/composables/useAppBackend'
 import { usePageLoader } from '@/composables/usePageLoader'
 import { useErrorDialog } from '@/composables/useErrorDialog'
+import { queryKeys } from '@/composables/queryKeys'
 import { DEPLOYMENT_MODE } from '@/config/deployment'
 import { BackendError } from '@/backend/errors'
 import type { AiJobCreateInput, AiJobSnapshot, AiOperationKind } from '@/backend/contracts'
 import type { Page, PageStatus } from '@/types/page'
+import type { PageSummary } from '@/file-adapter'
 import { applyAiJobSnapshotToCurrentPage } from '@/ai/result-applier'
 import { getTextMeta, isTextLayer } from '@/utils/text-layer'
 import type { Layer } from '@bitmappery/definitions/document'
@@ -20,8 +23,16 @@ import { canvasToBlob, resizeImage } from '@bitmappery/utils/canvas-util'
 
 const store = useStore()
 const backend = useAppBackend()
+const qc = useQueryClient()
 const { savePage } = usePageLoader()
 const { showError } = useErrorDialog()
+
+function patchPageStatusInCache(proj: string, pageId: string, patch: Partial<PageSummary>) {
+  qc.setQueryData<PageSummary[]>(queryKeys.pages.byProject(proj), (old) => {
+    if (!old) return old
+    return old.map((p) => (p.id === pageId ? { ...p, ...patch } : p))
+  })
+}
 const loading = ref<string | null>(null)
 const lastResult = ref<{ op: string; status: string; jobId: string } | null>(null)
 
@@ -111,7 +122,7 @@ async function runAction(action: AiOperationKind) {
     const pageId = requirePageId()
     const pageRecord = requireCurrentPage(proj, pageId)
     previousPage = { ...pageRecord }
-    store.commit('pages/UPDATE_PAGE', { ...pageRecord, status: 'ai-processing' satisfies PageStatus })
+    patchPageStatusInCache(proj, pageId, { status: 'ai-processing' satisfies PageStatus })
     restorePreviousPage = true
 
     const input = await buildInput(action, pageRecord)
@@ -122,6 +133,7 @@ async function runAction(action: AiOperationKind) {
     if (final.status === 'succeeded') {
       const applied = await applyAiJobSnapshotToCurrentPage({
         store,
+        queryClient: qc,
         backend: backend.aiJobs,
         snapshot: final,
         projectId: proj,
@@ -182,16 +194,21 @@ function requirePageId(): string {
 }
 
 function requireCurrentPage(proj: string, pageId: string): Page {
-  const pageRecord = store.getters['pages/byId'](proj, pageId) as Page | undefined
-  if (!pageRecord) {
+  const list = qc.getQueryData<PageSummary[]>(queryKeys.pages.byProject(proj)) ?? []
+  const summary = list.find((p) => p.id === pageId)
+  if (!summary) {
     throw new Error(`Page ${pageId} is not loaded`)
   }
-  return pageRecord
+  // Caller treats this as the legacy `Page` shape (which is a strict subset
+  // for the AI flow — thumbnail is irrelevant here).
+  return { id: summary.id, projectId: summary.projectId, index: summary.index, status: summary.status }
 }
 
 function restorePage(pageRecord: Page | null): void {
   if (pageRecord) {
-    store.commit('pages/UPDATE_PAGE', pageRecord)
+    patchPageStatusInCache(pageRecord.projectId, pageRecord.id, {
+      status: pageRecord.status,
+    })
   }
 }
 

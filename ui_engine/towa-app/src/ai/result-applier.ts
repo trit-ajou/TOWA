@@ -1,8 +1,10 @@
 import type { Store } from 'vuex'
+import type { QueryClient } from '@tanstack/vue-query'
 
 import type { AiJobSnapshot, AiJobsBackend, TransportPatchOperation } from '@/backend/contracts'
-import type { Page } from '@/types/page'
+import type { PageSummary } from '@/file-adapter'
 import type { LayerTextMeta } from '@/types/text-block'
+import { queryKeys } from '@/composables/queryKeys'
 // @ts-expect-error bitmappery JS module
 import LayerFactory from '@bitmappery/factories/layer-factory'
 import type { Layer } from '@bitmappery/definitions/document'
@@ -16,6 +18,7 @@ const AI_TEXT_COLOR = '#000000'
 
 export interface ApplyAiJobSnapshotOptions {
   store: Store<unknown>
+  queryClient: QueryClient
   backend: Pick<AiJobsBackend, 'getArtifact'>
   snapshot: AiJobSnapshot
   projectId: string
@@ -49,7 +52,10 @@ export async function applyAiJobSnapshotToCurrentPage(
     }
   }
 
-  const page = options.store.getters['pages/byId'](options.projectId, options.pageId) as Page | undefined
+  const summaries = options.queryClient.getQueryData<PageSummary[]>(
+    queryKeys.pages.byProject(options.projectId),
+  ) ?? []
+  const page = summaries.find((p) => p.id === options.pageId)
   if (!page) {
     throw new Error(`Cannot apply AI result: page not found (${options.pageId})`)
   }
@@ -126,10 +132,13 @@ export async function applyAiJobSnapshotToCurrentPage(
     }
   }
 
-  options.store.commit('pages/UPDATE_PAGE', {
-    ...page,
-    status: 'in-progress',
-  } satisfies Page)
+  options.queryClient.setQueryData<PageSummary[]>(
+    queryKeys.pages.byProject(options.projectId),
+    (old) => {
+      if (!old) return old
+      return old.map((p) => (p.id === options.pageId ? { ...p, status: 'in-progress' } : p))
+    },
+  )
 
   await options.savePage(options.pageId)
   return {
