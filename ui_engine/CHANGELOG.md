@@ -4,6 +4,22 @@
 
 ---
 
+## 2026-06-02
+
+### 00:50 — AI 결과 적용에 active/background 분기 도입
+- 잠재 버그: AI job은 최대 5분 polling. 그 동안 사용자가 다른 페이지로 이동하면 `applyAiJobSnapshotToCurrentPage`의 `bmp/addLayer` mutation이 `state.documents[activeIndex]`(=새 활성 doc)에 layer를 박고, 그 다음 `savePage`가 활성 doc을 직렬화해 **시작 페이지 ID**로 PUT → 다른 페이지의 binary가 시작 페이지 자리에 덮어쓰기 + AI 결과 layer가 엉뚱한 doc에 들어가는 데이터 손실
+- 수정: `result-applier.ts` 진입 시 `store.state.editor.selectedPageId === pageId` 확인
+  - **active 경로**: 기존 흐름 유지 + `markDirty()` + `saveImmediately(pageId)`로 doSave 경유 (dirty 자동 reset, 실패 시 dirty 유지로 다음 자동저장에서 재시도)
+  - **background 경로**: `fileAdapter.getPageSnapshot(pageId)` → `DocumentFactory.fromBlob` → 임시 doc.layers에 push (store mutation X) → `createSyncSnapshot`으로 offscreen thumbnail 캡처 → `fileAdapter.savePageSnapshot` 직접. activeDocument 비의존
+  - 백그라운드 적용 성공 시 `onBackgroundApplied(pageIndex)` 콜백 → bitmappery showNotification으로 "N페이지 AI 결과 적용 완료" 토스트
+- `useAiActions` / `AiToolbar`: `useFileAdapter()` + `useAutoSave()`의 markDirty/saveImmediately를 result-applier에 전달. `usePageLoader.savePage` 의존 제거
+- result-applier.ts 시그니처 변경 (`savePage` → `markDirty + saveImmediately + fileAdapter + onBackgroundApplied`). spec도 stub 함께 업데이트
+- AI dirty marking 누락 부수 fix: `bmp/addLayer` 등은 history에 들어가지 않아 useAutoSave의 saveState subscriber가 fire 안 함. AI 적용 직후 markDirty 명시로 dirty=true → saveImmediately로 정상 reset. 실패 시 dirty 유지 → autosave timer가 재시도
+- 별도 이슈로 발행: 프로젝트 생성 시 일괄 AI 적용 (#57) — 이 인프라 위에 얹는 후속 작업
+- 검증: typecheck PASS, vitest 42/42 PASS, Playwright e2e 10/10 PASS
+
+---
+
 ## 2026-06-01
 
 ### 23:55 — #39 cross-document layer-id 충돌 fix
