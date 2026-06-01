@@ -96,7 +96,7 @@ import { truncate } from "@/utils/string-util";
 import messages from "./messages.json";
 import {
     RESIZE_DOCUMENT,
-    ADD_LAYER, LOAD_SELECTION, SAVE_SELECTION, PREFERENCES, RESIZE_CANVAS,
+    ADD_LAYER, PREFERENCES, RESIZE_CANVAS,
     GRID_TO_LAYERS, STROKE_SELECTION
 } from "@/definitions/modal-windows";
 
@@ -163,12 +163,6 @@ export default {
                     break;
                 case ADD_LAYER:
                     loadFn = () => import( "@/components/new-layer-window/new-layer-window.vue" );
-                    break;
-                case LOAD_SELECTION:
-                    loadFn = () => import( "@/components/selection-menu/load-selection/load-selection.vue" );
-                    break;
-                case SAVE_SELECTION:
-                    loadFn = () => import( "@/components/selection-menu/save-selection/save-selection.vue" );
                     break;
                 case PREFERENCES:
                     loadFn = () => import( "@/components/preferences/preferences.vue" );
