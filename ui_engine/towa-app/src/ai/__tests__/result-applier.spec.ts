@@ -1,10 +1,26 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Store } from 'vuex'
+import { QueryClient } from '@tanstack/vue-query'
 
 import type { AiJobSnapshot } from '@/backend/contracts'
 import type { Page } from '@/types/page'
+import type { PageSummary } from '@/file-adapter'
 import { applyAiJobSnapshotToCurrentPage } from '@/ai/result-applier'
+import { queryKeys } from '@/composables/queryKeys'
 import { blobToCanvas } from '@bitmappery/utils/canvas-util'
+
+function makeQueryClient(page: Page): QueryClient {
+  const qc = new QueryClient()
+  const summary: PageSummary = {
+    id: page.id,
+    projectId: page.projectId,
+    index: page.index,
+    status: page.status,
+    updatedAt: new Date().toISOString(),
+  }
+  qc.setQueryData<PageSummary[]>(queryKeys.pages.byProject(page.projectId), [summary])
+  return qc
+}
 
 vi.mock('@bitmappery/utils/canvas-util', () => ({
   blobToCanvas: vi.fn(),
@@ -37,8 +53,10 @@ describe('applyAiJobSnapshotToCurrentPage', () => {
       },
     })
 
+    const qc = makeQueryClient(page)
     const result = await applyAiJobSnapshotToCurrentPage({
       store,
+      queryClient: qc,
       backend: { getArtifact: vi.fn() },
       snapshot,
       projectId: page.projectId,
@@ -72,14 +90,9 @@ describe('applyAiJobSnapshotToCurrentPage', () => {
         }),
       }),
     )
-    // page status만 갱신, textBlocks 필드는 더 이상 없음
-    expect(store.commit).toHaveBeenCalledWith(
-      'pages/UPDATE_PAGE',
-      expect.objectContaining({
-        id: page.id,
-        status: 'in-progress',
-      }),
-    )
+    // page status는 이제 query cache에 기록된다 (Vuex 모듈 제거됨).
+    const cached = qc.getQueryData<PageSummary[]>(queryKeys.pages.byProject(page.projectId)) ?? []
+    expect(cached.find((p) => p.id === page.id)?.status).toBe('in-progress')
     expect(savePage).toHaveBeenCalledWith(page.id)
   })
 
@@ -120,6 +133,7 @@ describe('applyAiJobSnapshotToCurrentPage', () => {
 
     const result = await applyAiJobSnapshotToCurrentPage({
       store,
+      queryClient: makeQueryClient(page),
       backend: { getArtifact },
       snapshot,
       projectId: page.projectId,
@@ -183,6 +197,7 @@ describe('applyAiJobSnapshotToCurrentPage', () => {
 
     await applyAiJobSnapshotToCurrentPage({
       store,
+      queryClient: makeQueryClient(page),
       backend: { getArtifact },
       snapshot,
       projectId: page.projectId,
@@ -229,6 +244,7 @@ describe('applyAiJobSnapshotToCurrentPage', () => {
 
     await applyAiJobSnapshotToCurrentPage({
       store,
+      queryClient: makeQueryClient(page),
       backend: { getArtifact: vi.fn() },
       snapshot,
       projectId: page.projectId,
@@ -250,7 +266,8 @@ describe('applyAiJobSnapshotToCurrentPage', () => {
   })
 
   it('does not apply partial jobs automatically', async () => {
-    const store = makeStore(makePage())
+    const page = makePage()
+    const store = makeStore(page)
     const savePage = vi.fn()
     const snapshot = makeSnapshot({
       status: 'partial',
@@ -266,6 +283,7 @@ describe('applyAiJobSnapshotToCurrentPage', () => {
 
     const result = await applyAiJobSnapshotToCurrentPage({
       store,
+      queryClient: makeQueryClient(page),
       backend: { getArtifact: vi.fn() },
       snapshot,
       projectId: 'proj-1',

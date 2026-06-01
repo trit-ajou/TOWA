@@ -63,6 +63,9 @@ export default defineConfig({
   ],
   test: {
     environment: 'node',
+    // Playwright e2e specs live in ./e2e/ and use Playwright's `test` API,
+    // which collides with vitest's. Exclude them from vitest.
+    exclude: ['e2e/**', 'node_modules/**', 'dist/**'],
   },
   resolve: {
     alias: {
