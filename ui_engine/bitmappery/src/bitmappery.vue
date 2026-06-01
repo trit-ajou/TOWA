@@ -96,7 +96,6 @@ import { truncate } from "@/utils/string-util";
 import messages from "./messages.json";
 import {
     CREATE_DOCUMENT, RESIZE_DOCUMENT, SAVE_DOCUMENT, EXPORT_WINDOW,
-    DROPBOX_FILE_SELECTOR, GOOGLE_DRIVE_FILE_SELECTOR, AWS_S3_FILE_SELECTOR,
     ADD_LAYER, LOAD_SELECTION, SAVE_SELECTION, PREFERENCES, RESIZE_CANVAS,
     GRID_TO_LAYERS, STROKE_SELECTION
 } from "@/definitions/modal-windows";
@@ -170,15 +169,6 @@ export default {
                     break;
                 case EXPORT_WINDOW:
                     loadFn = () => import( "@/components/file-menu/export-window/export-window.vue" );
-                    break;
-                case DROPBOX_FILE_SELECTOR:
-                    loadFn = () => import( "@/components/cloud-file-selector/dropbox/dropbox-file-selector.vue" );
-                    break;
-                case GOOGLE_DRIVE_FILE_SELECTOR:
-                    loadFn = () => import( "@/components/cloud-file-selector/google-drive/google-drive-file-selector.vue" );
-                    break;
-                case AWS_S3_FILE_SELECTOR:
-                    loadFn = () => import( "@/components/cloud-file-selector/aws-s3/aws-s3-file-selector.vue" );
                     break;
                 case ADD_LAYER:
                     loadFn = () => import( "@/components/new-layer-window/new-layer-window.vue" );
