@@ -87,6 +87,8 @@ onBeforeRouteLeave(() => {
 
 // 안전망: 비-router 경로로 unmount되는 케이스(테스트 등)에 한해 idempotent
 // cleanup. onBeforeRouteLeave가 정상 실행됐다면 docs는 이미 비어있어 no-op.
+// resetPageLoaderState도 함께 호출해 currentLoadedPageId가 stale로 남지 않게 한다
+// (PR #59 self-review #5).
 onBeforeUnmount(() => {
   const docs = store.state.bmp?.document?.documents
   if (docs) {
@@ -94,6 +96,7 @@ onBeforeUnmount(() => {
       store.commit('bmp/closeActiveDocument')
     }
   }
+  resetPageLoaderState()
 })
 </script>
 
