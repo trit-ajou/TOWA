@@ -6,7 +6,7 @@ import { queryKeys } from './queryKeys'
 import { isAuthError } from '@/query/query-client'
 import { useErrorDialog } from './useErrorDialog'
 import { pageBinaryCache, thumbnailCache } from '@/file-adapter/cache-instances'
-import type { PageSummary } from '@/file-adapter'
+import type { FileAdapter, PageSummary } from '@/file-adapter'
 
 // Exponential backoff retry for push (savePageSnapshot). #39 §Push 실패 UX
 // — 1s / 2s / 4s, 3 attempts. Auth errors short-circuit so the global 401
@@ -41,6 +41,27 @@ const pageCache = pageBinaryCache
 
 /** 원본 이미지 세션 캐시. 탭 종료 시 소멸. */
 const originalImageCache = new Map<string, Blob>()
+
+/**
+ * Returns the original (pre-edit) page image Blob. Checks the session cache
+ * first, then falls back to fetching the snapshot from the file adapter.
+ * Returns null only if the snapshot itself is missing.
+ *
+ * AI input bitmap 등 doc 합성이 아닌 "원본 그대로"가 필요한 경로에서 사용.
+ */
+export async function getOriginalImage(
+  pageId: string,
+  fileAdapter: FileAdapter,
+): Promise<Blob | null> {
+  const cached = originalImageCache.get(pageId)
+  if (cached) return cached
+  const snapshot = await fileAdapter.getPageSnapshot(pageId)
+  if (snapshot) {
+    originalImageCache.set(pageId, snapshot.originalImage)
+    return snapshot.originalImage
+  }
+  return null
+}
 
 /** 페이지 전환 중 플래그 (모든 호출자 공유). overlay 노출 트리거. */
 const isPageSwitching = ref(false)
@@ -154,15 +175,7 @@ export function usePageLoader() {
       failSave(pageId, '썸네일 캡처에 실패했습니다.', 'thumbnail capture failed')
     }
 
-    // originalImage: 세션 캐시에서 가져옴. 없으면 snapshot에서 재조회
-    let originalImage = originalImageCache.get(pageId)
-    if (!originalImage) {
-      const existingSnapshot = await fileAdapter.getPageSnapshot(pageId)
-      if (existingSnapshot) {
-        originalImage = existingSnapshot.originalImage
-        originalImageCache.set(pageId, originalImage)
-      }
-    }
+    const originalImage = await getOriginalImage(pageId, fileAdapter)
     if (!originalImage) {
       failSave(pageId, '원본 이미지를 찾을 수 없습니다. 페이지를 다시 열어주세요.', 'no originalImage available')
     }
