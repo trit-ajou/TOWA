@@ -22,13 +22,13 @@
  */
 import type { ActionContext, Module } from "vuex";
 import type { Rectangle, Size } from "zcanvas";
-import type { Document, Layer, Transform, Selection } from "@/definitions/document";
-import DocumentFactory from "@/factories/document-factory";
-import LayerFactory from "@/factories/layer-factory";
-import { createRendererForLayer, flushLayerRenderers, runRendererFn, getRendererForLayer } from "@/factories/renderer-factory";
-import { flushBlendedLayerCache } from "@/rendering/cache/blended-layer-cache";
-import { getCanvasInstance } from "@/services/canvas-service";
-import { resizeLayerContent, cropLayerContent } from "@/utils/layer-util";
+import type { Document, Layer, Transform, Selection } from "@bitmappery/definitions/document";
+import DocumentFactory from "@bitmappery/factories/document-factory";
+import LayerFactory from "@bitmappery/factories/layer-factory";
+import { createRendererForLayer, flushLayerRenderers, runRendererFn, getRendererForLayer } from "@bitmappery/factories/renderer-factory";
+import { flushBlendedLayerCache } from "@bitmappery/rendering/cache/blended-layer-cache";
+import { getCanvasInstance } from "@bitmappery/services/canvas-service";
+import { resizeLayerContent, cropLayerContent } from "@bitmappery/utils/layer-util";
 
 export interface DocumentState {
     documents : Document[]; // opened documents

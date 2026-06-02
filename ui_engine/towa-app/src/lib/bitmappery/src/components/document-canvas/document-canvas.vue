@@ -67,31 +67,31 @@
 <script lang="ts">
 import { mapState, mapGetters, mapMutations, mapActions } from "vuex";
 import { type Viewport } from "zcanvas";
-import ZoomableCanvas from "@/rendering/actors/zoomable-canvas";
-import GuideRenderer from "@/rendering/actors/guide-renderer";
-import type { Document, Layer } from "@/definitions/document";
-import { HEADER_HEIGHT } from "@/definitions/editor-properties";
-import { PROJECT_FILE_EXTENSION } from "@/definitions/file-types";
-import ToolTypes, { SELECTION_TOOLS, MAX_ZOOM, calculateMaxScaling, usesInteractionPane } from "@/definitions/tool-types";
+import ZoomableCanvas from "@bitmappery/rendering/actors/zoomable-canvas";
+import GuideRenderer from "@bitmappery/rendering/actors/guide-renderer";
+import type { Document, Layer } from "@bitmappery/definitions/document";
+import { HEADER_HEIGHT } from "@bitmappery/definitions/editor-properties";
+import { PROJECT_FILE_EXTENSION } from "@bitmappery/definitions/file-types";
+import ToolTypes, { SELECTION_TOOLS, MAX_ZOOM, calculateMaxScaling, usesInteractionPane } from "@bitmappery/definitions/tool-types";
 import {
     createRendererForLayer, getRendererForLayer, flushLayerRenderers, flushRendererCache,
-} from "@/factories/renderer-factory";
-import { InteractionModes } from "@/rendering/actors/interaction-pane";
-import { flushBitmapCache } from "@/rendering/cache/bitmap-cache";
-import { flushBlendedLayerCache, setBlendCaching } from "@/rendering/cache/blended-layer-cache";
-import { getCanvasInstance, setCanvasInstance } from "@/services/canvas-service";
-import { renderState } from "@/services/render-service";
-import { scaleToRatio } from "@/math/image-math";
-import { pointerToCanvasCoordinates } from "@/math/point-math";
-import { scale } from "@/math/unit-math";
-import { unblockedWait, rafCallback } from "@/utils/debounce-util";
-import { getAlignableObjects } from "@/utils/document-util";
-import { isMobile } from "@/utils/environment-util";
-import { hasBlend } from "@/utils/layer-util";
-import { fitInWindow } from "@/utils/zoom-util";
+} from "@bitmappery/factories/renderer-factory";
+import { InteractionModes } from "@bitmappery/rendering/actors/interaction-pane";
+import { flushBitmapCache } from "@bitmappery/rendering/cache/bitmap-cache";
+import { flushBlendedLayerCache, setBlendCaching } from "@bitmappery/rendering/cache/blended-layer-cache";
+import { getCanvasInstance, setCanvasInstance } from "@bitmappery/services/canvas-service";
+import { renderState } from "@bitmappery/services/render-service";
+import { scaleToRatio } from "@bitmappery/math/image-math";
+import { pointerToCanvasCoordinates } from "@bitmappery/math/point-math";
+import { scale } from "@bitmappery/math/unit-math";
+import { unblockedWait, rafCallback } from "@bitmappery/utils/debounce-util";
+import { getAlignableObjects } from "@bitmappery/utils/document-util";
+import { isMobile } from "@bitmappery/utils/environment-util";
+import { hasBlend } from "@bitmappery/utils/layer-util";
+import { fitInWindow } from "@bitmappery/utils/zoom-util";
 import Scrollbars from "./scrollbars/scrollbars.vue";
 import TouchDecorator from "./decorators/touch-decorator";
-import { isFeatureEnabled } from "@/config/towa-features";
+import { isFeatureEnabled } from "@bitmappery/config/towa-features";
 
 /* internal non-reactive properties */
 
@@ -633,11 +633,11 @@ export default {
 </script>
 
 <style lang="scss">
-@use "@/styles/_colors";
-@use "@/styles/_mixins";
-@use "@/styles/_variables";
-@use "@/styles/component";
-@use "@/styles/ui";
+@use "@bitmappery/styles/_colors";
+@use "@bitmappery/styles/_mixins";
+@use "@bitmappery/styles/_variables";
+@use "@bitmappery/styles/component";
+@use "@bitmappery/styles/ui";
 
 .canvas-wrapper {
     display: inline-block;

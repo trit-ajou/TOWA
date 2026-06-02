@@ -21,12 +21,12 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 import type { Store } from "vuex";
-import type { Document, Layer } from "@/definitions/document";
-import { enqueueState } from "@/factories/history-state-factory";
-import LayerFactory from "@/factories/layer-factory";
-import type { BitMapperyState } from "@/store";
-import { resizeImage } from "@/utils/canvas-util";
-import { createSyncSnapshot } from "@/utils/document-util";
+import type { Document, Layer } from "@bitmappery/definitions/document";
+import { enqueueState } from "@bitmappery/factories/history-state-factory";
+import LayerFactory from "@bitmappery/factories/layer-factory";
+import type { BitMapperyState } from "@bitmappery/store";
+import { resizeImage } from "@bitmappery/utils/canvas-util";
+import { createSyncSnapshot } from "@bitmappery/utils/document-util";
 
 export const mergeLayerDown = async (
     store: Store<BitMapperyState>, activeDocument: Document, activeLayer: Layer, activeLayerIndex: number, name: string, allLayers = false,

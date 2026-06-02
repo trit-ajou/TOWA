@@ -21,8 +21,8 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 import type { Point, Rectangle } from "zcanvas";
-import type { Layer } from "@/definitions/document";
-import type ZoomableCanvas from "@/rendering/actors/zoomable-canvas";
+import type { Layer } from "@bitmappery/definitions/document";
+import type ZoomableCanvas from "@bitmappery/rendering/actors/zoomable-canvas";
 
 const { pow, sqrt, atan2, round, cos, sin, PI } = Math;
 

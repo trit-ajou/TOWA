@@ -52,7 +52,7 @@
 </template>
 
 <script lang="ts">
-import KeyboardService from "@/services/keyboard-service";
+import KeyboardService from "@bitmappery/services/keyboard-service";
 
 export default {
     emits: [ "update:modelValue", "dragStart", "dragEnd" ],
@@ -121,8 +121,8 @@ export default {
 @use "sass:color";
 @use "sass:math";
 
-@use "@/styles/_mixins";
-@use "@/styles/_variables";
+@use "@bitmappery/styles/_mixins";
+@use "@bitmappery/styles/_variables";
 
 $track-color: #333;
 $thumb-color: #FFF;

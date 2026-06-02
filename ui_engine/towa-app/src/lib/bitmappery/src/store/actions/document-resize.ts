@@ -23,10 +23,10 @@
 */
 import { type Store } from "vuex";
 import { type Size } from "zcanvas";
-import { type Document } from "@/definitions/document";
-import { enqueueState } from "@/factories/history-state-factory";
-import { type BitMapperyState } from "@/store";
-import { cloneLayers, restoreFromClone } from "@/utils/document-util";
+import { type Document } from "@bitmappery/definitions/document";
+import { enqueueState } from "@bitmappery/factories/history-state-factory";
+import { type BitMapperyState } from "@bitmappery/store";
+import { cloneLayers, restoreFromClone } from "@bitmappery/utils/document-util";
 
 export const resizeDocument = async ( store: Store<BitMapperyState>, activeDocument: Document, dimensions: Size ): Promise<void> => {
     const originalWidth  = activeDocument.width;

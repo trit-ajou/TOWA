@@ -96,26 +96,26 @@
                                             'layer__actions-button--highlight': element.maskSelected
                                         }"
                                         @click="handleLayerMaskClick( element )"
-                                    ><img src="@/assets-inline/images/icon-mask.svg" /></button>
+                                    ><img src="@bitmappery/assets-inline/images/icon-mask.svg" /></button>
                                     <button
                                         v-tooltip="$t('toggleVisibility')"
                                         type="button"
                                         class="layer__actions-button button--ghost"
                                         @click="handleToggleLayerVisibility( element.index )"
                                         :class="{ 'layer__actions-button--disabled': !element.visible }"
-                                    ><img src="@/assets-inline/images/icon-eye.svg" /></button>
+                                    ><img src="@bitmappery/assets-inline/images/icon-eye.svg" /></button>
                                     <button
                                         v-tooltip="$t('effectsAndFilters')"
                                         type="button"
                                         class="layer__actions-button button--ghost"
                                         @click="handleEffectsClick( element.index )"
-                                    ><img src="@/assets-inline/images/icon-settings.svg" /></button>
+                                    ><img src="@bitmappery/assets-inline/images/icon-settings.svg" /></button>
                                     <button
                                         v-tooltip="$t( element.mask ? 'deleteMask' : 'deleteLayer' )"
                                         type="button"
                                         class="layer__actions-button button--ghost"
                                         @click="handleRemoveClick( element.index )"
-                                    ><img src="@/assets-inline/images/icon-trashcan.svg" /></button>
+                                    ><img src="@bitmappery/assets-inline/images/icon-trashcan.svg" /></button>
                                 </div>
                             </div>
                         </template>
@@ -144,20 +144,20 @@
 <script lang="ts">
 import { defineAsyncComponent } from "vue";
 import { mapState, mapGetters, mapMutations } from "vuex";
-import { ADD_LAYER } from "@/definitions/modal-windows";
-import { PANEL_LAYERS } from "@/definitions/panel-types";
-import ToolTypes from "@/definitions/tool-types";
-import type { Layer } from "@/definitions/types/document";
-import { removeLayer } from "@/store/actions/layer-remove";
-import { renameLayer } from "@/store/actions/layer-rename";
-import { reorderLayers } from "@/store/actions/layer-reorder";
-import { addMask } from "@/store/actions/mask-add";
-import { removeMask } from "@/store/actions/mask-remove";
-import { toggleLayerVisibility } from "@/store/actions/layer-toggle-visibility";
-import { getRendererForLayer } from "@/factories/renderer-factory";
-import { getCanvasInstance } from "@/services/canvas-service";
-import KeyboardService from "@/services/keyboard-service";
-import { focus } from "@/utils/environment-util";
+import { ADD_LAYER } from "@bitmappery/definitions/modal-windows";
+import { PANEL_LAYERS } from "@bitmappery/definitions/panel-types";
+import ToolTypes from "@bitmappery/definitions/tool-types";
+import type { Layer } from "@bitmappery/definitions/types/document";
+import { removeLayer } from "@bitmappery/store/actions/layer-remove";
+import { renameLayer } from "@bitmappery/store/actions/layer-rename";
+import { reorderLayers } from "@bitmappery/store/actions/layer-reorder";
+import { addMask } from "@bitmappery/store/actions/mask-add";
+import { removeMask } from "@bitmappery/store/actions/mask-remove";
+import { toggleLayerVisibility } from "@bitmappery/store/actions/layer-toggle-visibility";
+import { getRendererForLayer } from "@bitmappery/factories/renderer-factory";
+import { getCanvasInstance } from "@bitmappery/services/canvas-service";
+import KeyboardService from "@bitmappery/services/keyboard-service";
+import { focus } from "@bitmappery/utils/environment-util";
 import messages from "./messages.json";
 
 const NON_OVERRIDABLE_TOOLS = [ ToolTypes.MOVE, ToolTypes.DRAG ];
@@ -168,7 +168,7 @@ export default {
     i18n: { messages },
     components: {
         Draggable    : defineAsyncComponent({ loader: () => import( "vuedraggable" ) }),
-        LayerEffects : defineAsyncComponent({ loader: () => import( "@/components/layer-effects/layer-effects.vue" ) }),
+        LayerEffects : defineAsyncComponent({ loader: () => import( "@bitmappery/components/layer-effects/layer-effects.vue" ) }),
     },
     data: () => ({
         editable: false,
@@ -358,11 +358,11 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-@use "@/styles/_colors";
-@use "@/styles/_mixins";
-@use "@/styles/_variables";
-@use "@/styles/panel";
-@use "@/styles/typography";
+@use "@bitmappery/styles/_colors";
+@use "@bitmappery/styles/_mixins";
+@use "@bitmappery/styles/_variables";
+@use "@bitmappery/styles/panel";
+@use "@bitmappery/styles/typography";
 
 .layer-panel-wrapper {
     @include panel.panel();

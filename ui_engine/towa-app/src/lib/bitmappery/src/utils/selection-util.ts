@@ -22,10 +22,10 @@
  */
 import { type Store } from "vuex";
 import { type Rectangle } from "zcanvas";
-import { type Shape, Selection } from "@/definitions/document";
-import { getRendererForLayer } from "@/factories/renderer-factory";
-import { type BitMapperyState } from "@/store";
-import { shapeToRectangle, scaleShape } from "@/utils/shape-util";
+import { type Shape, Selection } from "@bitmappery/definitions/document";
+import { getRendererForLayer } from "@bitmappery/factories/renderer-factory";
+import { type BitMapperyState } from "@bitmappery/store";
+import { shapeToRectangle, scaleShape } from "@bitmappery/utils/shape-util";
 
 export const selectionToRectangle = ( selection: Selection ): Rectangle => {
     if ( selection.length === 1 ) {

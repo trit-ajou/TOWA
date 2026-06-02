@@ -1,10 +1,10 @@
 @use "_colors";
 @use "_mixins";
 @use "_variables";
-@use "@/styles/ui";
-@use "@/styles/form";
-@use "@/styles/typography";
-@use "@/styles/tooltip";
+@use "@bitmappery/styles/ui";
+@use "@bitmappery/styles/form";
+@use "@bitmappery/styles/typography";
+@use "@bitmappery/styles/tooltip";
 
 html, body {
     margin: 0;

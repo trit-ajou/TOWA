@@ -52,14 +52,14 @@
 
 <script lang="ts">
 import { mapGetters } from "vuex";
-import { MIN_ZOOM, MAX_ZOOM } from "@/definitions/tool-types";
-import { LayerTypes } from "@/definitions/layer-types";
-import Slider from "@/components/ui/slider/slider.vue";
-import { enqueueState } from "@/factories/history-state-factory";
-import { getRendererForLayer } from "@/factories/renderer-factory";
-import { scale } from "@/math/unit-math";
-import { pauseBlendCaching } from "@/rendering/cache/blended-layer-cache";
-import { cloneCanvas, resizeImage } from "@/utils/canvas-util";
+import { MIN_ZOOM, MAX_ZOOM } from "@bitmappery/definitions/tool-types";
+import { LayerTypes } from "@bitmappery/definitions/layer-types";
+import Slider from "@bitmappery/components/ui/slider/slider.vue";
+import { enqueueState } from "@bitmappery/factories/history-state-factory";
+import { getRendererForLayer } from "@bitmappery/factories/renderer-factory";
+import { scale } from "@bitmappery/math/unit-math";
+import { pauseBlendCaching } from "@bitmappery/rendering/cache/blended-layer-cache";
+import { cloneCanvas, resizeImage } from "@bitmappery/utils/canvas-util";
 import messages  from "./messages.json";
 
 const SAVEABLE_TYPES = [ LayerTypes.LAYER_GRAPHIC, LayerTypes.LAYER_IMAGE ];
@@ -159,5 +159,5 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-@use "@/styles/tool-option";
+@use "@bitmappery/styles/tool-option";
 </style>

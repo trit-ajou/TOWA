@@ -21,21 +21,21 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 import type { Store, Commit, Dispatch } from "vuex";
-import { createNamespacedProxy } from "@/utils/store-proxy";
-import type { Shape } from "@/definitions/document";
-import { LayerTypes } from "@/definitions/layer-types";
-import { ALL_PANELS } from "@/definitions/panel-types";
-import ToolTypes, { canDraw, MAX_BRUSH_SIZE, SELECTION_TOOLS } from "@/definitions/tool-types";
-import { ADD_LAYER } from "@/definitions/modal-windows";
-import { zoomIn, zoomOut } from "@/store/actions/canvas-zoom";
-import { addTextLayer } from "@/store/actions/layer-add-text-layer";
-import { toggleLayerFilters } from "@/store/actions/layer-toggle-filters";
-import { toggleLayerVisibility } from "@/store/actions/layer-toggle-visibility";
-import { getRendererForLayer } from "@/factories/renderer-factory";
-import { translatePoints } from "@/math/point-math";
-import { getCanvasInstance } from "@/services/canvas-service";
-import type { BitMapperyState } from "@/store";
-import { supportsFullscreen, toggleFullscreen } from "@/utils/environment-util";
+import { createNamespacedProxy } from "@bitmappery/utils/store-proxy";
+import type { Shape } from "@bitmappery/definitions/document";
+import { LayerTypes } from "@bitmappery/definitions/layer-types";
+import { ALL_PANELS } from "@bitmappery/definitions/panel-types";
+import ToolTypes, { canDraw, MAX_BRUSH_SIZE, SELECTION_TOOLS } from "@bitmappery/definitions/tool-types";
+import { ADD_LAYER } from "@bitmappery/definitions/modal-windows";
+import { zoomIn, zoomOut } from "@bitmappery/store/actions/canvas-zoom";
+import { addTextLayer } from "@bitmappery/store/actions/layer-add-text-layer";
+import { toggleLayerFilters } from "@bitmappery/store/actions/layer-toggle-filters";
+import { toggleLayerVisibility } from "@bitmappery/store/actions/layer-toggle-visibility";
+import { getRendererForLayer } from "@bitmappery/factories/renderer-factory";
+import { translatePoints } from "@bitmappery/math/point-math";
+import { getCanvasInstance } from "@bitmappery/services/canvas-service";
+import type { BitMapperyState } from "@bitmappery/store";
+import { supportsFullscreen, toggleFullscreen } from "@bitmappery/utils/environment-util";
 
 type ListenerRef = ( type: "up" | "down", keyCode: number, event: KeyboardEvent ) => void;
 

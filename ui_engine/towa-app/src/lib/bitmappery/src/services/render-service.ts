@@ -21,21 +21,21 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 import { reactive } from "vue";
-import type { Layer } from "@/definitions/document";
-import { LayerTypes } from "@/definitions/layer-types";
-import { getRendererForLayer } from "@/factories/renderer-factory";
-import { hasFilters, isEqual as isFiltersEqual } from "@/factories/filters-factory";
-import { isEqual as isTextEqual } from "@/factories/text-factory";
-import { createCanvas, cloneCanvas, matchDimensions } from "@/utils/canvas-util";
-import { replaceLayerSource } from "@/utils/layer-util";
-import { clone } from "@/utils/object-util";
-import { getLayerCache, setLayerCache } from "@/rendering/cache/bitmap-cache";
-import type { RenderCache } from "@/rendering/cache/bitmap-cache";
-import { maskImage } from "@/rendering/operations/masking";
-import { renderMultiLineText } from "@/rendering/operations/text";
-import { loadGoogleFont, loadGoogleFontDetailed } from "@/services/font-service";
-import FilterWorker from "@/workers/filter.worker?worker";
-import wasmUrl from "@/wasm/bin/filters.wasm?url";
+import type { Layer } from "@bitmappery/definitions/document";
+import { LayerTypes } from "@bitmappery/definitions/layer-types";
+import { getRendererForLayer } from "@bitmappery/factories/renderer-factory";
+import { hasFilters, isEqual as isFiltersEqual } from "@bitmappery/factories/filters-factory";
+import { isEqual as isTextEqual } from "@bitmappery/factories/text-factory";
+import { createCanvas, cloneCanvas, matchDimensions } from "@bitmappery/utils/canvas-util";
+import { replaceLayerSource } from "@bitmappery/utils/layer-util";
+import { clone } from "@bitmappery/utils/object-util";
+import { getLayerCache, setLayerCache } from "@bitmappery/rendering/cache/bitmap-cache";
+import type { RenderCache } from "@bitmappery/rendering/cache/bitmap-cache";
+import { maskImage } from "@bitmappery/rendering/operations/masking";
+import { renderMultiLineText } from "@bitmappery/rendering/operations/text";
+import { loadGoogleFont, loadGoogleFontDetailed } from "@bitmappery/services/font-service";
+import FilterWorker from "@bitmappery/workers/filter.worker?worker";
+import wasmUrl from "@bitmappery/wasm/bin/filters.wasm?url";
 
 type RenderJob = {
     id: number;

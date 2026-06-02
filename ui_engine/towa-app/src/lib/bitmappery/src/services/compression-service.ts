@@ -20,7 +20,7 @@
  * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
-import CompressionWorker from "@/workers/compression.worker?worker";
+import CompressionWorker from "@bitmappery/workers/compression.worker?worker";
 
 type CompressionJob = {
     id: number;

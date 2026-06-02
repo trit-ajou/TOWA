@@ -21,11 +21,11 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 import type { Size } from "zcanvas";
-import type { Document } from "@/definitions/document";
-import type { CanvasDimensions, CanvasZoomRange } from "@/definitions/editor";
-import { getMinImageSize } from "@/definitions/editor-properties";
-import { MIN_ZOOM, MAX_ZOOM } from "@/definitions/tool-types";
-import { fastRound } from "@/math/unit-math";
+import type { Document } from "@bitmappery/definitions/document";
+import type { CanvasDimensions, CanvasZoomRange } from "@bitmappery/definitions/editor";
+import { getMinImageSize } from "@bitmappery/definitions/editor-properties";
+import { MIN_ZOOM, MAX_ZOOM } from "@bitmappery/definitions/tool-types";
+import { fastRound } from "@bitmappery/math/unit-math";
 
 /**
  * Calculates the appropriate dimensions for fitting an image of dimensions

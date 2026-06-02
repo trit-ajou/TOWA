@@ -21,8 +21,8 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 import { type Store } from "vuex";
-import ToolTypes, { MIN_ZOOM, MAX_ZOOM } from "@/definitions/tool-types";
-import { type BitMapperyState } from "@/store";
+import ToolTypes, { MIN_ZOOM, MAX_ZOOM } from "@bitmappery/definitions/tool-types";
+import { type BitMapperyState } from "@bitmappery/store";
 
 const ZOOM_INCREMENT = 1 / 10;
 

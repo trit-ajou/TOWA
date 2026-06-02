@@ -71,9 +71,9 @@
 
 <script lang="ts">
 import { mapGetters, mapMutations } from "vuex";
-import ToolTypes, { MAX_BRUSH_SIZE, TOOL_SRC_MERGED, canDraw } from "@/definitions/tool-types";
-import SelectBox from "@/components/ui/select-box/select-box.vue";
-import Slider from "@/components/ui/slider/slider.vue";
+import ToolTypes, { MAX_BRUSH_SIZE, TOOL_SRC_MERGED, canDraw } from "@bitmappery/definitions/tool-types";
+import SelectBox from "@bitmappery/components/ui/select-box/select-box.vue";
+import Slider from "@bitmappery/components/ui/slider/slider.vue";
 import messages from "./messages.json";
 
 let orgCoords = null;
@@ -188,8 +188,8 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-@use "@/styles/_variables";
-@use "@/styles/tool-option";
+@use "@bitmappery/styles/_variables";
+@use "@bitmappery/styles/tool-option";
 
 .color-picker {
     width: 50%;

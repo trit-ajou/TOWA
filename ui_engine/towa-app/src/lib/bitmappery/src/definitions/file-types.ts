@@ -20,8 +20,8 @@
  * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
-import { ALL_IMAGE_TYPES, ACCEPTED_IMAGE_TYPES, ACCEPTED_IMAGE_EXTENSIONS, JPEG } from "@/definitions/image-types";
-import { isFeatureEnabled } from "@/config/towa-features";
+import { ALL_IMAGE_TYPES, ACCEPTED_IMAGE_TYPES, ACCEPTED_IMAGE_EXTENSIONS, JPEG } from "@bitmappery/definitions/image-types";
+import { isFeatureEnabled } from "@bitmappery/config/towa-features";
 
 export const PROJECT_FILE_EXTENSION = "bpy"; // BitMappery document
 export const PREVIEW_THUMBNAIL = "bpp"; // BitMappery document preview

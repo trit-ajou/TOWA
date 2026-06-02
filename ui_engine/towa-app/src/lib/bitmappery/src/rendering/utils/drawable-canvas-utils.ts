@@ -21,12 +21,12 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 import type { Point, Size } from "zcanvas";
-import type { Layer } from "@/definitions/document";
-import type { CanvasContextPairing, Brush } from "@/definitions/editor";
-import { reverseTransformation } from "@/rendering/operations/transforming";
-import type ZoomableCanvas from "@/rendering/actors/zoomable-canvas";
-import { createCanvas, setCanvasDimensions } from "@/utils/canvas-util";
-import { clone } from "@/utils/object-util";
+import type { Layer } from "@bitmappery/definitions/document";
+import type { CanvasContextPairing, Brush } from "@bitmappery/definitions/editor";
+import { reverseTransformation } from "@bitmappery/rendering/operations/transforming";
+import type ZoomableCanvas from "@bitmappery/rendering/actors/zoomable-canvas";
+import { createCanvas, setCanvasDimensions } from "@bitmappery/utils/canvas-util";
+import { clone } from "@bitmappery/utils/object-util";
 
 export type OverrideConfig = {
     scale: number;

@@ -85,11 +85,11 @@
 
 <script lang="ts">
 import { mapGetters, mapMutations }  from "vuex";
-import ToolTypes, { MAX_BRUSH_SIZE, canDraw } from "@/definitions/tool-types";
-import BrushTypes from "@/definitions/brush-types";
-import SelectBox from "@/components/ui/select-box/select-box.vue";
-import Slider from "@/components/ui/slider/slider.vue";
-import ToggleButton from "@/components/third-party/vue-js-toggle-button/ToggleButton.vue";
+import ToolTypes, { MAX_BRUSH_SIZE, canDraw } from "@bitmappery/definitions/tool-types";
+import BrushTypes from "@bitmappery/definitions/brush-types";
+import SelectBox from "@bitmappery/components/ui/select-box/select-box.vue";
+import Slider from "@bitmappery/components/ui/slider/slider.vue";
+import ToggleButton from "@bitmappery/components/third-party/vue-js-toggle-button/ToggleButton.vue";
 import messages from "./messages.json";
 
 export default {
@@ -194,5 +194,5 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-@use "@/styles/tool-option";
+@use "@bitmappery/styles/tool-option";
 </style>

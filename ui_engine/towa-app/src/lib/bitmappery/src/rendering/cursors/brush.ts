@@ -21,11 +21,11 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 import type { Point, Viewport } from "zcanvas";
-import { getSizeForBrush } from "@/definitions/brush-types";
-import { type Brush } from "@/definitions/editor";
-import ToolTypes from "@/definitions/tool-types";
-import type ZoomableCanvas from "@/rendering/actors/zoomable-canvas";
-import { renderCross } from "@/rendering/cursors/cross";
+import { getSizeForBrush } from "@bitmappery/definitions/brush-types";
+import { type Brush } from "@bitmappery/definitions/editor";
+import ToolTypes from "@bitmappery/definitions/tool-types";
+import type ZoomableCanvas from "@bitmappery/rendering/actors/zoomable-canvas";
+import { renderCross } from "@bitmappery/rendering/cursors/cross";
 
 const TWO_PI = 2 * Math.PI;
 

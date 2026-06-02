@@ -54,9 +54,9 @@
 
 <script>
 import { mapGetters, mapMutations } from "vuex";
-import Slider from "@/components/ui/slider/slider.vue";
-import ToolTypes, { MIN_ZOOM, MAX_ZOOM } from "@/definitions/tool-types";
-import { fitInWindow, displayOriginalSize } from "@/utils/zoom-util";
+import Slider from "@bitmappery/components/ui/slider/slider.vue";
+import ToolTypes, { MIN_ZOOM, MAX_ZOOM } from "@bitmappery/definitions/tool-types";
+import { fitInWindow, displayOriginalSize } from "@bitmappery/utils/zoom-util";
 import messages from "./messages.json";
 
 export default {
@@ -105,5 +105,5 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-@use "@/styles/tool-option";
+@use "@bitmappery/styles/tool-option";
 </style>

@@ -21,8 +21,8 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 import type { Point, Rectangle } from "zcanvas";
-import { rotatePoint } from "@/math/point-math";
-import { fastRound } from "@/math/unit-math";
+import { rotatePoint } from "@bitmappery/math/point-math";
+import { fastRound } from "@bitmappery/math/unit-math";
 
 const HALF = 0.5;
 

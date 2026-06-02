@@ -21,9 +21,9 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 import { type Store } from "vuex";
-import { LayerTypes } from "@/definitions/layer-types";
-import { enqueueState } from "@/factories/history-state-factory";
-import { type BitMapperyState } from "@/store";
+import { LayerTypes } from "@bitmappery/definitions/layer-types";
+import { enqueueState } from "@bitmappery/factories/history-state-factory";
+import { type BitMapperyState } from "@bitmappery/store";
 
 export const addTextLayer = ({ getters, commit }: Store<BitMapperyState> ): void => {
     const fn = (): void => commit( "addLayer", { type: LayerTypes.LAYER_TEXT });

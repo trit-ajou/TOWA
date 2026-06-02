@@ -55,8 +55,8 @@
 
 <script lang="ts">
 import { mapGetters, mapMutations }  from "vuex";
-import ToolTypes, { MAX_BRUSH_SIZE, canDraw } from "@/definitions/tool-types";
-import Slider from "@/components/ui/slider/slider.vue";
+import ToolTypes, { MAX_BRUSH_SIZE, canDraw } from "@bitmappery/definitions/tool-types";
+import Slider from "@bitmappery/components/ui/slider/slider.vue";
 import messages from "./messages.json";
 
 export default {
@@ -114,5 +114,5 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-@use "@/styles/tool-option";
+@use "@bitmappery/styles/tool-option";
 </style>

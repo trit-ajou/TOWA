@@ -21,12 +21,12 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 import { type Store } from "vuex";
-import { type Layer } from "@/definitions/document";
-import { enqueueState } from "@/factories/history-state-factory";
-import { clipContextToSelection } from "@/rendering/operations/clipping";
-import { getCanvasInstance } from "@/services/canvas-service";
-import { type BitMapperyState } from "@/store";
-import { createCanvas } from "@/utils/canvas-util";
+import { type Layer } from "@bitmappery/definitions/document";
+import { enqueueState } from "@bitmappery/factories/history-state-factory";
+import { clipContextToSelection } from "@bitmappery/rendering/operations/clipping";
+import { getCanvasInstance } from "@bitmappery/services/canvas-service";
+import { type BitMapperyState } from "@bitmappery/store";
+import { createCanvas } from "@bitmappery/utils/canvas-util";
 
 export const addMask = ( store: Store<BitMapperyState>, layer: Layer, index: number ): void => {
     const { cvs: mask, ctx } = createCanvas( layer.width, layer.height );

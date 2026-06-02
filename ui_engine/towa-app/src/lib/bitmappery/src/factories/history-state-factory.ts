@@ -21,8 +21,8 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 import { type Store } from "vuex";
-import { type BitMapperyState } from "@/store";
-import { createNamespacedProxy } from "@/utils/store-proxy";
+import { type BitMapperyState } from "@bitmappery/store";
+import { createNamespacedProxy } from "@bitmappery/utils/store-proxy";
 
 /**
  * a history state should provide undo and redo functions and an optional

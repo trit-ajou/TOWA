@@ -21,45 +21,45 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 import type { Store } from "vuex";
-import { createNamespacedProxy } from "@/utils/store-proxy";
+import { createNamespacedProxy } from "@bitmappery/utils/store-proxy";
 import type { Point, Rectangle, Size } from "zcanvas";
 import type ZoomableCanvas from "./zoomable-canvas";
 import ZoomableSprite from "./zoomable-sprite";
 import type { Viewport, TransformedDrawBounds } from "zcanvas";
-import { BlendModes } from "@/definitions/blend-modes";
-import type { Document, Layer, Selection } from "@/definitions/document";
-import type { CanvasContextPairing, CanvasDrawable, Brush, BrushToolOptions, BrushAction } from "@/definitions/editor";
-import { LayerTypes } from "@/definitions/layer-types";
-import ToolTypes, { canDragMask, TOOL_SRC_MERGED } from "@/definitions/tool-types";
-import BrushFactory from "@/factories/brush-factory";
-import { scaleRectangle, rotateRectangle } from "@/math/rectangle-math";
-import { translatePointerRotation, rotatePointer } from "@/math/point-math";
-import { fastRound } from "@/math/unit-math";
-import { getBlendContext, blendLayer } from "@/rendering/operations/blending";
-import { clipContextToSelection, clipLayer } from "@/rendering/operations/clipping";
-import { renderClonedStroke, setCloneSource } from "@/rendering/operations/cloning";
-import { renderBrushStroke } from "@/rendering/operations/drawing";
-import { floodFill } from "@/rendering/operations/fill";
-import { getMaskComposite, disposeMaskComposite, maskImage } from "@/rendering/operations/masking";
-import { snapToGuide } from "@/rendering/operations/snapping";
-import { applyTransformation } from "@/rendering/operations/transforming";
-import { flushLayerCache, clearCacheProperty } from "@/rendering/cache/bitmap-cache";
-import { cacheBlendedLayer, flushBlendedLayerCache, getBlendCache, getBlendableLayers, isBlendCached, pauseBlendCaching, useBlendCaching } from "@/rendering/cache/blended-layer-cache";
-import { renderBrushOutline } from "@/rendering/cursors/brush";
+import { BlendModes } from "@bitmappery/definitions/blend-modes";
+import type { Document, Layer, Selection } from "@bitmappery/definitions/document";
+import type { CanvasContextPairing, CanvasDrawable, Brush, BrushToolOptions, BrushAction } from "@bitmappery/definitions/editor";
+import { LayerTypes } from "@bitmappery/definitions/layer-types";
+import ToolTypes, { canDragMask, TOOL_SRC_MERGED } from "@bitmappery/definitions/tool-types";
+import BrushFactory from "@bitmappery/factories/brush-factory";
+import { scaleRectangle, rotateRectangle } from "@bitmappery/math/rectangle-math";
+import { translatePointerRotation, rotatePointer } from "@bitmappery/math/point-math";
+import { fastRound } from "@bitmappery/math/unit-math";
+import { getBlendContext, blendLayer } from "@bitmappery/rendering/operations/blending";
+import { clipContextToSelection, clipLayer } from "@bitmappery/rendering/operations/clipping";
+import { renderClonedStroke, setCloneSource } from "@bitmappery/rendering/operations/cloning";
+import { renderBrushStroke } from "@bitmappery/rendering/operations/drawing";
+import { floodFill } from "@bitmappery/rendering/operations/fill";
+import { getMaskComposite, disposeMaskComposite, maskImage } from "@bitmappery/rendering/operations/masking";
+import { snapToGuide } from "@bitmappery/rendering/operations/snapping";
+import { applyTransformation } from "@bitmappery/rendering/operations/transforming";
+import { flushLayerCache, clearCacheProperty } from "@bitmappery/rendering/cache/bitmap-cache";
+import { cacheBlendedLayer, flushBlendedLayerCache, getBlendCache, getBlendableLayers, isBlendCached, pauseBlendCaching, useBlendCaching } from "@bitmappery/rendering/cache/blended-layer-cache";
+import { renderBrushOutline } from "@bitmappery/rendering/cursors/brush";
 import {
     getDrawableCanvas, renderDrawableCanvas, disposeDrawableCanvas, sliceBrushPointers, createOverrideConfig
-} from "@/rendering/utils/drawable-canvas-utils";
-import { renderEffectsForLayer } from "@/services/render-service";
-import { replaceLayerSource } from "@/store/actions/layer-source-replace";
-import { positionLayer } from "@/store/actions/layer-position";
-import { positionMask } from "@/store/actions/mask-position";
-import { createCanvas, canvasToBlob, cloneCanvas, globalToLocal, getPixelRatio } from "@/utils/canvas-util";
-import { createSyncSnapshot } from "@/utils/document-util";
-import { hasBlend, isDrawable, isMaskable, isRotated, isScaled } from "@/utils/layer-util";
-import { blobToResource } from "@/utils/resource-manager";
-import { getLastShape } from "@/utils/selection-util";
-import { isShapeClosed } from "@/utils/shape-util";
-import type { BitMapperyState } from "@/store";
+} from "@bitmappery/rendering/utils/drawable-canvas-utils";
+import { renderEffectsForLayer } from "@bitmappery/services/render-service";
+import { replaceLayerSource } from "@bitmappery/store/actions/layer-source-replace";
+import { positionLayer } from "@bitmappery/store/actions/layer-position";
+import { positionMask } from "@bitmappery/store/actions/mask-position";
+import { createCanvas, canvasToBlob, cloneCanvas, globalToLocal, getPixelRatio } from "@bitmappery/utils/canvas-util";
+import { createSyncSnapshot } from "@bitmappery/utils/document-util";
+import { hasBlend, isDrawable, isMaskable, isRotated, isScaled } from "@bitmappery/utils/layer-util";
+import { blobToResource } from "@bitmappery/utils/resource-manager";
+import { getLastShape } from "@bitmappery/utils/selection-util";
+import { isShapeClosed } from "@bitmappery/utils/shape-util";
+import type { BitMapperyState } from "@bitmappery/store";
 
 const HALF = 0.5;
 let drawBounds: Rectangle; // see draw()

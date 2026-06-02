@@ -21,7 +21,7 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 import { type Point } from "zcanvas";
-import { selectByColor } from "@/math/selection-math";
+import { selectByColor } from "@bitmappery/math/selection-math";
 
 const TWO_PI = Math.PI * 2;
 

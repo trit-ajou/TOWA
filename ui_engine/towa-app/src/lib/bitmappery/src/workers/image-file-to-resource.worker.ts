@@ -20,7 +20,7 @@
  * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
-import { blobToResource, disposeResource } from "@/utils/resource-manager";
+import { blobToResource, disposeResource } from "@bitmappery/utils/resource-manager";
 
 self.addEventListener( "message", ( event: MessageEvent ): void => {
     const { cmd, file }: { cmd: string, file: File } = event.data;

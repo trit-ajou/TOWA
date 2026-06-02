@@ -22,12 +22,12 @@
  */
 import { loader } from "zcanvas";
 import type { Point } from "zcanvas";
-import type { CanvasContextPairing, CanvasDrawable } from "@/definitions/editor";
-import { JPEG, PNG } from "@/definitions/image-types";
-import { isPointInsidePolygon } from "@/math/point-math";
-import { fastRound } from "@/math/unit-math";
-import type ZoomableCanvas from "@/rendering/actors/zoomable-canvas";
-import { blobToResource, disposeResource } from "@/utils/resource-manager";
+import type { CanvasContextPairing, CanvasDrawable } from "@bitmappery/definitions/editor";
+import { JPEG, PNG } from "@bitmappery/definitions/image-types";
+import { isPointInsidePolygon } from "@bitmappery/math/point-math";
+import { fastRound } from "@bitmappery/math/unit-math";
+import type ZoomableCanvas from "@bitmappery/rendering/actors/zoomable-canvas";
+import { blobToResource, disposeResource } from "@bitmappery/utils/resource-manager";
 
 /**
  * Creates a new HTMLCanvasElement, returning both

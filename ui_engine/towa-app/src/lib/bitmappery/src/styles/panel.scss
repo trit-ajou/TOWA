@@ -1,6 +1,6 @@
-@use "@/styles/_mixins";
-@use "@/styles/_variables";
-@use "@/styles/component";
+@use "@bitmappery/styles/_mixins";
+@use "@bitmappery/styles/_variables";
+@use "@bitmappery/styles/component";
 
 $collapsed-panel-width: 40px; // large view
 $collapsed-panel-height: 40px; // mobile view

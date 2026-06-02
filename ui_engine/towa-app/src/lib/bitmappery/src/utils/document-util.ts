@@ -21,17 +21,17 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 import { canvas, type Rectangle } from "zcanvas";
-import type { Document, Shape, Text, Layer } from "@/definitions/document";
-import type { CanvasDrawable, CopiedSelection } from "@/definitions/editor";
-import { renderEffectsForLayer } from "@/services/render-service";
-import { createRendererForLayer, getRendererForLayer } from "@/factories/renderer-factory";
-import { rotateRectangle, areEqual } from "@/math/rectangle-math";
-import { fastRound } from "@/math/unit-math";
-import { reverseTransformation } from "@/rendering/operations/transforming";
-import type ZoomableCanvas from "@/rendering/actors/zoomable-canvas";
-import { createCanvas, cloneCanvas, getPixelRatio } from "@/utils/canvas-util";
-import { SmartExecutor } from "@/utils/debounce-util";
-import { selectionToRectangle } from "@/utils/selection-util";
+import type { Document, Shape, Text, Layer } from "@bitmappery/definitions/document";
+import type { CanvasDrawable, CopiedSelection } from "@bitmappery/definitions/editor";
+import { renderEffectsForLayer } from "@bitmappery/services/render-service";
+import { createRendererForLayer, getRendererForLayer } from "@bitmappery/factories/renderer-factory";
+import { rotateRectangle, areEqual } from "@bitmappery/math/rectangle-math";
+import { fastRound } from "@bitmappery/math/unit-math";
+import { reverseTransformation } from "@bitmappery/rendering/operations/transforming";
+import type ZoomableCanvas from "@bitmappery/rendering/actors/zoomable-canvas";
+import { createCanvas, cloneCanvas, getPixelRatio } from "@bitmappery/utils/canvas-util";
+import { SmartExecutor } from "@bitmappery/utils/debounce-util";
+import { selectionToRectangle } from "@bitmappery/utils/selection-util";
 
 /**
  * Creates a snapshot of the current document. THIS MULTIPLIES FOR THE DEVICE PIXEL RATIO

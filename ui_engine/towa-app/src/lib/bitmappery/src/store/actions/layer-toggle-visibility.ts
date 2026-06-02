@@ -21,8 +21,8 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 import type { Store } from "vuex";
-import { enqueueState } from "@/factories/history-state-factory";
-import type { BitMapperyState } from "@/store";
+import { enqueueState } from "@bitmappery/factories/history-state-factory";
+import type { BitMapperyState } from "@bitmappery/store";
 
 /**
  * @param {Object} store reference

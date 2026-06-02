@@ -52,7 +52,7 @@
                 :disabled="!canUndo"
                 @click="undo()"
             >
-                <img src="@/assets-inline/images/icon-history.svg" />
+                <img src="@bitmappery/assets-inline/images/icon-history.svg" />
             </button>
             <button
                 type="button"
@@ -62,7 +62,7 @@
                 :disabled="!canRedo"
                 @click="redo()"
             >
-                <img src="@/assets-inline/images/icon-history.svg" class="mirrored" />
+                <img src="@bitmappery/assets-inline/images/icon-history.svg" class="mirrored" />
             </button>
             <!-- tools -->
             <button
@@ -96,13 +96,13 @@
 <script lang="ts">
 import { type Component, defineAsyncComponent } from "vue";
 import { mapState, mapGetters, mapMutations, mapActions } from "vuex";
-import { type Layer } from "@/definitions/document";
-import { LayerTypes } from "@/definitions/layer-types";
-import { PANEL_TOOL_OPTIONS } from "@/definitions/panel-types";
-import { addTextLayer } from "@/store/actions/layer-add-text-layer";
-import { isMobile } from "@/utils/environment-util";
-import ToolTypes, { canDraw } from "@/definitions/tool-types";
-import { isFeatureEnabled, type FeatureKey } from "@/config/towa-features";
+import { type Layer } from "@bitmappery/definitions/document";
+import { LayerTypes } from "@bitmappery/definitions/layer-types";
+import { PANEL_TOOL_OPTIONS } from "@bitmappery/definitions/panel-types";
+import { addTextLayer } from "@bitmappery/store/actions/layer-add-text-layer";
+import { isMobile } from "@bitmappery/utils/environment-util";
+import ToolTypes, { canDraw } from "@bitmappery/definitions/tool-types";
+import { isFeatureEnabled, type FeatureKey } from "@bitmappery/config/towa-features";
 import messages  from "./messages.json";
 
 type ToolDef = {
@@ -135,7 +135,7 @@ export default {
         colorPicker(): Promise<Component> {
             // load async as this adds to the bundle size
             return defineAsyncComponent({
-                loader: () => import( "@/components/ui/color-picker/color-picker.vue" )
+                loader: () => import( "@bitmappery/components/ui/color-picker/color-picker.vue" )
             });
         },
         collapsed: {
@@ -277,11 +277,11 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-@use "@/styles/_colors";
-@use "@/styles/_mixins";
-@use "@/styles/_variables";
-@use "@/styles/component";
-@use "@/styles/typography";
+@use "@bitmappery/styles/_colors";
+@use "@bitmappery/styles/_mixins";
+@use "@bitmappery/styles/_variables";
+@use "@bitmappery/styles/component";
+@use "@bitmappery/styles/typography";
 
 $toolButtonWidth: variables.$spacing-large;
 

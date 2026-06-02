@@ -20,11 +20,11 @@
  * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
-import type { Document, Layer } from "@/definitions/document";
-import { constrain, isPortrait } from "@/math/image-math";
-import { MAX_IMAGE_SIZE, MAX_MEGAPIXEL, getMinImageSize } from "@/definitions/editor-properties";
-import { LayerTypes } from "@/definitions/layer-types";
-import { getPixelRatio } from "@/utils/canvas-util";
+import type { Document, Layer } from "@bitmappery/definitions/document";
+import { constrain, isPortrait } from "@bitmappery/math/image-math";
+import { MAX_IMAGE_SIZE, MAX_MEGAPIXEL, getMinImageSize } from "@bitmappery/definitions/editor-properties";
+import { LayerTypes } from "@bitmappery/definitions/layer-types";
+import { getPixelRatio } from "@bitmappery/utils/canvas-util";
 
 enum ToolTypes {
     MOVE       = "move",  // pans viewport

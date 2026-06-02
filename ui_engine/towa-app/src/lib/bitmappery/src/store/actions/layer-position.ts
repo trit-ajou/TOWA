@@ -20,10 +20,10 @@
  * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
-import { type Layer } from "@/definitions/document";
-import { getRendererForLayer } from "@/factories/renderer-factory";
-import { enqueueState } from "@/factories/history-state-factory";
-import { flushBlendedLayerCache, useBlendCaching } from "@/rendering/cache/blended-layer-cache";
+import { type Layer } from "@bitmappery/definitions/document";
+import { getRendererForLayer } from "@bitmappery/factories/renderer-factory";
+import { enqueueState } from "@bitmappery/factories/history-state-factory";
+import { flushBlendedLayerCache, useBlendCaching } from "@bitmappery/rendering/cache/blended-layer-cache";
 
 // NOTE we use getRendererForLayer() instead of passing the renderer by reference
 // as it is possible the renderer originally rendering the Layer has been disposed

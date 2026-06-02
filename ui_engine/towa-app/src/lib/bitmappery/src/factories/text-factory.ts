@@ -20,10 +20,10 @@
  * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
-import type { Text, TextAlign, TextVerticalAlign } from "@/definitions/document";
+import type { Text, TextAlign, TextVerticalAlign } from "@bitmappery/definitions/document";
 
-import { loadGoogleFont } from "@/services/font-service";
-import { googleFonts } from "@/definitions/font-types";
+import { loadGoogleFont } from "@bitmappery/services/font-service";
+import { googleFonts } from "@bitmappery/definitions/font-types";
 
 export type TextProps = Partial<Text>;
 

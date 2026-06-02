@@ -21,8 +21,8 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 import type { ActionContext, Module } from "vuex";
-import { isMobile } from "@/utils/environment-util";
-import { setWasmFilters } from "@/services/render-service";
+import { isMobile } from "@bitmappery/utils/environment-util";
+import { setWasmFilters } from "@bitmappery/services/render-service";
 
 // @ts-expect-error 'import.meta' property not allowed (not an issue, Vite takes care of it)
 const SUPPORT_WASM = import.meta.env.VITE_ENABLE_WASM_FILTERS === "true" && "WebAssembly" in window;

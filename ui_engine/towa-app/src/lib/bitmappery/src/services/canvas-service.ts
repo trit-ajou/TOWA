@@ -20,7 +20,7 @@
  * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
-import type ZoomableCanvas from "@/rendering/actors/zoomable-canvas";
+import type ZoomableCanvas from "@bitmappery/rendering/actors/zoomable-canvas";
 
 let zCanvasInstance: ZoomableCanvas = null; // a non-Vue observable zCanvas instance
 

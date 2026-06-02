@@ -21,14 +21,14 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 import type { Rectangle } from "zcanvas";
-import { LayerTypes, DEFAULT_LAYER_NAME, DEFAULT_TEXT_LAYER_NAME } from "@/definitions/layer-types";
-import type { Layer } from "@/definitions/document";
-import { imageToBase64, base64toCanvas } from "@/utils/canvas-util";
-import TransformFactory, { type TransformProps } from "@/factories/transform-factory";
-import FiltersFactory from "@/factories/filters-factory";
-import TextFactory from "@/factories/text-factory";
-import type { FiltersProps } from "@/factories/filters-factory";
-import type { TextProps } from "@/factories/text-factory";
+import { LayerTypes, DEFAULT_LAYER_NAME, DEFAULT_TEXT_LAYER_NAME } from "@bitmappery/definitions/layer-types";
+import type { Layer } from "@bitmappery/definitions/document";
+import { imageToBase64, base64toCanvas } from "@bitmappery/utils/canvas-util";
+import TransformFactory, { type TransformProps } from "@bitmappery/factories/transform-factory";
+import FiltersFactory from "@bitmappery/factories/filters-factory";
+import TextFactory from "@bitmappery/factories/text-factory";
+import type { FiltersProps } from "@bitmappery/factories/filters-factory";
+import type { TextProps } from "@bitmappery/factories/text-factory";
 
 let UID_COUNTER = 0;
 

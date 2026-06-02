@@ -21,7 +21,7 @@
  * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
-import { hexToRGBA } from "@/utils/color-util";
+import { hexToRGBA } from "@bitmappery/utils/color-util";
 
 const cachedGradient: number[] = [];
 let cacheKey: string = "";

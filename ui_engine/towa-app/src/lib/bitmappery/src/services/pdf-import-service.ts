@@ -23,11 +23,11 @@
 import { getDocument } from "pdfjs-dist"; // provides pdfjsLib onto window
 import workerUrl from "pdfjs-dist/build/pdf.worker.mjs?url";
 import type { Size } from "zcanvas";
-import type { Document, Layer } from "@/definitions/document";
-import DocumentFactory from "@/factories/document-factory";
-import LayerFactory from "@/factories/layer-factory";
-import { createCanvas } from "@/utils/canvas-util";
-import { readBufferFromFile } from "@/utils/file-util";
+import type { Document, Layer } from "@bitmappery/definitions/document";
+import DocumentFactory from "@bitmappery/factories/document-factory";
+import LayerFactory from "@bitmappery/factories/layer-factory";
+import { createCanvas } from "@bitmappery/utils/canvas-util";
+import { readBufferFromFile } from "@bitmappery/utils/file-util";
 
 type PDFJSLib = {
     getDocument: ( data: ArrayBuffer ) => {

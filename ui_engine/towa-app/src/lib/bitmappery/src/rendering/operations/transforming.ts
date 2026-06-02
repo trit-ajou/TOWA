@@ -21,9 +21,9 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 import type { Rectangle, Viewport } from "zcanvas";
-import type { Layer } from "@/definitions/document";
-import { layerToRect } from "@/factories/layer-factory";
-import { scaleRectangle, getRotationCenter } from "@/math/rectangle-math";
+import type { Layer } from "@bitmappery/definitions/document";
+import { layerToRect } from "@bitmappery/factories/layer-factory";
+import { scaleRectangle, getRotationCenter } from "@bitmappery/math/rectangle-math";
 
 let bounds: Rectangle;
 

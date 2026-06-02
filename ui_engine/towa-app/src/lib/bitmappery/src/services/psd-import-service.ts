@@ -23,19 +23,19 @@
 // @ts-expect-error no declaration file for module 'psd.js'
 import PSD from "psd.js";
 import type { Rectangle, Size } from "zcanvas";
-import { BlendModes } from "@/definitions/blend-modes";
-import type { RGBA } from "@/definitions/colors";
-import type { Document, Layer } from "@/definitions/document";
-import { googleFonts } from "@/definitions/font-types";
-import { LayerTypes } from "@/definitions/layer-types";
-import DocumentFactory from "@/factories/document-factory";
-import FiltersFactory from "@/factories/filters-factory";
-import LayerFactory, { type LayerProps } from "@/factories/layer-factory";
-import type { TextProps } from "@/factories/text-factory";
-import { inverseMask } from "@/rendering/operations/compositing";
-import { createCanvas, base64toCanvas } from "@/utils/canvas-util";
-import { RGBAtoHex } from "@/utils/color-util";
-import { SmartExecutor } from "@/utils/debounce-util";
+import { BlendModes } from "@bitmappery/definitions/blend-modes";
+import type { RGBA } from "@bitmappery/definitions/colors";
+import type { Document, Layer } from "@bitmappery/definitions/document";
+import { googleFonts } from "@bitmappery/definitions/font-types";
+import { LayerTypes } from "@bitmappery/definitions/layer-types";
+import DocumentFactory from "@bitmappery/factories/document-factory";
+import FiltersFactory from "@bitmappery/factories/filters-factory";
+import LayerFactory, { type LayerProps } from "@bitmappery/factories/layer-factory";
+import type { TextProps } from "@bitmappery/factories/text-factory";
+import { inverseMask } from "@bitmappery/rendering/operations/compositing";
+import { createCanvas, base64toCanvas } from "@bitmappery/utils/canvas-util";
+import { RGBAtoHex } from "@bitmappery/utils/color-util";
+import { SmartExecutor } from "@bitmappery/utils/debounce-util";
 
 type PSDLayer = Rectangle & {
     mask: Rectangle;

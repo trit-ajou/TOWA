@@ -22,11 +22,11 @@
  */
 import { type Store } from "vuex";
 import { type Rectangle } from "zcanvas";
-import { BlendModes } from "@/definitions/blend-modes";
-import { type Layer } from "@/definitions/document";
-import { LayerTypes } from "@/definitions/layer-types";
-import { type BitMapperyState } from "@/store";
-import { resizeImage } from "@/utils/canvas-util";
+import { BlendModes } from "@bitmappery/definitions/blend-modes";
+import { type Layer } from "@bitmappery/definitions/document";
+import { LayerTypes } from "@bitmappery/definitions/layer-types";
+import { type BitMapperyState } from "@bitmappery/store";
+import { resizeImage } from "@bitmappery/utils/canvas-util";
 
 /**
  * Replace the source / mask contents of given layer, updating its

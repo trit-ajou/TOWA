@@ -20,13 +20,13 @@
  * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
-import { type Filters } from "@/definitions/document";
-import FiltersFactory from "@/factories/filters-factory";
-import { imageDataAsFloat } from "@/utils/wasm-util";
-import type { WasmFilterInstance } from "@/utils/wasm-util";
-import { applyAdjustments } from "@/rendering/filters/adjustments";
-import { applyDuotone } from "@/rendering/filters/duotone";
-import wasmJs from "@/wasm/bin/filters.js";
+import { type Filters } from "@bitmappery/definitions/document";
+import FiltersFactory from "@bitmappery/factories/filters-factory";
+import { imageDataAsFloat } from "@bitmappery/utils/wasm-util";
+import type { WasmFilterInstance } from "@bitmappery/utils/wasm-util";
+import { applyAdjustments } from "@bitmappery/rendering/filters/adjustments";
+import { applyDuotone } from "@bitmappery/rendering/filters/duotone";
+import wasmJs from "@bitmappery/wasm/bin/filters.js";
 
 const defaultFilters = FiltersFactory.create();
 let wasmInstance: WasmFilterInstance;

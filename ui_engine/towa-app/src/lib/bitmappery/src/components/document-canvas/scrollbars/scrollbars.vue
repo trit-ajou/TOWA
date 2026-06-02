@@ -263,9 +263,9 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-@use "@/styles/_colors";
-@use "@/styles/_mixins";
-@use "@/styles/_variables";
+@use "@bitmappery/styles/_colors";
+@use "@bitmappery/styles/_mixins";
+@use "@bitmappery/styles/_variables";
 
 $size: variables.$spacing-medium;
 

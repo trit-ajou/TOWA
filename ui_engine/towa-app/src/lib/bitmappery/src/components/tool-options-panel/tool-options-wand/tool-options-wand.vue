@@ -53,9 +53,9 @@
 
 <script lang="ts">
 import { mapGetters, mapMutations } from "vuex";
-import ToggleButton from "@/components/third-party/vue-js-toggle-button/ToggleButton.vue";
-import KeyboardService from "@/services/keyboard-service";
-import ToolTypes from "@/definitions/tool-types";
+import ToggleButton from "@bitmappery/components/third-party/vue-js-toggle-button/ToggleButton.vue";
+import KeyboardService from "@bitmappery/services/keyboard-service";
+import ToolTypes from "@bitmappery/definitions/tool-types";
 import messages from "./messages.json";
 
 export default {
@@ -108,7 +108,7 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-@use "@/styles/tool-option";
+@use "@bitmappery/styles/tool-option";
 
 .threshold {
     width: 75px !important;

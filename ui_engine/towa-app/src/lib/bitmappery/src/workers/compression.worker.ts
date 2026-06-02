@@ -21,7 +21,7 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 import LZString from "lz-string";
-import { readFile } from "@/utils/file-util";
+import { readFile } from "@bitmappery/utils/file-util";
 
 self.addEventListener( "message", ( event: MessageEvent ): void => {
     const { cmd, data, id }: { cmd: string, data: any, id: number } = event.data;

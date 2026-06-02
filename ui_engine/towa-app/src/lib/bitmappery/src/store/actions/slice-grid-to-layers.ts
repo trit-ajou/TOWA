@@ -21,12 +21,12 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 import { type Store } from "vuex";
-import { type Document } from "@/definitions/document";
-import { enqueueState } from "@/factories/history-state-factory";
-import LayerFactory from "@/factories/layer-factory";
-import { type BitMapperyState } from "@/store";
-import { resizeImage } from "@/utils/canvas-util";
-import { createSyncSnapshot, sliceTiles } from "@/utils/document-util";
+import { type Document } from "@bitmappery/definitions/document";
+import { enqueueState } from "@bitmappery/factories/history-state-factory";
+import LayerFactory from "@bitmappery/factories/layer-factory";
+import { type BitMapperyState } from "@bitmappery/store";
+import { resizeImage } from "@bitmappery/utils/canvas-util";
+import { createSyncSnapshot, sliceTiles } from "@bitmappery/utils/document-util";
 
 export const sliceGridToLayers = async (
     store: Store<BitMapperyState>, activeDocument: Document, tileWidth: number, tileHeight: number, allVisible: boolean, sliceName: string

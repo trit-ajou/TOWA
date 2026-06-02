@@ -21,8 +21,8 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 import type { ActionContext, Module } from "vuex";
-import type { Document } from "@/definitions/document";
-import { disposeResource } from "@/utils/resource-manager";
+import type { Document } from "@bitmappery/definitions/document";
+import { disposeResource } from "@bitmappery/utils/resource-manager";
 
 type FileTarget = "document" | "layer";
 export type WrappedImage = {

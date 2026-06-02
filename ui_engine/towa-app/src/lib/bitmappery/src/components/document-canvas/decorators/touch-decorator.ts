@@ -1,10 +1,10 @@
 import type { GestureEvent, Pan, Pinch, PointerListener, Tap, TwoFingerPan } from "contactjs";
 import { mapGetters, mapMutations } from "vuex";
-import ToolTypes, { MAX_ZOOM } from "@/definitions/tool-types";
-import { scale } from "@/math/unit-math";
-import { getCanvasInstance } from "@/services/canvas-service";
-import { cancelableCallback } from "@/utils/debounce-util";
-import { fitInWindow } from "@/utils/zoom-util";
+import ToolTypes, { MAX_ZOOM } from "@bitmappery/definitions/tool-types";
+import { scale } from "@bitmappery/math/unit-math";
+import { getCanvasInstance } from "@bitmappery/services/canvas-service";
+import { cancelableCallback } from "@bitmappery/utils/debounce-util";
+import { fitInWindow } from "@bitmappery/utils/zoom-util";
 
 let Contact: {
     ["Pan"]: typeof Pan,

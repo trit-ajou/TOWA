@@ -63,10 +63,10 @@
 
 <script lang="ts">
 import { mapGetters } from "vuex";
-import { canDragMask } from "@/definitions/tool-types";
-import { enqueueState } from "@/factories/history-state-factory";
-import KeyboardService from "@/services/keyboard-service";
-import { getRendererForLayer } from "@/factories/renderer-factory";
+import { canDragMask } from "@bitmappery/definitions/tool-types";
+import { enqueueState } from "@bitmappery/factories/history-state-factory";
+import KeyboardService from "@bitmappery/services/keyboard-service";
+import { getRendererForLayer } from "@bitmappery/factories/renderer-factory";
 
 import messages from "./messages.json";
 
@@ -189,8 +189,8 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-@use "@/styles/_variables";
-@use "@/styles/tool-option";
+@use "@bitmappery/styles/_variables";
+@use "@bitmappery/styles/tool-option";
 
 .half {
     width: 30% !important;

@@ -23,10 +23,10 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 import type { Rectangle } from "zcanvas";
-import { BlendModes } from "@/definitions/blend-modes";
-import type { RGB, HSV } from "@/definitions/colors";
-import { createCanvas } from "@/utils/canvas-util";
-import { rgb2YCbCr, YCbCr2rgb, rgb2hsv, hsv2rgb } from "@/utils/color-util";
+import { BlendModes } from "@bitmappery/definitions/blend-modes";
+import type { RGB, HSV } from "@bitmappery/definitions/colors";
+import { createCanvas } from "@bitmappery/utils/canvas-util";
+import { rgb2YCbCr, YCbCr2rgb, rgb2hsv, hsv2rgb } from "@bitmappery/utils/color-util";
 
 const { cvs, ctx } = createCanvas();
 

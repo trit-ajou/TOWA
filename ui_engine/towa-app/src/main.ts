@@ -13,8 +13,20 @@ import { DEPLOYMENT_MODE } from './config/deployment'
 import './app.css'
 import 'floating-vue/dist/style.css'
 
-// @ts-expect-error bitmappery i18n messages
-import bmpMessages from '@bitmappery/messages.json'
+// bitmappery i18n messages를 글로벌 인스턴스로 통합 등록.
+// legacy: false (Composition API mode)에서는 컴포넌트별 `i18n: { messages }` 옵션이
+// 동작하지 않으므로 모든 sub-component의 messages.json을 root i18n에 deep merge.
+const bmpMessageModules = import.meta.glob<{ default: Record<string, Record<string, unknown>> }>(
+  '/src/lib/bitmappery/**/messages.json',
+  { eager: true },
+)
+const mergedMessages: Record<string, Record<string, unknown>> = {}
+for (const mod of Object.values(bmpMessageModules)) {
+  const payload = mod.default
+  for (const [locale, dict] of Object.entries(payload)) {
+    mergedMessages[locale] = { ...(mergedMessages[locale] ?? {}), ...dict }
+  }
+}
 
 // required for psd.js
 globalThis.Buffer = Buffer
@@ -26,7 +38,7 @@ FloatingVue.options.themes.tooltip.delay.show = 500
 const i18n = createI18n({
   legacy: false,
   globalInjection: true,
-  messages: bmpMessages,
+  messages: mergedMessages,
 })
 
 const app = createApp(App)

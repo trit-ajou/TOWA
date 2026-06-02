@@ -20,8 +20,8 @@
  * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
-import { BlendModes } from "@/definitions/blend-modes";
-import type { Filters } from "@/definitions/document";
+import { BlendModes } from "@bitmappery/definitions/blend-modes";
+import type { Filters } from "@bitmappery/definitions/document";
 
 export type FiltersProps = Partial<Filters>;
 

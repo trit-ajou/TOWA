@@ -21,9 +21,9 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 import { type Store } from "vuex";
-import { type Filters } from "@/definitions/document";
-import { enqueueState } from "@/factories/history-state-factory";
-import type { BitMapperyState } from "@/store";
+import { type Filters } from "@bitmappery/definitions/document";
+import { enqueueState } from "@bitmappery/factories/history-state-factory";
+import type { BitMapperyState } from "@bitmappery/store";
 
 export const updateLayerFilters = ( store: Store<BitMapperyState>, index: number, orgFilters: Filters, filters: Filters ): void => {
     enqueueState( `filters_${index}`, {

@@ -21,10 +21,10 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 import type { Point, Rectangle, Viewport } from "zcanvas";
-import type { Layer, Selection, Shape } from "@/definitions/document";
-import { rotateRectangleToCoordinates, scaleRectangle } from "@/math/rectangle-math";
-import type { OverrideConfig } from "@/rendering/utils/drawable-canvas-utils";
-import { isShapeRectangular } from "@/utils/shape-util";
+import type { Layer, Selection, Shape } from "@bitmappery/definitions/document";
+import { rotateRectangleToCoordinates, scaleRectangle } from "@bitmappery/math/rectangle-math";
+import type { OverrideConfig } from "@bitmappery/rendering/utils/drawable-canvas-utils";
+import { isShapeRectangular } from "@bitmappery/utils/shape-util";
 
 /**
  * Prepares a clipping path corresponding to given selections outline, transformed

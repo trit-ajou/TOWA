@@ -21,7 +21,7 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 import type { Module } from "vuex";
-import type { CanvasDimensions } from "@/definitions/editor";
+import type { CanvasDimensions } from "@bitmappery/definitions/editor";
 
 export interface CanvasState {
     canvasDimensions: CanvasDimensions;

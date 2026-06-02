@@ -164,16 +164,16 @@
 <script lang="ts">
 import { mapGetters, mapMutations } from "vuex";
 import isEqual from "lodash.isequal";
-import ToggleButton from "@/components/third-party/vue-js-toggle-button/ToggleButton.vue";
-import ColorPicker from "@/components/ui/color-picker/color-picker.vue";
-import SelectBox from "@/components/ui/select-box/select-box.vue";
-import Slider from "@/components/ui/slider/slider.vue";
-import { Layer, Filters } from "@/definitions/document";
-import { BlendModes } from "@/definitions/blend-modes";
-import FiltersFactory from "@/factories/filters-factory";
-import KeyboardService from "@/services/keyboard-service";
-import { updateLayerFilters } from "@/store/actions/layer-update-filters";
-import { clone } from "@/utils/object-util";
+import ToggleButton from "@bitmappery/components/third-party/vue-js-toggle-button/ToggleButton.vue";
+import ColorPicker from "@bitmappery/components/ui/color-picker/color-picker.vue";
+import SelectBox from "@bitmappery/components/ui/select-box/select-box.vue";
+import Slider from "@bitmappery/components/ui/slider/slider.vue";
+import { Layer, Filters } from "@bitmappery/definitions/document";
+import { BlendModes } from "@bitmappery/definitions/blend-modes";
+import FiltersFactory from "@bitmappery/factories/filters-factory";
+import KeyboardService from "@bitmappery/services/keyboard-service";
+import { updateLayerFilters } from "@bitmappery/store/actions/layer-update-filters";
+import { clone } from "@bitmappery/utils/object-util";
 
 import messages from "./messages.json";
 
@@ -348,10 +348,10 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-@use "@/styles/_colors";
-@use "@/styles/_mixins";
-@use "@/styles/_variables";
-@use "@/styles/panel";
+@use "@bitmappery/styles/_colors";
+@use "@bitmappery/styles/_mixins";
+@use "@bitmappery/styles/_variables";
+@use "@bitmappery/styles/panel";
 
 .layer-effects {
     @include panel.panel();

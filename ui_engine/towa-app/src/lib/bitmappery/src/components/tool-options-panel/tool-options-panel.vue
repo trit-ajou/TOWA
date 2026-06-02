@@ -53,8 +53,8 @@
 <script lang="ts">
 import { type Component, defineAsyncComponent } from "vue";
 import { mapState, mapGetters, mapMutations } from "vuex";
-import { PANEL_TOOL_OPTIONS } from "@/definitions/panel-types";
-import ToolTypes from "@/definitions/tool-types";
+import { PANEL_TOOL_OPTIONS } from "@bitmappery/definitions/panel-types";
+import ToolTypes from "@bitmappery/definitions/tool-types";
 import messages  from "./messages.json";
 
 export default {
@@ -146,9 +146,9 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-@use "@/styles/_mixins";
-@use "@/styles/_variables";
-@use "@/styles/panel";
+@use "@bitmappery/styles/_mixins";
+@use "@bitmappery/styles/_variables";
+@use "@bitmappery/styles/panel";
 
 .options-panel-wrapper {
     @include panel.panel();

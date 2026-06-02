@@ -21,11 +21,11 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 import type { Rectangle } from "zcanvas";
-import { SNAP_MARGIN } from "@/definitions/tool-types";
+import { SNAP_MARGIN } from "@bitmappery/definitions/tool-types";
 import {
     rectToPoint, distanceBetween, isCoordinateInHorizontalRange, isCoordinateInVerticalRange
-} from "@/math/point-math";
-import type LayerRenderer from "@/rendering/actors/layer-renderer";
+} from "@bitmappery/math/point-math";
+import type LayerRenderer from "@bitmappery/rendering/actors/layer-renderer";
 
 type SnappableAreas = {
     horizontal: number[];

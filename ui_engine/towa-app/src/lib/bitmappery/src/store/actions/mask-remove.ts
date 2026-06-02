@@ -21,9 +21,9 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 import { type Store } from "vuex";
-import { type Layer } from "@/definitions/document";
-import { enqueueState } from "@/factories/history-state-factory";
-import { type BitMapperyState } from "@/store";
+import { type Layer } from "@bitmappery/definitions/document";
+import { enqueueState } from "@bitmappery/factories/history-state-factory";
+import { type BitMapperyState } from "@bitmappery/store";
 
 export const removeMask = ( store: Store<BitMapperyState>, layer: Layer, index: number ): void => {
     const mask = layer.mask;

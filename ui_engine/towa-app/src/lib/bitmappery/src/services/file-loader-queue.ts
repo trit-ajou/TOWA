@@ -21,8 +21,8 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 import { loader, type Size } from "zcanvas";
-import { blobToResource, disposeResource } from "@/utils/resource-manager";
-import FileToResourceWorker from "@/workers/image-file-to-resource.worker?worker";
+import { blobToResource, disposeResource } from "@bitmappery/utils/resource-manager";
+import FileToResourceWorker from "@bitmappery/workers/image-file-to-resource.worker?worker";
 
 type ImageLoadRequest = {
     name: string;

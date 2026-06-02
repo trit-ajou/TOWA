@@ -22,12 +22,12 @@
  */
 import { mapGetters, mapMutations, mapActions } from "vuex";
 import { type Size, loader } from "zcanvas";
-import type { Document, Layer } from "@/definitions/document";
-import { isTransparent } from "@/definitions/image-types";
-import { ACCEPTED_FILE_EXTENSIONS, PSD, PDF, isImageFile, isProjectFile, isThirdPartyDocument } from "@/definitions/file-types";
-import { LayerTypes } from "@/definitions/layer-types";
-import { loadImageFiles, type SizedResource } from "@/services/file-loader-queue";
-import { imageToCanvas } from "@/utils/canvas-util";
+import type { Document, Layer } from "@bitmappery/definitions/document";
+import { isTransparent } from "@bitmappery/definitions/image-types";
+import { ACCEPTED_FILE_EXTENSIONS, PSD, PDF, isImageFile, isProjectFile, isThirdPartyDocument } from "@bitmappery/definitions/file-types";
+import { LayerTypes } from "@bitmappery/definitions/layer-types";
+import { loadImageFiles, type SizedResource } from "@bitmappery/services/file-loader-queue";
+import { imageToCanvas } from "@bitmappery/utils/canvas-util";
 
 // third party files are handled by their own import services which are lazily loaded
 
@@ -169,13 +169,13 @@ async function getServiceForThirdPartyFile( mime: string ): Promise<ThirdPartySe
         default:
         case PSD.mime:
             if ( !importPSD ) {
-                ({ importPSD } = await import( "@/services/psd-import-service" ));
+                ({ importPSD } = await import( "@bitmappery/services/psd-import-service" ));
             }
             return importPSD;
 
         case PDF.mime:
             if ( !importPDF ) {
-                ({ importPDF } = await import( "@/services/pdf-import-service" ));
+                ({ importPDF } = await import( "@bitmappery/services/pdf-import-service" ));
             }
             return importPDF;
     }

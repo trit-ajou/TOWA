@@ -28,7 +28,7 @@ import {
     union
 } from "martinez-polygon-clipping";
 import type { Point, Rectangle } from "zcanvas";
-import type { Shape } from "@/definitions/document";
+import type { Shape } from "@bitmappery/definitions/document";
 
 export const shapeToRectangle = ( shape: Shape ): Rectangle => {
     let minX = Infinity;

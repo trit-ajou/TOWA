@@ -21,12 +21,12 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 import type { Point } from "zcanvas";
-import type { Brush, CloneToolOptions } from "@/definitions/editor";
-import { createDrawable } from "@/factories/brush-factory";
-import { createCanvas, getPixelRatio, setCanvasDimensions } from "@/utils/canvas-util";
-import type LayerRenderer from "@/rendering/actors/layer-renderer";
-import { applyOverrideConfig, type OverrideConfig } from "@/rendering/utils/drawable-canvas-utils";
-import { clone } from "@/utils/object-util";
+import type { Brush, CloneToolOptions } from "@bitmappery/definitions/editor";
+import { createDrawable } from "@bitmappery/factories/brush-factory";
+import { createCanvas, getPixelRatio, setCanvasDimensions } from "@bitmappery/utils/canvas-util";
+import type LayerRenderer from "@bitmappery/rendering/actors/layer-renderer";
+import { applyOverrideConfig, type OverrideConfig } from "@bitmappery/rendering/utils/drawable-canvas-utils";
+import { clone } from "@bitmappery/utils/object-util";
 
 const tempCanvas = createCanvas();
 let cloneSource: HTMLCanvasElement | undefined;

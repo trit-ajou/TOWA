@@ -43,7 +43,7 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-@use "@/styles/font-previews";
+@use "@bitmappery/styles/font-previews";
 
 .font-preview__wrapper {
     padding-top: 4px;

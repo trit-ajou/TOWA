@@ -22,24 +22,24 @@
  */
 import { sprite } from "zcanvas";
 import type { Point, Size, Viewport } from "zcanvas";
-import type { Document, Layer, Shape, Selection } from "@/definitions/document";
-import ToolTypes, { SELECTION_TOOLS } from "@/definitions/tool-types";
-import { getRendererForLayer } from "@/factories/renderer-factory";
-import { isPointInRange, translatePoints, snapToAngle, rectToCoordinateList } from "@/math/point-math";
-import { rotateRectangleToCoordinates, scaleRectangle } from "@/math/rectangle-math";
-import { selectByColor } from "@/math/selection-math";
-import { fastRound } from "@/math/unit-math";
-import LayerRenderer from "@/rendering/actors/layer-renderer";
-import type ZoomableCanvas from "@/rendering/actors/zoomable-canvas";
-import { getCanvasInstance } from "@/services/canvas-service";
-import KeyboardService from "@/services/keyboard-service";
-import { zoomIn, zoomOut } from "@/store/actions/canvas-zoom";
-import { invertSelection } from "@/store/actions/selection-invert";
-import { applySelection } from "@/store/actions/selection-apply";
-import { getPixelRatio, isInsideTransparentArea } from "@/utils/canvas-util";
-import { createDocumentSnapshot, createLayerSnapshot } from "@/utils/document-util";
-import { getLastShape, syncSelection } from "@/utils/selection-util";
-import { isShapeClosed, isOverlappingShape, mergeShapes, rectangleToShape, subtractShapes } from "@/utils/shape-util";
+import type { Document, Layer, Shape, Selection } from "@bitmappery/definitions/document";
+import ToolTypes, { SELECTION_TOOLS } from "@bitmappery/definitions/tool-types";
+import { getRendererForLayer } from "@bitmappery/factories/renderer-factory";
+import { isPointInRange, translatePoints, snapToAngle, rectToCoordinateList } from "@bitmappery/math/point-math";
+import { rotateRectangleToCoordinates, scaleRectangle } from "@bitmappery/math/rectangle-math";
+import { selectByColor } from "@bitmappery/math/selection-math";
+import { fastRound } from "@bitmappery/math/unit-math";
+import LayerRenderer from "@bitmappery/rendering/actors/layer-renderer";
+import type ZoomableCanvas from "@bitmappery/rendering/actors/zoomable-canvas";
+import { getCanvasInstance } from "@bitmappery/services/canvas-service";
+import KeyboardService from "@bitmappery/services/keyboard-service";
+import { zoomIn, zoomOut } from "@bitmappery/store/actions/canvas-zoom";
+import { invertSelection } from "@bitmappery/store/actions/selection-invert";
+import { applySelection } from "@bitmappery/store/actions/selection-apply";
+import { getPixelRatio, isInsideTransparentArea } from "@bitmappery/utils/canvas-util";
+import { createDocumentSnapshot, createLayerSnapshot } from "@bitmappery/utils/document-util";
+import { getLastShape, syncSelection } from "@bitmappery/utils/selection-util";
+import { isShapeClosed, isOverlappingShape, mergeShapes, rectangleToShape, subtractShapes } from "@bitmappery/utils/shape-util";
 
 export enum InteractionModes {
     MODE_PAN = 0,

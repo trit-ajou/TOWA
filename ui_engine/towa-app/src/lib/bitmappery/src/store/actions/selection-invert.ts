@@ -21,11 +21,11 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 import { type Store } from "vuex";
-import { type Document } from "@/definitions/document";
-import { enqueueState } from "@/factories/history-state-factory";
-import { getCanvasInstance } from "@/services/canvas-service";
-import { type BitMapperyState } from "@/store";
-import { syncSelection } from "@/utils/selection-util";
+import { type Document } from "@bitmappery/definitions/document";
+import { enqueueState } from "@bitmappery/factories/history-state-factory";
+import { getCanvasInstance } from "@bitmappery/services/canvas-service";
+import { type BitMapperyState } from "@bitmappery/store";
+import { syncSelection } from "@bitmappery/utils/selection-util";
 
 export const invertSelection = ( store: Store<BitMapperyState>, activeDocument: Document ): void => {
     const curValue = activeDocument.invertSelection;

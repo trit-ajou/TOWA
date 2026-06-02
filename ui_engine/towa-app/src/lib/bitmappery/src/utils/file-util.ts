@@ -22,8 +22,8 @@
 */
 import {
     isImageFile, isProjectFile, isThirdPartyDocument,
-} from "@/definitions/file-types";
-import { blobToResource, disposeResource } from "@/utils/resource-manager";
+} from "@bitmappery/definitions/file-types";
+import { blobToResource, disposeResource } from "@bitmappery/utils/resource-manager";
 
 type FileDictionary = {
     images: File[];

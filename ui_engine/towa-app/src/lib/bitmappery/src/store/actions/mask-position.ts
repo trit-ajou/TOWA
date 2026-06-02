@@ -20,9 +20,9 @@
  * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
-import { type Layer } from "@/definitions/document";
-import { getRendererForLayer } from "@/factories/renderer-factory";
-import { enqueueState } from "@/factories/history-state-factory";
+import { type Layer } from "@bitmappery/definitions/document";
+import { getRendererForLayer } from "@bitmappery/factories/renderer-factory";
+import { enqueueState } from "@bitmappery/factories/history-state-factory";
 
 export function positionMask( layer: Layer, newMaskX: number, newMaskY: number ): void {
     const { maskX, maskY } = layer;

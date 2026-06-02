@@ -21,9 +21,9 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 import type { Point, SizedImage } from "zcanvas";
-import type BrushTypes from "@/definitions/brush-types";
-import type { LayerTypes } from "@/definitions/layer-types";
-import type { Selection } from "@/definitions/document";
+import type BrushTypes from "@bitmappery/definitions/brush-types";
+import type { LayerTypes } from "@bitmappery/definitions/layer-types";
+import type { Selection } from "@bitmappery/definitions/document";
 
 export type Notification = {
     title?: string;

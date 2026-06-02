@@ -100,13 +100,13 @@
 
 <script lang="ts">
 import { mapGetters, mapMutations } from "vuex";
-import ToggleButton from "@/components/third-party/vue-js-toggle-button/ToggleButton.vue";
-import ToolTypes from "@/definitions/tool-types";
-import type { Rectangle } from "@/definitions/document";
-import { translatePoints } from "@/math/point-math";
-import { getCanvasInstance } from "@/services/canvas-service";
-import KeyboardService from "@/services/keyboard-service";
-import { selectionToRectangle } from "@/utils/selection-util";
+import ToggleButton from "@bitmappery/components/third-party/vue-js-toggle-button/ToggleButton.vue";
+import ToolTypes from "@bitmappery/definitions/tool-types";
+import type { Rectangle } from "@bitmappery/definitions/document";
+import { translatePoints } from "@bitmappery/math/point-math";
+import { getCanvasInstance } from "@bitmappery/services/canvas-service";
+import KeyboardService from "@bitmappery/services/keyboard-service";
+import { selectionToRectangle } from "@bitmappery/utils/selection-util";
 
 import messages from "./messages.json";
 
@@ -249,8 +249,8 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-@use "@/styles/_variables";
-@use "@/styles/tool-option";
+@use "@bitmappery/styles/_variables";
+@use "@bitmappery/styles/tool-option";
 
 .half {
     width: 30% !important;

@@ -20,9 +20,9 @@
  * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
-import type { Document, Layer } from "@/definitions/document";
-import LayerFactory from "@/factories/layer-factory";
-import { compress, decompress } from "@/services/compression-service";
+import type { Document, Layer } from "@bitmappery/definitions/document";
+import LayerFactory from "@bitmappery/factories/layer-factory";
+import { compress, decompress } from "@bitmappery/services/compression-service";
 
 let UID_COUNTER = 0;
 

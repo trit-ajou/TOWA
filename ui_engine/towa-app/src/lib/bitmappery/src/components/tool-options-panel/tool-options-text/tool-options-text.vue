@@ -103,20 +103,20 @@
 import { defineAsyncComponent } from "vue";
 import { mapGetters, mapMutations } from "vuex";
 import VueSelect from "vue-select";
-import SelectBox from "@/components/ui/select-box/select-box.vue";
-import Slider from "@/components/ui/slider/slider.vue";
-import { DEFAULT_LAYER_NAME, LayerTypes } from "@/definitions/layer-types";
+import SelectBox from "@bitmappery/components/ui/select-box/select-box.vue";
+import Slider from "@bitmappery/components/ui/slider/slider.vue";
+import { DEFAULT_LAYER_NAME, LayerTypes } from "@bitmappery/definitions/layer-types";
 import FontPreview from "./font-preview/font-preview.vue";
-import { mapSelectOptions } from "@/utils/search-select-util";
-import { enqueueState } from "@/factories/history-state-factory";
-import KeyboardService from "@/services/keyboard-service";
-import { fontsConsented, consentFonts, rejectFonts } from "@/services/font-service";
-import { googleFonts } from "@/definitions/font-types";
-import { isMobile } from "@/utils/environment-util";
-import { focus } from "@/utils/environment-util";
-import { truncate } from "@/utils/string-util";
+import { mapSelectOptions } from "@bitmappery/utils/search-select-util";
+import { enqueueState } from "@bitmappery/factories/history-state-factory";
+import KeyboardService from "@bitmappery/services/keyboard-service";
+import { fontsConsented, consentFonts, rejectFonts } from "@bitmappery/services/font-service";
+import { googleFonts } from "@bitmappery/definitions/font-types";
+import { isMobile } from "@bitmappery/utils/environment-util";
+import { focus } from "@bitmappery/utils/environment-util";
+import { truncate } from "@bitmappery/utils/string-util";
 import messages from "./messages.json";
-import sharedMessages from "@/messages.json";
+import sharedMessages from "@bitmappery/messages.json";
 
 export default {
     i18n: { messages, sharedMessages },
@@ -145,7 +145,7 @@ export default {
         colorPicker() {
             // load async as this adds to the bundle size
             return defineAsyncComponent({
-                loader: () => import( "@/components/ui/color-picker/color-picker.vue" )
+                loader: () => import( "@bitmappery/components/ui/color-picker/color-picker.vue" )
             });
         },
         fonts() {
@@ -323,9 +323,9 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-@use "@/styles/_variables";
-@use "@/styles/form";
-@use "@/styles/tool-option";
+@use "@bitmappery/styles/_variables";
+@use "@bitmappery/styles/form";
+@use "@bitmappery/styles/tool-option";
 
 .color-picker {
     width: 50%;

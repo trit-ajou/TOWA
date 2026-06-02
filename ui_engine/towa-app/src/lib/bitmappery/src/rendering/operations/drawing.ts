@@ -20,12 +20,12 @@
  * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
-import BrushTypes, { getSizeForBrush } from "@/definitions/brush-types";
-import type { Brush } from "@/definitions/editor";
-import { createDrawable } from "@/factories/brush-factory";
-import { randomInRange } from "@/math/unit-math";
-import { applyOverrideConfig, type OverrideConfig } from "@/rendering/utils/drawable-canvas-utils";
-import { distanceBetween, angleBetween, pointBetween } from "@/math/point-math";
+import BrushTypes, { getSizeForBrush } from "@bitmappery/definitions/brush-types";
+import type { Brush } from "@bitmappery/definitions/editor";
+import { createDrawable } from "@bitmappery/factories/brush-factory";
+import { randomInRange } from "@bitmappery/math/unit-math";
+import { applyOverrideConfig, type OverrideConfig } from "@bitmappery/rendering/utils/drawable-canvas-utils";
+import { distanceBetween, angleBetween, pointBetween } from "@bitmappery/math/point-math";
 
 const { cos, sin } = Math;
 const TWO_PI = Math.PI * 2;

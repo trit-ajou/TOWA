@@ -60,8 +60,8 @@
 </template>
 
 <script lang="ts">
-import SelectBox from "@/components/ui/select-box/select-box.vue";
-import { pixelsToInch, pixelsToCm, pixelsToMm, inchesToPixels, cmToPixels, mmToPixels,  } from "@/math/unit-math";
+import SelectBox from "@bitmappery/components/ui/select-box/select-box.vue";
+import { pixelsToInch, pixelsToCm, pixelsToMm, inchesToPixels, cmToPixels, mmToPixels,  } from "@bitmappery/math/unit-math";
 import messages from "./messages.json";
 
 const DPI   = [ 72, 97, 150, 300, 600 ];
@@ -161,8 +161,8 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-@use "@/styles/_variables";
-@use "@/styles/form";
+@use "@bitmappery/styles/_variables";
+@use "@bitmappery/styles/form";
 
 .title {
     color: #FFF;

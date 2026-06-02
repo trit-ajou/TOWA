@@ -20,10 +20,10 @@
  * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
-import type { Document } from "@/definitions/document";
-import type { CanvasDimensions } from "@/definitions/editor";
-import { MIN_ZOOM, MAX_ZOOM } from "@/definitions/tool-types";
-import { getZoomRange } from "@/math/image-math";
+import type { Document } from "@bitmappery/definitions/document";
+import type { CanvasDimensions } from "@bitmappery/definitions/editor";
+import { MIN_ZOOM, MAX_ZOOM } from "@bitmappery/definitions/tool-types";
+import { getZoomRange } from "@bitmappery/math/image-math";
 
 /**
  * Calculates the zoom level for given canvasDimensions to display the given

@@ -61,11 +61,11 @@
 
 <script lang="ts">
 import { mapGetters, mapMutations } from "vuex";
-import Slider from "@/components/ui/slider/slider.vue";
-import { pauseBlendCaching } from "@/rendering/cache/blended-layer-cache";
-import { rotateLayer } from "@/store/actions/layer-rotate";
+import Slider from "@bitmappery/components/ui/slider/slider.vue";
+import { pauseBlendCaching } from "@bitmappery/rendering/cache/blended-layer-cache";
+import { rotateLayer } from "@bitmappery/store/actions/layer-rotate";
 import messages from "./messages.json";
-import { degreesToRadians, radiansToDegrees } from "@/math/unit-math";
+import { degreesToRadians, radiansToDegrees } from "@bitmappery/math/unit-math";
 
 export default {
     i18n: { messages },
@@ -113,8 +113,8 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-@use "@/styles/_variables";
-@use "@/styles/tool-option";
+@use "@bitmappery/styles/_variables";
+@use "@bitmappery/styles/tool-option";
 
 .actions button {
     margin: 0 variables.$spacing-xxsmall;

@@ -54,19 +54,19 @@
 <script lang="ts">
 import { type Component, defineAsyncComponent } from "vue";
 import { mapState, mapGetters, mapMutations, mapActions } from "vuex";
-import ToolOptionsPanel from "@/components/tool-options-panel/tool-options-panel.vue";
-import LayerPanel from "@/components/layer-panel/layer-panel.vue";
-import Toolbox from "@/components/toolbox/toolbox.vue";
-import type { Document } from "@/definitions/document";
-import ToolTypes from "@/definitions/tool-types";
-import DocumentFactory from "@/factories/document-factory";
-import { isMobile } from "@/utils/environment-util";
-import { isFeatureEnabled } from "@/config/towa-features";
-import { loadImageFiles } from "@/services/file-loader-queue";
-import { renderState } from "@/services/render-service";
-import ImageToDocumentManager from "@/mixins/image-to-document-manager";
-import { readClipboardFiles, readDroppedFiles } from "@/utils/file-util";
-import { truncate } from "@/utils/string-util";
+import ToolOptionsPanel from "@bitmappery/components/tool-options-panel/tool-options-panel.vue";
+import LayerPanel from "@bitmappery/components/layer-panel/layer-panel.vue";
+import Toolbox from "@bitmappery/components/toolbox/toolbox.vue";
+import type { Document } from "@bitmappery/definitions/document";
+import ToolTypes from "@bitmappery/definitions/tool-types";
+import DocumentFactory from "@bitmappery/factories/document-factory";
+import { isMobile } from "@bitmappery/utils/environment-util";
+import { isFeatureEnabled } from "@bitmappery/config/towa-features";
+import { loadImageFiles } from "@bitmappery/services/file-loader-queue";
+import { renderState } from "@bitmappery/services/render-service";
+import ImageToDocumentManager from "@bitmappery/mixins/image-to-document-manager";
+import { readClipboardFiles, readDroppedFiles } from "@bitmappery/utils/file-util";
+import { truncate } from "@bitmappery/utils/string-util";
 let lastDocumentId = null;
 
 // wrapper for loading dynamic components with custom loading states
@@ -110,7 +110,7 @@ export default {
             "isLoading",
         ]),
         documentCanvas(): IAsyncComponent {
-            return asyncComponent( "dc", () => import( "@/components/document-canvas/document-canvas.vue" ));
+            return asyncComponent( "dc", () => import( "@bitmappery/components/document-canvas/document-canvas.vue" ));
         },
         activeModal(): IAsyncComponent | null {
             // 모든 modal 컴포넌트가 정리됨 (#58). 호출이 와도 항상 null 반환.
@@ -250,11 +250,11 @@ export default {
  */
 @use "sass:math";
 
-@use "@/styles/_colors";
-@use "@/styles/_global";
-@use "@/styles/_mixins";
-@use "@/styles/_variables";
-@use "@/styles/panel";
+@use "@bitmappery/styles/_colors";
+@use "@bitmappery/styles/_global";
+@use "@bitmappery/styles/_mixins";
+@use "@bitmappery/styles/_variables";
+@use "@bitmappery/styles/panel";
 
 #bitmappery-app {
     -webkit-font-smoothing: antialiased;

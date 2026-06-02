@@ -20,7 +20,7 @@
  * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
-import type { RGB, RGBA, HSV } from "@/definitions/colors";
+import type { RGB, RGBA, HSV } from "@bitmappery/definitions/colors";
 
 export const rgb2YCbCr = ( r: number, g: number, b: number ): RGB => ({
     r: 0.2990  * r + 0.5870 * g + 0.1140 * b,

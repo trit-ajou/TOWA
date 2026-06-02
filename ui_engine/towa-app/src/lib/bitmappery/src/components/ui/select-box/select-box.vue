@@ -75,10 +75,10 @@ export default {
 </script>
 
 <style lang="scss">
-@use "@/styles/_colors";
-@use "@/styles/_variables";
-@use "@/styles/_mixins";
-@use "@/styles/form";
+@use "@bitmappery/styles/_colors";
+@use "@bitmappery/styles/_variables";
+@use "@bitmappery/styles/_mixins";
+@use "@bitmappery/styles/form";
 
 $dropdownHeight: variables.$spacing-xlarge;
 

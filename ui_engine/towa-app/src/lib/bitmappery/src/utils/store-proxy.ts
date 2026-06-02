@@ -5,7 +5,7 @@
  * to use the store without knowing about the namespace.
  */
 import type { Store, Commit, Dispatch } from "vuex";
-import type { BitMapperyState } from "@/store";
+import type { BitMapperyState } from "@bitmappery/store";
 
 const BMP_NS = "bmp/";
 

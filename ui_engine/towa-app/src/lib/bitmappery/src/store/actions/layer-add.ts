@@ -21,11 +21,11 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 import { type Store } from "vuex";
-import { type Layer } from "@/definitions/document";
-import { LayerTypes } from "@/definitions/layer-types";
-import ToolTypes from "@/definitions/tool-types";
-import { enqueueState } from "@/factories/history-state-factory";
-import { type BitMapperyState } from "@/store";
+import { type Layer } from "@bitmappery/definitions/document";
+import { LayerTypes } from "@bitmappery/definitions/layer-types";
+import ToolTypes from "@bitmappery/definitions/tool-types";
+import { enqueueState } from "@bitmappery/factories/history-state-factory";
+import { type BitMapperyState } from "@bitmappery/store";
 
 export const addLayer = ( store: Store<BitMapperyState>, layer: Layer, index: number ): void => {
     const commit = (): void => {

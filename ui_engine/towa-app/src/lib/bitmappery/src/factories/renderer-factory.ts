@@ -20,9 +20,9 @@
  * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
-import type { Document, Layer } from "@/definitions/document";
-import LayerRenderer from "@/rendering/actors/layer-renderer";
-import type ZoomableCanvas from "@/rendering/actors/zoomable-canvas";
+import type { Document, Layer } from "@bitmappery/definitions/document";
+import LayerRenderer from "@bitmappery/rendering/actors/layer-renderer";
+import type ZoomableCanvas from "@bitmappery/rendering/actors/zoomable-canvas";
 
 /**
  * Renderers are used to represent layer content. These are mapped

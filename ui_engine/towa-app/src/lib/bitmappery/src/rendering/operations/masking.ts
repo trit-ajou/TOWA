@@ -21,8 +21,8 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 import { type Size } from "zcanvas";
-import type { CanvasContextPairing } from "@/definitions/editor";
-import { createCanvas, setCanvasDimensions } from "@/utils/canvas-util";
+import type { CanvasContextPairing } from "@bitmappery/definitions/editor";
+import { createCanvas, setCanvasDimensions } from "@bitmappery/utils/canvas-util";
 
 let tempCanvas: CanvasContextPairing;
 
