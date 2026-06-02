@@ -45,14 +45,15 @@ onBeforeUnmount(clear)
         aria-live="polite"
         aria-busy="true"
       >
-        <!-- Incoming page's thumbnail as a progressive preview. Sized to the
-             canvas area, not the full viewport, so it matches the eventual
-             page dimensions instead of stretching across the whole screen. -->
+        <!-- Incoming page's thumbnail as a progressive preview. w-full/h-full로
+             부모(캔버스 영역) 100%를 강제하고, object-contain으로 doc 비율 유지.
+             max-h-full만 두면 thumbnail의 natural pixel size (200x300, captureThumbnail
+             상한)가 작아서 그대로 표시되어 캔버스 영역을 못 채움. -->
         <img
           v-if="thumbUrl"
           :src="thumbUrl"
           alt=""
-          class="absolute inset-0 m-auto max-h-full max-w-full object-contain opacity-70"
+          class="absolute inset-0 w-full h-full object-contain opacity-70"
         />
         <div class="relative flex items-center gap-2 px-4 py-2 rounded-lg bg-towa-surface/90 border border-towa-border shadow-lg text-towa-text">
           <Loader2 :size="18" class="animate-spin text-towa-accent" />
