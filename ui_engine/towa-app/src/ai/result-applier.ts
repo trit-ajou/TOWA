@@ -3,7 +3,7 @@ import type { QueryClient } from '@tanstack/vue-query'
 
 import type { AiJobSnapshot, AiJobsBackend, TransportPatchOperation } from '@/backend/contracts'
 import type { FileAdapter, PageSummary } from '@/file-adapter'
-import type { LayerTextMeta } from '@/types/text-block'
+import type { LayerTextMeta, TextPolygon, WritingMode } from '@/types/text-block'
 import { queryKeys } from '@/composables/queryKeys'
 import { thumbnailCache } from '@/file-adapter/cache-instances'
 // @ts-expect-error bitmappery JS module
@@ -329,11 +329,19 @@ function createAiTextLayerFromPayload(
   const translated = stringValue(block.translated_text ?? block.translated)
   const bbox = bboxFromPayload(block.bbox)
   const blockId = stringValue(block.block_id ?? block.id) || `ai-block-${index}`
+  const polygon = polygonFromPayload(block.polygon)
+  const readingOrder = numberOrUndefined(block.reading_order ?? block.readingOrder)
+  const writingMode = writingModeFromPayload(block.writing_mode ?? block.writingMode)
+  const sourceRegionRef = stringOrUndefined(block.source_region_ref ?? block.sourceRegionRef)
   const meta: LayerTextMeta = {
     blockId,
     original,
     status: translated ? 'translated' : 'detected',
     boxMode: 'fixed',
+    ...(polygon ? { polygon } : {}),
+    ...(readingOrder !== undefined ? { readingOrder } : {}),
+    ...(writingMode ? { writingMode } : {}),
+    ...(sourceRegionRef ? { sourceRegionRef } : {}),
   }
   // 박스 = bbox.width/height. document 전체가 아닌 검출된 박스 그대로 보존하여
   // box-mode 렌더에서 정렬 기준으로 사용. document 크기는 박스 clamp용으로만.
@@ -365,6 +373,32 @@ function createAiTextLayerFromPayload(
     },
     meta,
   })
+}
+
+function polygonFromPayload(value: unknown): TextPolygon | undefined {
+  if (!Array.isArray(value) || value.length === 0) return undefined
+  const points: TextPolygon = []
+  for (const raw of value) {
+    if (!Array.isArray(raw) || raw.length < 2) continue
+    const x = Number(raw[0])
+    const y = Number(raw[1])
+    if (Number.isFinite(x) && Number.isFinite(y)) points.push([x, y])
+  }
+  return points.length > 0 ? points : undefined
+}
+
+function writingModeFromPayload(value: unknown): WritingMode | undefined {
+  return value === 'horizontal' || value === 'vertical' ? value : undefined
+}
+
+function numberOrUndefined(value: unknown): number | undefined {
+  if (value == null) return undefined
+  const n = Number(value)
+  return Number.isFinite(n) ? n : undefined
+}
+
+function stringOrUndefined(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 ? value : undefined
 }
 
 function bboxFromPayload(value: unknown): { x: number; y: number; width: number; height: number } {
