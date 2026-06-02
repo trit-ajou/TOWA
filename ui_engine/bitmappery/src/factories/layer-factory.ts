@@ -115,8 +115,13 @@ const LayerFactory = {
         const source = await base64toCanvas( layer.s, layer.w, layer.h );
         const mask   = await base64toCanvas( layer.m, layer.w, layer.h );
         const text   = await TextFactory.deserialize( layer.tx );
+        // TOWA #39: stored layer.i (e.g. "layer_2") collides across pages
+        // when multiple documents are loaded in the same session, because
+        // bitmappery's rendererCache / layerPool key on layer.id. Skip the
+        // stored id so LayerFactory.create allocates a fresh one from the
+        // UID_COUNTER, guaranteeing cross-document uniqueness. External
+        // references use layer.meta (e.g. meta.blockId) — see TextLayerMeta.
         return LayerFactory.create({
-            id: layer.i,
             name: layer.n,
             type: layer.t,
             transparent: layer.tr,

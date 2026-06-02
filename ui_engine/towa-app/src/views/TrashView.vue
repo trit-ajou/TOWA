@@ -1,30 +1,22 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { useStore } from 'vuex'
+import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { Folder, Image, Trash2, RotateCcw, ChevronLeft } from 'lucide-vue-next'
 import BaseButton from '@/components/common/BaseButton.vue'
 import BaseModal from '@/components/common/BaseModal.vue'
 import { useModal } from '@/composables/useModal'
+import { useTrash } from '@/composables/useTrash'
 import type { TrashEntry } from '@/file-adapter/contracts'
 
-const store = useStore()
 const router = useRouter()
+const trashApi = useTrash()
 
-const items = computed<TrashEntry[]>(() => store.getters['trash/all'])
-const isLoading = computed<boolean>(() => store.getters['trash/isLoading'])
+const items = trashApi.all
+const isLoading = trashApi.isLoading
 
 const confirmModal = useModal()
 const pendingAction = ref<null | { kind: 'restore' | 'permanent'; entry: TrashEntry }>(null)
 const actionError = ref<string | null>(null)
-
-onMounted(async () => {
-  try {
-    await store.dispatch('trash/loadAll')
-  } catch (e) {
-    console.warn('[trash] loadAll failed:', e)
-  }
-})
 
 function askRestore(entry: TrashEntry) {
   pendingAction.value = { kind: 'restore', entry }
@@ -42,11 +34,11 @@ async function confirmAction() {
   const { kind, entry } = pendingAction.value
   try {
     if (kind === 'restore') {
-      if (entry.type === 'folder') await store.dispatch('trash/restoreFolder', entry.item.id)
-      else await store.dispatch('trash/restoreProject', entry.item.id)
+      if (entry.type === 'folder') await trashApi.restoreFolder(entry.item.id)
+      else await trashApi.restoreProject(entry.item.id)
     } else {
-      if (entry.type === 'folder') await store.dispatch('trash/permanentlyDeleteFolder', entry.item.id)
-      else await store.dispatch('trash/permanentlyDeleteProject', entry.item.id)
+      if (entry.type === 'folder') await trashApi.permanentlyDeleteFolder(entry.item.id)
+      else await trashApi.permanentlyDeleteProject(entry.item.id)
     }
     confirmModal.close()
     pendingAction.value = null

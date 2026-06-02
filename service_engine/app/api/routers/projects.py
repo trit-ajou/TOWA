@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Query, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Query, Request, Response, UploadFile
 from sqlalchemy.orm import Session
 
-from app.api.errors import openapi_error_responses, raise_project_http_error
-from app.api.page_snapshots import parse_snapshot_write
 from app.api.dependencies import get_session_token
+from app.api.errors import openapi_error_responses, raise_project_http_error
+from app.api.http_cache import conditional_not_modified_response, etag_for_parts, latest_datetime, set_cache_headers
+from app.api.page_snapshots import parse_snapshot_write
 from app.api.schemas.projects import (
     PageListResponse,
     PageSummaryEnvelope,
@@ -70,13 +71,21 @@ def create_project(
     responses=openapi_error_responses(401),
 )
 def list_projects(
+    request: Request,
+    response: Response,
     session_token: str = Depends(get_session_token),
     session: Session = Depends(get_db_session),
-) -> ProjectListResponse:
+) -> ProjectListResponse | Response:
     try:
         projects = project_service.list_projects(session, session_token=session_token)
     except Exception as exc:  # noqa: BLE001
         raise_project_http_error(exc)
+    etag = etag_for_parts("projects-list", projects)
+    last_modified = latest_datetime(project["updated_at"] for project in projects)
+    not_modified = conditional_not_modified_response(request, etag=etag, last_modified=last_modified)
+    if not_modified is not None:
+        return not_modified
+    set_cache_headers(response, etag=etag, last_modified=last_modified)
     return ProjectListResponse(items=[ProjectResponse.model_validate(project) for project in projects])
 
 
@@ -87,9 +96,11 @@ def list_projects(
 )
 def get_project(
     project_id: str,
+    request: Request,
+    response: Response,
     session_token: str = Depends(get_session_token),
     session: Session = Depends(get_db_session),
-) -> ProjectResponse:
+) -> ProjectResponse | Response:
     try:
         project = project_service.get_project(
             session,
@@ -98,6 +109,12 @@ def get_project(
         )
     except Exception as exc:  # noqa: BLE001
         raise_project_http_error(exc)
+    etag = etag_for_parts("project-detail", project)
+    last_modified = latest_datetime([project["updated_at"]])
+    not_modified = conditional_not_modified_response(request, etag=etag, last_modified=last_modified)
+    if not_modified is not None:
+        return not_modified
+    set_cache_headers(response, etag=etag, last_modified=last_modified)
     return ProjectResponse.model_validate(project)
 
 
@@ -178,9 +195,10 @@ def restore_project(
 def list_project_pages(
     project_id: str,
     request: Request,
+    response: Response,
     session_token: str = Depends(get_session_token),
     session: Session = Depends(get_db_session),
-) -> PageListResponse:
+) -> PageListResponse | Response:
     try:
         pages = project_service.list_pages(
             session,
@@ -189,7 +207,14 @@ def list_project_pages(
         )
     except Exception as exc:  # noqa: BLE001
         raise_project_http_error(exc)
-    return PageListResponse(items=[_page_summary_response(page, request) for page in pages])
+    items = [_page_summary_response(page, request) for page in pages]
+    etag = etag_for_parts("project-pages-list", [item.model_dump(mode="json") for item in items])
+    last_modified = latest_datetime(page.updated_at for page in pages)
+    not_modified = conditional_not_modified_response(request, etag=etag, last_modified=last_modified)
+    if not_modified is not None:
+        return not_modified
+    set_cache_headers(response, etag=etag, last_modified=last_modified)
+    return PageListResponse(items=items)
 
 
 @router.post(

@@ -4,7 +4,102 @@
 
 ---
 
+## 2026-06-02
+
+### 19:17 — AI 입력으로 doc 합성이 아닌 원본 이미지 사용 (detect/translate OCR 품질 차이 fix)
+- 증상: 사용자 보고 "검출(detect) OCR이 번역(translate) OCR보다 명백히 좋다". 검출/번역이 서로 다른 텍스트박스를 만들고 번역은 자체적으로 OCR을 다시 돌리는 동작
+- Root cause 분석:
+  - model_engine `OPERATION_STAGE_NAMES[translate] = ["text_detection", "ocr", "translation"]` — translate는 매번 처음부터 detect+OCR을 수행. ui_engine이 보낸 `document.text_blocks`는 ocr stage의 `replace_text_blocks` patch가 덮어쓰므로 재활용 경로 없음 (의도된 파이프라인)
+  - detect/translate의 text_detection/ocr config는 동일 (`CRAFT_TEXT_DETECTION_MODEL_ID` + `MANGA_OCR_MODEL_ID`). 즉 모델 자체 차이 X
+  - 차이의 원인은 입력 이미지: `useAiActions.buildInput`이 `createSyncSnapshot(activeDocument)`로 visible 레이어 합성을 보냈음. detect 후 페이지에는 OCR 원문이 그려진 텍스트 레이어가 누적되고 (`render-service.ts` line 90: text.value 비었을 때 `meta.original` fallback 렌더링), 그 다음 translate를 돌리면 "원본 + 렌더된 OCR 원문 텍스트"가 합성된 노이즈 큰 이미지가 다시 입력으로 들어가서 두 번째 OCR이 망가짐
+- 수정 (`useAiActions.ts`, `usePageLoader.ts`):
+  - 모든 AI operation이 `originalImage` Blob을 그대로 입력으로 사용. `createSyncSnapshot` + `resizeImage` + `canvasToBlob` 합성 경로 제거
+  - inpaint도 일단 원본 입력 — 부분 inpaint(AI 지우개)처럼 편집 상태를 보내야 하는 도구는 별도 스콥에서 추가
+  - `usePageLoader`에 `getOriginalImage(pageId, fileAdapter)` helper export (세션 캐시 + snapshot fallback). `savePage` 안의 중복 로직도 이걸 사용
+- 검증:
+  - typecheck PASS, unit test 3 spec/37 tests PASS (`result-applier.spec.ts`의 `@tanstack/vue-query` import 에러는 stash 후에도 동일 — 기존 환경 문제)
+  - API 직접 비교(UI 우회): 동일 원본 이미지(`samples/dlsite/sample.jpg`)로 `POST /v1/jobs` 두 번 호출. detect와 translate의 ocr stage 출력(`document_patch.patches[op=replace_text_blocks]`) **12/12 블록 bbox·텍스트 완전 일치** → 가설 확정. (translate job 자체는 translation provider unavailable로 failed지만 그 앞의 ocr 단계까지는 succeeded라 비교 가능)
+  - Playwright e2e 12 tests: 11 PASS / 1 flaky(01-entry-flow의 helper navigation race, 단독 재실행 시 PASS, 변경 범위 외). savePage 회귀 범위 03/04/07 전부 PASS
+- 잔여: 사용자 manual 검증으로 실제 UI 경로에서 detect → translate 시 OCR 결과가 같아지는지 최종 확인 필요
+
+### 13:21 — PR #59 self-review 후속 fix (Critical #1/#3, Important #5; #2는 후속 이슈 #60)
+- **#1 savePage silent return → throw** (`usePageLoader.ts`): `!doc`/`!thumbnail`/`!originalImage`/`!page` 4 경로가 silent return이었음. `doSave`는 예외 없이 정상 완료로 인지하고 `dirty.value=false`로 리셋 → 새 페이지의 originalImage가 캐시에 없는 상태에서 편집 + 페이지 전환 시 변경분 영구 손실 가능. throw로 바꿔 `doSave` catch가 dirty 유지하도록
+- **#3 사전 조건 실패 시 사용자 toast** (`usePageLoader.ts`): 4 throw는 fileAdapter try-catch 밖이라 `showError`가 호출되지 않음. AI active path에서 false success 토스트가 뜨는 케이스. `failSave` helper로 사용자 메시지 + throw 묶음
+- **#5 ProjectView `onBeforeUnmount`에도 `resetPageLoaderState()`** (`ProjectView.vue`): `onBeforeRouteLeave`는 둘 다 호출, `onBeforeUnmount` 안전망은 cleanup 루프만 호출했음. 비-router unmount(테스트 등) 시 `currentLoadedPageId` stale 가능
+- **#2 follow-up 이슈 발행** ([#60](https://github.com/trit-ajou/TOWA/issues/60)): `useAutoSave` singleton 결합. 다중 인스턴스 window listener 이중 등록 문제. 큰 리팩토링이라 별도 처리
+- 검증: typecheck PASS, e2e 6/6 PASS
+
+### 08:24 — ProjectView unmount cascade fix (먹통 재발 케이스)
+- 증상: 라이브러리로 돌아갈 때 간헐적으로 `insertBefore NotFoundError` + `parentNode null` 콘솔 에러. 트레이스는 `at <RouterView> at <ProjectView onVnodeUnmounted=...> at <RouterView> at <App>`. KeepAlive 제거(07:45 freeze fix) 이후에도 *별도 트리거*로 같은 증상이 남아 있었음
+- Root cause: `ProjectView.onBeforeUnmount`의 `while (activeDocument) closeActiveDocument` 루프가 unmount 진행 중에 실행. `bmp/closeActiveDocument`는 `state.documents`를 splice + `flushLayerRenderers` + resource-manager의 blob URL dispose cascade를 발사하는데, 이게 inner router-view가 자식(EditorTab/DetailEditorTab) DOM을 정리하려는 시점과 race
+- 수정: cleanup을 `onBeforeRouteLeave`로 옮김. route를 떠나는 시점엔 ProjectView/자식이 아직 mount 상태라 cascade가 정상 처리. child route 전환(편집 ↔ 상세편집)에서는 호출되지 않으므로 docs가 잘못 닫히지 않음. `onBeforeUnmount`는 비-router 경로(테스트 등) 안전망으로 idempotent 유지
+- 검증: typecheck PASS, e2e 6/6 PASS, 사용자 manual 검증 OK (잔여 케이스는 재현 시 핫픽스)
+
+### 07:53 — Thumbnail 비율 깨짐 fix (viewport → doc snapshot)
+- 증상: 페이지 저장 후 일부 페이지의 썸네일이 원본 doc 비율을 따르지 않고 가로/세로가 달라짐. `PageThumbnail`의 `aspect-[2/3]` 컨테이너 + `object-cover`와 결합되어 만화 가운데 영역만 잘려 보임. 사용자 스크린샷에서 작업/저장된 페이지(4p~7p)만 비율이 깨져 보임 (저장 trigger된 페이지만 잘못 갱신)
+- Root cause: `usePageLoader.captureThumbnail`이 `zCanvas.getElement()`의 *viewport* 캔버스를 그대로 캡처. viewport는 캔버스 영역 div 크기에 맞춰진 가로 박스라 세로 만화 doc과 비율이 다름
+- 수정: `result-applier.ts` background 경로가 이미 쓰던 패턴 그대로 `createSyncSnapshot(doc)`으로 교체. `doc.width × doc.height`의 offscreen canvas에 모든 layer를 렌더하므로 doc 원본 비율 정확 유지. 미사용된 `getCanvasInstance` import 정리
+- 기존에 잘못 저장된 thumbnail은 다음 저장 시점에 자동 갱신됨
+
+### 07:45 — 편집 ↔ 상세편집 탭 swap freeze fix (vuejs/core#8509)
+- 증상: 편집 탭에서 텍스트 추가/삭제 작업 후 상세편집 ↔ 편집 탭을 왕복하면 UI가 먹통(이전 탭이 안 사라지고 새 탭도 안 mount). 콘솔에 `Failed to execute 'insertBefore' on 'Node'` NotFoundError + `parentNode null` / `subTree null` Vue warn이 `usePageLoader.ts:193` (invalidateQueries) 트레이스에서 발생
+- Root cause: `ProjectView`의 `<keep-alive :include="['ProjectHomeTab']">` wrapper. EditorTab/DetailEditorTab은 cache 대상이 아니지만 KeepAlive wrapper *안에* 있다는 사실만으로 [vuejs/core#8509](https://github.com/vuejs/core/issues/8509) 증상(KeepAlive 안 자식이 외부로 Teleport한 DOM이 swap 시 stale하게 남아 다음 mount에서 insertBefore mismatch)이 발생. include 여부와 무관하게 wrapper 자체가 자식 lifecycle을 통제하기 때문
+- 잘못된 시도(되돌림): `<Teleport defer>` 제거. defer는 ProjectView template에서 `#towa-right-panel`이 router-view 뒤에 있어 EditorTab setup 시점엔 target이 DOM에 없는 문제를 해결하던 필수 prop이라 e2e 5건 회귀
+- 수정: `ProjectView`의 KeepAlive 제거 → `<router-view />` 단순 사용. ProjectHomeTab 캐시 효과는 TanStack Query 캐시가 즉시 hit하므로 비용 거의 0. `onActivated/onDeactivated` 사용 코드 없음 확인
+- 안전망: `useAutoSave`에 `onBeforeRouteLeave`/`onBeforeRouteUpdate`로 save를 await — `onUnmounted`에서 fire-and-forget으로 doSave를 돌리면 invalidateQueries가 unmount 진행 중인 컴포넌트에 reactive update를 흘려 router-view swap DOM race를 악화시킴
+- 검증: 전체 e2e 12/12 PASS (07-autosave-regression 6/6 포함), typecheck PASS, 사용자 manual 검증 OK
+
+### 00:50 — AI 결과 적용에 active/background 분기 도입
+- 잠재 버그: AI job은 최대 5분 polling. 그 동안 사용자가 다른 페이지로 이동하면 `applyAiJobSnapshotToCurrentPage`의 `bmp/addLayer` mutation이 `state.documents[activeIndex]`(=새 활성 doc)에 layer를 박고, 그 다음 `savePage`가 활성 doc을 직렬화해 **시작 페이지 ID**로 PUT → 다른 페이지의 binary가 시작 페이지 자리에 덮어쓰기 + AI 결과 layer가 엉뚱한 doc에 들어가는 데이터 손실
+- 수정: `result-applier.ts` 진입 시 `store.state.editor.selectedPageId === pageId` 확인
+  - **active 경로**: 기존 흐름 유지 + `markDirty()` + `saveImmediately(pageId)`로 doSave 경유 (dirty 자동 reset, 실패 시 dirty 유지로 다음 자동저장에서 재시도)
+  - **background 경로**: `fileAdapter.getPageSnapshot(pageId)` → `DocumentFactory.fromBlob` → 임시 doc.layers에 push (store mutation X) → `createSyncSnapshot`으로 offscreen thumbnail 캡처 → `fileAdapter.savePageSnapshot` 직접. activeDocument 비의존
+  - 백그라운드 적용 성공 시 `onBackgroundApplied(pageIndex)` 콜백 → bitmappery showNotification으로 "N페이지 AI 결과 적용 완료" 토스트
+- `useAiActions` / `AiToolbar`: `useFileAdapter()` + `useAutoSave()`의 markDirty/saveImmediately를 result-applier에 전달. `usePageLoader.savePage` 의존 제거
+- result-applier.ts 시그니처 변경 (`savePage` → `markDirty + saveImmediately + fileAdapter + onBackgroundApplied`). spec도 stub 함께 업데이트
+- AI dirty marking 누락 부수 fix: `bmp/addLayer` 등은 history에 들어가지 않아 useAutoSave의 saveState subscriber가 fire 안 함. AI 적용 직후 markDirty 명시로 dirty=true → saveImmediately로 정상 reset. 실패 시 dirty 유지 → autosave timer가 재시도
+- 별도 이슈로 발행: 프로젝트 생성 시 일괄 AI 적용 (#57) — 이 인프라 위에 얹는 후속 작업
+- 검증: typecheck PASS, vitest 42/42 PASS, Playwright e2e 10/10 PASS
+
+---
+
+## 2026-06-01
+
+### 23:55 — #39 cross-document layer-id 충돌 fix
+- 증상: 다중 페이지 프로젝트에서 페이지 N에 텍스트박스를 추가하고 저장 없이 페이지 N+1로 넘어가면, N+1의 캔버스에 N의 텍스트박스가 잔여로 그려진 채로 보임. 우측 패널은 "텍스트 블록이 없습니다"(=`activeDocument.layers`에는 없음) 라 데이터·렌더 mismatch
+- Root cause: `LayerFactory.deserialize`가 stored `layer.i`를 그대로 사용해 LayerFactory.create로 전달. 그런데 bitmappery의 UID_COUNTER는 page session 단위 module-level — 여러 페이지를 같은 세션에서 deserialize하면 두 doc이 동일한 layer.id (e.g. `"layer_2"`)를 갖게 됨. `renderer-factory.ts`의 rendererCache와 `document-canvas.vue`의 layerPool 모두 layer.id 단일 key라 두 doc이 같은 sprite를 공유 → 새 doc의 layer를 그릴 자리에 이전 doc의 sprite가 박혀 잔여 paint가 살아남음. document-canvas.vue:195의 "Atomic swap: don't pre-flush" 주석이 이 가정을 명시 (bitmappery 단일 doc 사용에서는 ID 충돌이 발생 안 함)
+- 수정:
+  - `bitmappery/src/factories/layer-factory.ts`: `deserialize`에서 `id: layer.i` 인자 제거 → LayerFactory.create가 UID_COUNTER로 새 unique ID 할당. 외부 reference는 `layer.meta.blockId`를 쓰니 영향 없음
+  - `ui_engine/towa-app/src/composables/usePageLoader.ts switchPage`: splice 전 outgoing doc의 layer마다 `flushLayerRenderers(layer)` 명시 호출 — bitmappery의 `closeActiveDocument` (document-module.ts:114) 와 동일 패턴. ID 충돌이 없어도 cache 정리 안전망
+- 검증: Playwright e2e 신규 4번째 회귀 시나리오로 "두 페이지의 layer.id 집합이 disjoint"인지 자동 검증 + 사용자 manual 재현 절차 정리. 전체 e2e 10/10 PASS
+
+### 23:17 — #39 사용자 검증 라운드 fix 4건
+- **thumbnail 404 race**: `usePageLoader.savePage`에서 invalidate→refetch 대신 새 thumbnail Blob을 `thumbnailCache.set` + `qc.setQueryData`로 직접 cache에 주입. service-engine이 저장 직후 thumbnail endpoint에 짧게 404를 주면 query data가 null로 collapse돼 영구적으로 빈 상태가 되던 버그 제거
+- **brush race**: `useAutoSave.doSave` 진입 시 active layer renderer의 `storePaintState()`를 `await` 으로 flush. bitmappery의 brush stroke 완료는 `canvasToBlob × 2` async + 1초 batch debounce가 끼어 historyIndex 증가가 지연됨. 그 사이 페이지 이동/Ctrl+S가 떨어지면 `dirty.value=false`로 bail되어 자동저장 누락이 발생. bitmappery의 `undo` action이 이미 쓰는 패턴(`history-module.ts:119-122`)을 그대로 차용
+- **action-based dirty trigger**: `useAutoSave`가 `historyIndex` 값 변화 watch 대신 `bmp/saveState` mutation을 `store.subscribe`로 listen. 페이지 진입 시 bitmappery의 `activeDocument` watch가 호출하는 `resetHistory()`가 historyIndex를 -1로 강제 reset해 거짓 dirty가 트리거되던 문제 제거. + bitmappery `layer-renderer.storePaintState` 끝에서 `forceProcess()` (=enqueueState queue flush) 호출 — brush/eraser/fill 같은 mouseup-based action은 즉시 commit해 Photoshop/Krita식 행동 단위 history로 맞춤 (텍스트/slider 같은 keystroke 기반 입력의 1초 batching은 유지)
+- **per-page "저장 안 됨" 뱃지**: `useAutoSave`의 `dirty` + `dirtyPageId`를 module-scope ref로 끌어올려 `useDirtyState()`로 export. PageSidePanelItem + PageThumbnail 좌상단에 노란 뱃지(`bg-towa-warning`). `document.title`의 `* ` prefix는 시인성이 낮아 제거
+- 관련 파일: ui_engine/towa-app/src/composables/useAutoSave.ts, usePageLoader.ts, components/editor/PageSidePanelItem.vue, components/project/PageThumbnail.vue, bitmappery/src/rendering/actors/layer-renderer.ts
+
+### 14:22 — FileAdapter sync 레이어 재구성 (#39)
+- 배경: `projects` / `folders` / `pages` / `trash` 같은 서버 상태를 TanStack Query 기반 캐시 레이어로 이관하고, 페이지 binary·thumbnail에 prefetch + 영속 캐시 도입. PoC 단계의 단일 사용자/세션 가정으로 LWW 운영
+- **Phase 1 — 캐시 인프라**: `@tanstack/vue-query` + `@tanstack/query-persist-client-core` 설치. user-namespaced cache DB (`towa-cache-${userId}`) + 일반화된 `BlobCache(storeName, maxMemory, maxIDB)` + thumbnail-cache store. `QueryClient` (staleTime: Infinity, retry 3회 1s/2s/4s, 401 bail) + IDB persister
+- **Phase 2 — composable 신규 + Vuex 4개 모듈 제거**: `useProjects/useFolders/usePages/useTrash` + 공유 `queryKeys`. 모든 사용처(view·component·composable·result-applier) 마이그레이션. `result-applier`는 store가 아닌 `queryClient` prop으로 `pages` cache update
+- **Phase 3 — Thumbnail + prefetch + 점진적 표시**: `useThumbnailUrl(pageId)` (Object URL 라이프사이클 컴포넌트 단). `usePageBinaryPrefetch` (활성 ±3 sliding window + 프로젝트 전체 1GB hard cap). `PageTransitionOverlay`가 입장 페이지 thumbnail을 spinner 아래 깔아 점진적 표시
+- **Phase 4 — Auth & Sync**: `BackendError.statusCode` 추가 + 모든 throw site에 response.status 전달. 글로벌 401 handler가 query/mutation cache 구독 → auth/logout + `/login?expired=1` redirect + 안내. `listPageSummaries`도 404 흡수 → ProjectView가 not-found 시 라이브러리 redirect. 라이브러리/프로젝트 헤더에 새로고침 버튼. window focus 시 active project pages invalidate. 로그인 직후 `invalidateQueries()` 전체
+- **Phase 5 — 저장 모델**: `useAutoSave`에 capture-phase Ctrl/Cmd+S → `saveImmediately`. dirty 상태일 때 document.title prefix `* ` 자동 토글. bitmappery `keyboard-service.ts`의 Ctrl+S Save Document 모달 차단. `savePageSnapshot`은 `withPushRetry` (1s/2s/4s, 3회, 401 short-circuit)로 wrap; 최종 실패 시 기존 AI 에러 다이얼로그로 안내
+- **Phase 6 — Playwright e2e**: 6개 카테고리(library/cache/save/persist/auth/user-isolation) spec + helpers + README + vite.config의 e2e 제외. unit 42/42 PASS, typecheck PASS. PASS 확인은 service_engine + db docker 구동이 필요해 사용자 환경에서 별도 진행
+- 명세 외 작은 결정(사후 보고): @tanstack/query-persist-client-core 패키지명, 자동 저장 debounce 30초 유지(Phase 0 분석), page-cache L1=7/L2=1000 (sliding window 7+byte cap 1GB), 세션 만료 임박 토스트는 expiresAt 데이터 부재로 401 redirect만 구현
+- 관련: 후행 #23 bitmappery 1단계 통합 (본 PR 머지 후)
+
+---
+
 ## 2026-05-29
+
+### 22:30 — PaintGuard 오발동 핫픽스
+- 배경: 사용자 검증 중 두 가지 오동작 발견. (1) brush 활성 상태에서 AI 드롭다운 버튼을 눌러도 "이 레이어에 그림을 그릴 수 없습니다" 토스트가 뜸. (2) 편집(역자) 모드에는 레이어 선택창 자체가 없는데도 보호 토스트가 뜸
+- `PaintGuard.vue`: `area.contains(e.target)` 범위가 너무 넓어 캔버스 위에 떠 있는 툴박스/AI 버튼 클릭도 paint 시도로 잡혔음. `target.closest('.canvas-wrapper')` 안 + `button/input/select/textarea/[role=button]` 바깥일 때만 안내 표시하도록 좁힘
+- `EditorTab.vue`: 편집 모드는 텍스트 도구 위주이고 레이어 선택 UI가 없으므로 `<PaintGuard />` 및 import 제거. 상세편집(`DetailEditorTab.vue`)에서만 유지
+- 검증: 사용자가 실제 브라우저에서 (1) AI 버튼 클릭 시 토스트 없음 (2) 편집 모드 보호 토스트 없음 (3) 상세편집 캔버스 직접 클릭 시 기존 안내 동작 유지 확인
 
 ### 00:31 — 편집 화면 UI 개편 후속: 단축키·도구 옵션·레이어 가드 (#22)
 - 배경: #22 1차분(35ef6a3 main 머지)에서 toolbox/패널/AI 드롭다운/Zoom 신규 구현까지 끝. 이번 후속에서 사용자 검증 통해 빠진 항목 채움

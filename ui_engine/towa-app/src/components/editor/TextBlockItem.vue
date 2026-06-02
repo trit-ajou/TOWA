@@ -71,6 +71,26 @@ const idLabel = computed(() => {
   const tail = blockId.split(/[-_]/).pop()
   return tail ?? blockId
 })
+
+// Vue 3 reactivity flushes DOM updates on the next microtask. If the user
+// clicks the same delete button fast enough — or clicks before the parent's
+// v-for has reconciled — the second click hits the same stale element. The
+// closure's layer.id is still the just-removed one; EditorTab.removeTextLayer
+// short-circuits on idx === -1 and the click is effectively swallowed, while
+// the user expected the *next* row to disappear.
+//
+// Guarding via a `:disabled` ref alone isn't enough — :disabled bindings
+// apply on the next reactive flush, so two clicks dispatched in the same
+// cycle both still go through. We also flip the DOM attribute directly so
+// subsequent clicks at the same coords no-op even within the same tick.
+const removing = ref(false)
+function onRemove(e: MouseEvent) {
+  if (removing.value) return
+  removing.value = true
+  const btn = e.currentTarget as HTMLButtonElement | null
+  if (btn) btn.disabled = true
+  emit('remove')
+}
 </script>
 
 <template>
@@ -87,9 +107,10 @@ const idLabel = computed(() => {
           {{ statusLabel }}
         </span>
         <button
-          class="p-0.5 rounded hover:bg-red-500/20 text-towa-text-muted hover:text-red-400 transition-colors"
+          class="p-0.5 rounded hover:bg-red-500/20 text-towa-text-muted hover:text-red-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           title="삭제"
-          @click.stop="$emit('remove')"
+          :disabled="removing"
+          @click.stop="onRemove"
         >
           <Trash2 :size="12" />
         </button>

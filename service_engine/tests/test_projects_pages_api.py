@@ -1,16 +1,19 @@
 from __future__ import annotations
 
 import json
+from io import BytesIO
 from email.parser import BytesParser
 from email.policy import default
 
 import pytest
 from fastapi.testclient import TestClient
+from PIL import Image
 from sqlalchemy.orm import sessionmaker
 
 from app.core.settings import get_settings
 from app.db import get_db_session
 from app.main import create_app
+from app.modules.projects.models import PageSnapshot
 
 PROJECT_ID = "01ARZ3NDEKTSV4RRFFQ69G5FAV"
 PAGE_ID_1 = "01ARZ3NDEKTSV4RRFFQ69G5FAW"
@@ -42,6 +45,26 @@ def _assert_error(payload: dict[str, object], *, code: str) -> None:
     error = payload["error"]
     assert isinstance(error, dict)
     assert error["code"] == code
+
+
+def _image_bytes(*, image_format: str = "PNG", size: tuple[int, int] = (800, 320)) -> bytes:
+    image = Image.new("RGB", size, color=(240, 80, 120))
+    output = BytesIO()
+    image.save(output, format=image_format)
+    return output.getvalue()
+
+
+def _assert_cache_headers(response) -> None:
+    assert response.headers["etag"].startswith('W/"')
+    assert response.headers["last-modified"]
+    assert response.headers["cache-control"] == "private, no-cache"
+
+
+def _assert_not_modified(client: TestClient, path: str, session_key: str, etag: str) -> None:
+    response = client.get(path, headers={**_session_headers(session_key), "If-None-Match": etag})
+    assert response.status_code == 304
+    assert response.content == b""
+    assert response.headers["etag"] == etag
 
 
 def _create_folder(client: TestClient, session_key: str, *, name: str, parent_id: str | None = None) -> dict[str, object]:
@@ -101,7 +124,7 @@ def _snapshot_files(*, page_id: str, index: int, status: str = "waiting") -> dic
         "metadata": ("metadata.json", json.dumps(metadata).encode("utf-8"), "application/json"),
         "original_image": ("original.png", b"original-image", "image/png"),
         "layer_blob": ("page.bpy", b"layer-blob", "application/octet-stream"),
-        "thumbnail": ("thumb.webp", b"thumbnail-bytes", "image/webp"),
+        "thumbnail": ("thumb.png", _image_bytes(), "image/png"),
     }
 
 
@@ -227,7 +250,10 @@ def test_page_snapshot_round_trip_and_project_page_count(sqlite_session_factory:
     )
     assert thumbnail_response.status_code == 200
     assert thumbnail_response.headers["content-type"] == "image/webp"
-    assert thumbnail_response.content == b"thumbnail-bytes"
+    assert thumbnail_response.content.startswith(b"RIFF")
+    with Image.open(BytesIO(thumbnail_response.content)) as image:
+        assert image.format == "WEBP"
+        assert image.width == 512
 
     snapshot_response = client.get(
         f"/api/v1/pages/{PAGE_ID_1}/snapshot",
@@ -237,7 +263,9 @@ def test_page_snapshot_round_trip_and_project_page_count(sqlite_session_factory:
     parts = _parse_multipart_parts(snapshot_response)
     assert set(parts) == {"metadata", "original_image", "layer_blob", "thumbnail"}
     assert parts["original_image"]["content_type"] == "image/png"
-    assert parts["thumbnail"]["payload"] == b"thumbnail-bytes"
+    assert parts["original_image"]["payload"] == b"original-image"
+    assert parts["thumbnail"]["content_type"] == "image/webp"
+    assert parts["thumbnail"]["payload"].startswith(b"RIFF")
     metadata_payload = json.loads(parts["metadata"]["payload"].decode("utf-8"))
     assert metadata_payload["page"]["id"] == PAGE_ID_1
     assert metadata_payload["page"]["status"] == "waiting"
@@ -249,6 +277,139 @@ def test_page_snapshot_round_trip_and_project_page_count(sqlite_session_factory:
     )
     assert update_response.status_code == 200
     assert update_response.json()["page"]["status"] == "done"
+
+
+def test_storage_gets_return_cache_headers_and_not_modified(sqlite_session_factory: sessionmaker) -> None:
+    client = _build_test_client(sqlite_session_factory)
+    session_key = _login(client)
+    root_folder = _create_folder(client, session_key, name="주간연재")
+    _create_project(client, session_key, folder_id=root_folder["id"])
+    create_page_response = client.post(
+        f"/api/v1/projects/{PROJECT_ID}/pages",
+        files=_snapshot_files(page_id=PAGE_ID_1, index=1),
+        headers=_session_headers(session_key),
+    )
+    assert create_page_response.status_code == 200
+
+    archived_project_id = "01ARZ3NDEKTSV4RRFFQ69G5FB2"
+    archived_project_response = client.post(
+        "/api/v1/projects",
+        json={
+            "id": archived_project_id,
+            "name": "archive-target",
+            "thumbnail_url": None,
+            "source_lang": "ja",
+            "target_lang": "ko",
+            "status": "todo",
+            "folder_id": None,
+            "config": {},
+        },
+        headers=_session_headers(session_key),
+    )
+    assert archived_project_response.status_code == 200
+    delete_response = client.delete(
+        f"/api/v1/projects/{archived_project_id}",
+        headers=_session_headers(session_key),
+    )
+    assert delete_response.status_code == 200
+
+    paths = [
+        "/api/v1/projects",
+        f"/api/v1/projects/{PROJECT_ID}",
+        f"/api/v1/projects/{PROJECT_ID}/pages",
+        f"/api/v1/pages/{PAGE_ID_1}/snapshot",
+        f"/api/v1/pages/{PAGE_ID_1}/thumbnail",
+        "/api/v1/folders",
+        "/api/v1/trash",
+    ]
+    for path in paths:
+        response = client.get(path, headers=_session_headers(session_key))
+        assert response.status_code == 200
+        _assert_cache_headers(response)
+        _assert_not_modified(client, path, session_key, response.headers["etag"])
+
+    projects_response = client.get("/api/v1/projects", headers=_session_headers(session_key))
+    since_response = client.get(
+        "/api/v1/projects",
+        headers={**_session_headers(session_key), "If-Modified-Since": projects_response.headers["last-modified"]},
+    )
+    assert since_response.status_code == 304
+    assert since_response.content == b""
+
+
+def test_legacy_thumbnail_is_normalized_on_read(sqlite_session_factory: sessionmaker) -> None:
+    client = _build_test_client(sqlite_session_factory)
+    session_key = _login(client)
+    _create_project(client, session_key)
+    create_page_response = client.post(
+        f"/api/v1/projects/{PROJECT_ID}/pages",
+        files=_snapshot_files(page_id=PAGE_ID_1, index=1),
+        headers=_session_headers(session_key),
+    )
+    assert create_page_response.status_code == 200
+
+    legacy_png = _image_bytes(size=(640, 240))
+    with sqlite_session_factory() as session:
+        snapshot = session.get(PageSnapshot, PAGE_ID_1)
+        assert snapshot is not None
+        snapshot.thumbnail_bytes = legacy_png
+        snapshot.thumbnail_media_type = "image/png"
+        snapshot.thumbnail_byte_size = len(legacy_png)
+        session.commit()
+
+    thumbnail_response = client.get(
+        f"/api/v1/pages/{PAGE_ID_1}/thumbnail",
+        headers=_session_headers(session_key),
+    )
+    assert thumbnail_response.status_code == 200
+    assert thumbnail_response.headers["content-type"] == "image/webp"
+    with Image.open(BytesIO(thumbnail_response.content)) as image:
+        assert image.format == "WEBP"
+        assert image.width == 512
+
+    snapshot_response = client.get(
+        f"/api/v1/pages/{PAGE_ID_1}/snapshot",
+        headers=_session_headers(session_key),
+    )
+    assert snapshot_response.status_code == 200
+    parts = _parse_multipart_parts(snapshot_response)
+    assert parts["thumbnail"]["content_type"] == "image/webp"
+    assert parts["thumbnail"]["payload"].startswith(b"RIFF")
+
+
+def test_http_compression_targets_json_not_binary(sqlite_session_factory: sessionmaker, monkeypatch) -> None:
+    monkeypatch.setenv("HTTP_COMPRESSION_MINIMUM_SIZE", "1")
+    get_settings.cache_clear()
+    client = _build_test_client(sqlite_session_factory)
+    session_key = _login(client)
+    _create_project(client, session_key)
+    create_page_response = client.post(
+        f"/api/v1/projects/{PROJECT_ID}/pages",
+        files=_snapshot_files(page_id=PAGE_ID_1, index=1),
+        headers=_session_headers(session_key),
+    )
+    assert create_page_response.status_code == 200
+
+    json_response = client.get(
+        "/api/v1/projects",
+        headers={**_session_headers(session_key), "Accept-Encoding": "br"},
+    )
+    assert json_response.status_code == 200
+    assert json_response.headers["content-encoding"] == "br"
+
+    snapshot_response = client.get(
+        f"/api/v1/pages/{PAGE_ID_1}/snapshot",
+        headers={**_session_headers(session_key), "Accept-Encoding": "br"},
+    )
+    assert snapshot_response.status_code == 200
+    assert "content-encoding" not in snapshot_response.headers
+
+    thumbnail_response = client.get(
+        f"/api/v1/pages/{PAGE_ID_1}/thumbnail",
+        headers={**_session_headers(session_key), "Accept-Encoding": "br"},
+    )
+    assert thumbnail_response.status_code == 200
+    assert "content-encoding" not in thumbnail_response.headers
 
 
 def test_page_create_rejects_non_append_index(sqlite_session_factory: sessionmaker) -> None:

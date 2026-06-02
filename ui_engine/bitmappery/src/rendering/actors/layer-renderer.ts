@@ -51,6 +51,7 @@ import {
 } from "@/rendering/utils/drawable-canvas-utils";
 import { renderEffectsForLayer } from "@/services/render-service";
 import { replaceLayerSource } from "@/store/actions/layer-source-replace";
+import { forceProcess as flushHistoryQueue } from "@/factories/history-state-factory";
 import { positionLayer } from "@/store/actions/layer-position";
 import { positionMask } from "@/store/actions/mask-position";
 import { createCanvas, canvasToBlob, cloneCanvas, globalToLocal, getPixelRatio } from "@/utils/canvas-util";
@@ -438,8 +439,14 @@ export default class LayerRenderer extends ZoomableSprite {
         const newState = blobToResource( newBlob );
         const orgBlob  = await canvasToBlob( original );
         const orgState = blobToResource( orgBlob );
-        
+
         replaceLayerSource( this.layer, orgState, newState, isMaskable( this.layer, this.getStore() ));
+
+        // TOWA #39: brush/eraser/clone/fill 같은 paint action은 mouseup이라는
+        // 명확한 종료 신호가 있어 enqueueState의 1초 batch debounce가 무의미하다.
+        // 즉시 commit해서 history(undo)와 외부 dirty-watcher가 행동 단위로 반응하게.
+        // 텍스트/rename 같은 keystroke-based enqueueState 호출은 영향 없음.
+        flushHistoryQueue();
 
         return true;
     }

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Page } from '@/types/page'
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-vue-next'
+import PageSidePanelItem from './PageSidePanelItem.vue'
 
 defineProps<{
   pages: Page[]
@@ -49,33 +50,14 @@ const statusColors: Record<string, string> = {
 
       <!-- Expanded: thumbnails + info -->
       <div v-else class="flex flex-col gap-1 p-2 pb-10">
-        <button
+        <PageSidePanelItem
           v-for="page in pages"
           :key="page.id"
-          class="rounded-md overflow-hidden border-2 transition-colors"
-          :class="page.id === currentPageId
-            ? 'border-towa-accent'
-            : 'border-transparent hover:border-towa-surface-light'"
-          @click="$emit('selectPage', page.id)"
-        >
-          <div class="relative">
-            <img
-              v-if="page.thumbnail"
-              :src="page.thumbnail"
-              :alt="`${page.index}p`"
-              class="w-full aspect-[2/3] object-cover"
-            />
-            <div v-else class="w-full aspect-[2/3] bg-towa-bg flex items-center justify-center text-towa-text-muted text-xs">
-              {{ page.index }}p
-            </div>
-            <span
-              class="absolute top-1 right-1 text-[8px] font-medium text-white px-1 py-0.5 rounded"
-              :class="statusColors[page.status] ?? 'bg-gray-500'"
-            >
-              {{ page.index }}p
-            </span>
-          </div>
-        </button>
+          :page="page"
+          :active="page.id === currentPageId"
+          :status-color="statusColors[page.status] ?? 'bg-gray-500'"
+          @select="$emit('selectPage', page.id)"
+        />
       </div>
     </div>
 

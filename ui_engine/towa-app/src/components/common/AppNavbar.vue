@@ -5,6 +5,8 @@ import { useStore } from 'vuex'
 import { Settings, Download, Trash2, MoreHorizontal, User, LogIn, LogOut, Coins } from 'lucide-vue-next'
 import { useModal } from '@/composables/useModal'
 import { useDeploymentMode } from '@/composables/useDeploymentMode'
+import { useProjects } from '@/composables/useProjects'
+import { useFolders } from '@/composables/useFolders'
 import DropdownMenu from './DropdownMenu.vue'
 import SettingsModal from './SettingsModal.vue'
 import LoginModal from './LoginModal.vue'
@@ -30,10 +32,13 @@ async function handleLogout() {
 }
 const settingsModal = useModal()
 
+const projectsApi = useProjects()
+const foldersApi = useFolders()
+
 const isInProject = computed(() => route.path.startsWith('/project/'))
 const isInLibrary = computed(() => route.name === 'library')
 const projectId = computed(() => route.params.id as string | undefined)
-const project = computed(() => projectId.value ? store.getters['projects/byId'](projectId.value) : null)
+const project = computed(() => projectId.value ? projectsApi.byId(projectId.value) : null)
 const selectedPageId = computed(() => store.getters['editor/selectedPageId'])
 
 // Library breadcrumb (folder ids from root → current)
@@ -43,9 +48,8 @@ interface BreadcrumbSegment { id: string; name: string }
 const libraryBreadcrumb = computed<BreadcrumbSegment[]>(() => {
   const segments: BreadcrumbSegment[] = []
   let cur = currentFolderId.value
-  const byId = store.getters['folders/byId'] as (id: string) => { id: string; name: string; parentId: string | null } | undefined
   while (cur) {
-    const node = byId(cur)
+    const node = foldersApi.byId(cur)
     if (!node) break
     segments.unshift({ id: node.id, name: node.name })
     cur = node.parentId
@@ -68,10 +72,9 @@ const tabs = computed(() => [
 // Project folder breadcrumb (derived from project.folderId)
 const projectFolderBreadcrumb = computed<BreadcrumbSegment[]>(() => {
   const segments: BreadcrumbSegment[] = []
-  let cur = (project.value as { folderId?: string | null } | null)?.folderId ?? null
-  const byId = store.getters['folders/byId'] as (id: string) => { id: string; name: string; parentId: string | null } | undefined
+  let cur: string | null = (project.value as { folderId?: string | null } | null)?.folderId ?? null
   while (cur) {
-    const node = byId(cur)
+    const node = foldersApi.byId(cur)
     if (!node) break
     segments.unshift({ id: node.id, name: node.name })
     cur = node.parentId
