@@ -896,3 +896,22 @@ PYTHONPYCACHEPREFIX=/tmp/pythoncache python3 -m unittest discover -s model_engin
 - 현재 Dockerfile은 CPU 개발용 최소 이미지다.
 - 실제 provider key는 코드/저장소에 하드코딩하지 않고 credential binding 경로로만 주입한다.
 - custom model 통합은 "모델 import"보다 "runtime worker 호출"을 기본 방향으로 기억한다.
+
+## Translate Existing Blocks 검증 스크립트
+
+- `model_engine/scripts/verify_translate_existing_blocks.py`를 추가했다.
+- 목적: UI가 `detect` 결과의 `document.text_blocks`를 올바르게 넘겼다고 가정할 때, `/v1/jobs` translate 요청이 `translation` stage만 실행하고 CRAFT/manga OCR을 다시 호출하지 않는지 검증한다.
+- 스크립트는 FastAPI in-process app에 UI 형태의 payload를 넣고, 번역 provider는 deterministic fake로 patch한다. CRAFT/OCR 함수는 호출되면 즉시 실패하게 patch한다.
+- 실행 예:
+
+```bash
+docker compose run --no-deps --rm model-engine \
+  python3 scripts/verify_translate_existing_blocks.py
+```
+
+- multipart metadata-only 전송 확인:
+
+```bash
+docker compose run --no-deps --rm model-engine \
+  python3 scripts/verify_translate_existing_blocks.py --transport multipart
+```
