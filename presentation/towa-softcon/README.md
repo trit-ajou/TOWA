@@ -21,3 +21,6 @@
 
 ## 폰트
 이 발표자료는 `assets/fonts/`에 포함된 GmarketSans TTF 세 가지 weight만 사용합니다.
+
+## 발표영상 자막
+전체 발표 녹화와 전체 대본을 싱크해 자막을 입히는 파이프라인은 [subtitle-pipeline/README.md](subtitle-pipeline/README.md)에 정리되어 있습니다.

@@ -1,0 +1,15 @@
+services:
+  subtitle-pipeline:
+    build:
+      context: ./subtitle-pipeline
+      dockerfile: Dockerfile
+    working_dir: /workspace
+    volumes:
+      - ../..:/workspace
+      - subtitle_hf_cache:/root/.cache/huggingface
+    environment:
+      HF_HOME: /root/.cache/huggingface
+    command: ["--help"]
+
+volumes:
+  subtitle_hf_cache:
