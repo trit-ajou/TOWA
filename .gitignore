@@ -233,3 +233,22 @@ node_modules/
 /tmp/pdf_tools_venv/
 /tmp/uv-cache/
 /tmp/
+
+# Presentation subtitle pipeline local media and generated outputs
+/presentation/towa-softcon/subtitle-pipeline/presentation-input/
+/output/presentation-subtitles/
+*:Zone.Identifier
+
+# Local media/render artifacts
+*.mp4
+*.mov
+*.mkv
+*.avi
+*.webm
+*.wav
+*.mp3
+*.m4a
+*.aac
+*.flac
+*.srt
+*.ass
