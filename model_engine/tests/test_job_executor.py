@@ -27,7 +27,7 @@ from model_engine.api.jobs import (
     submission_from_multipart_payload,
 )
 from model_engine.contracts.artifacts import ArtifactDescriptor
-from model_engine.contracts.document_ir import DocumentIR
+from model_engine.contracts.document_ir import DocumentIR, TextBlock
 from model_engine.contracts.stages import (
     ExecutionMode,
     StageReport,
@@ -95,17 +95,18 @@ class OrchestratedJobExecutorTests(unittest.TestCase):
                 [patch.op.value for patch in result.document_patch],
             )
 
-    def test_translate_job_runs_detection_then_ocr_before_openai_compatible_translation(self) -> None:
+    def test_translate_job_uses_existing_text_blocks_without_redetecting(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             request = _job_request(Path(tmpdir), operation_kind="translate")
+            request.document.text_blocks = [_detected_text_block()]
             executor = OrchestratedJobExecutor()
 
             with patch(
                 "model_engine.builtin_models.craft_text_detection._detect_with_craft",
-                side_effect=_fake_detect_text,
+                side_effect=AssertionError("translate must not run text detection"),
             ), patch(
                 "model_engine.builtin_models.manga_ocr._recognize_with_manga_ocr",
-                side_effect=_fake_recognize_text,
+                side_effect=AssertionError("translate must not run OCR"),
             ), patch(
                 "model_engine.builtin_models.openai_compatible_translation._translate_blocks_with_openai_compatible",
                 side_effect=_fake_translate_blocks,
@@ -114,28 +115,43 @@ class OrchestratedJobExecutorTests(unittest.TestCase):
 
             self.assertEqual(ModelJobStatus.SUCCEEDED, result.status)
             self.assertEqual(
-                ["text_detection", "ocr", "translation"],
+                ["translation"],
                 [report.stage_name for report in result.stage_reports],
             )
             self.assertEqual(1, len(result.document.text_blocks))
             self.assertEqual("縦書きテキスト", result.document.text_blocks[0].source_lang_text)
             self.assertEqual("세로쓰기 텍스트", result.document.text_blocks[0].translated_text)
-            self.assertEqual("manga_ocr", result.document.stage_meta["ocr"]["engine"])
+            self.assertNotIn("ocr", result.document.stage_meta)
+            self.assertNotIn("text_detection", result.document.stage_meta)
             text_block_patches = [
                 patch for patch in result.document_patch if patch.op.value == "replace_text_blocks"
             ]
-            self.assertEqual(2, len(text_block_patches))
+            self.assertEqual(1, len(text_block_patches))
             self.assertEqual(
-                ["縦書きテキスト", "縦書きテキスト"],
-                [
-                    patch.payload["text_blocks"][0]["source_lang_text"]
-                    for patch in text_block_patches
-                ],
+                "縦書きテキスト",
+                text_block_patches[0].payload["text_blocks"][0]["source_lang_text"],
             )
             self.assertEqual(
                 "openai_compatible_translation",
                 result.document.stage_meta["translation"]["engine"],
             )
+
+    def test_translate_job_fails_without_detected_source_text(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            request = _job_request(Path(tmpdir), operation_kind="translate")
+            request.document.text_blocks = [TextBlock(block_id="block-empty")]
+            executor = OrchestratedJobExecutor()
+
+            with patch(
+                "model_engine.builtin_models.openai_compatible_translation._translate_blocks_with_openai_compatible",
+                side_effect=AssertionError("translate provider must not run without source text"),
+            ):
+                result = executor.execute(request)
+
+            self.assertEqual(ModelJobStatus.FAILED, result.status)
+            self.assertEqual(["translation"], [report.stage_name for report in result.stage_reports])
+            self.assertEqual("translation_invalid_output", result.stage_reports[0].error_code)
+            self.assertIn("source_lang_text", result.stage_reports[0].error_message or "")
 
     def test_inpaint_job_detects_mask_then_returns_masked_inpaint_layer(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -402,6 +418,19 @@ def _fake_recognize_text(image, config: dict[str, object]) -> str:
     _ = image
     _ = config
     return "縦書きテキスト"
+
+
+def _detected_text_block() -> TextBlock:
+    return TextBlock(
+        block_id="block_0001",
+        source_lang_text="縦書きテキスト",
+        translated_text="",
+        polygon=[],
+        bbox={"x": 4, "y": 4, "width": 16, "height": 20},
+        reading_order=1,
+        writing_mode="vertical",
+        source_region_ref="region_0001",
+    )
 
 
 def _fake_translate_blocks(blocks, config: dict[str, object], api_key: str) -> list[dict[str, str]]:

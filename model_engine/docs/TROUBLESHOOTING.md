@@ -262,7 +262,7 @@ max_source_regions_per_block
 - density / area / small-region-long-text 규칙으로 환각 의심 OCR block을 `style_hint.ocr_status=needs_review`로 마킹한다.
 - 모든 OCR block에 `ocr_text_density_per_1000_px2`, `ocr_region_area_px`, `ocr_text_length`를 남겨 threshold 튜닝 근거를 확보했다.
 - translation backend 기본 경로를 OpenAI-compatible로 정리했고, LM Studio / Ollama / custom proxy를 같은 contract로 받도록 했다.
-- translation은 OCR block마다 따로 호출하지 않고, page block 전체를 한 번의 LLM 요청으로 batch translation 한다.
+- translation은 선행 detect/OCR 결과의 page block 전체를 한 번의 LLM 요청으로 batch translation 한다.
 - local 실행용 provider 설정은 `.runtime/runtime_config.json`으로 분리하고 Git ignore 상태로 유지한다.
 
 ## 7. 아직 해결해야 하는 내용

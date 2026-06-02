@@ -72,7 +72,7 @@ def run_vertex_translation(
     ] = None,
 ) -> StageResponse:
     started_at = datetime.now(timezone.utc)
-    source_blocks = resolve_source_blocks(request, engine_name="Vertex translation")
+    source_blocks: list[TextBlock] = []
     stage_config = dict(request.stage_config)
     model_name = str(stage_config.get("model_name", VERTEX_TRANSLATION_DEFAULT_MODEL))
     source_language = str(stage_config.get("source_language", "Japanese"))
@@ -87,6 +87,7 @@ def run_vertex_translation(
 
     translate_blocks_fn = translate_blocks_fn or _translate_blocks_with_vertex
     try:
+        source_blocks = resolve_source_blocks(request, engine_name="Vertex translation")
         raw_translations = translate_blocks_fn(source_blocks, stage_config, api_key)
         translated_blocks, warnings, metrics = apply_translations(
             source_blocks,

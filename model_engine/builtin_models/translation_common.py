@@ -20,7 +20,13 @@ _TRANSLATED_TEXT_BLOCKS_MEDIA_TYPE = "application/json"
 def resolve_source_blocks(request: StageRequest, *, engine_name: str) -> list[TextBlock]:
     if not request.document.text_blocks:
         raise ValueError(f"{engine_name} requires at least one text block")
-    return [block for block in request.document.text_blocks]
+    source_blocks = [block for block in request.document.text_blocks]
+    if not any(block.source_lang_text.strip() for block in source_blocks):
+        raise ValueError(
+            f"{engine_name} requires text blocks with source_lang_text. "
+            "Run detect first and submit the detected text_blocks to translate."
+        )
+    return source_blocks
 
 
 def apply_translations(

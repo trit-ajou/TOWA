@@ -326,14 +326,6 @@ async def _submission_from_http_request(request: Request):
                 message="multipart metadata field is required",
             )
 
-        primary_bitmap = _upload_from_form_part(form.get("primary_bitmap"))
-        if primary_bitmap is None:
-            raise ModelJobError(
-                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                code="model_validation_error",
-                message="multipart primary_bitmap field is required",
-            )
-
         try:
             metadata_payload = json.loads(metadata)
         except json.JSONDecodeError as exc:
@@ -344,13 +336,25 @@ async def _submission_from_http_request(request: Request):
             ) from exc
 
         payload = ModelJobCreateRequest.model_validate(metadata_payload)
-        upload = UploadedBinaryPart(
-            part_name="primary_bitmap",
-            filename=primary_bitmap.filename or "primary_bitmap",
-            media_type=primary_bitmap.content_type or "application/octet-stream",
-            content=await primary_bitmap.read(),
-        )
-        await primary_bitmap.close()
+        primary_bitmap = _upload_from_form_part(form.get("primary_bitmap"))
+        if primary_bitmap is None:
+            if payload.operation_kind == "translate":
+                return submission_from_api_payload(payload)
+            raise ModelJobError(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                code="model_validation_error",
+                message="multipart primary_bitmap field is required",
+            )
+
+        try:
+            upload = UploadedBinaryPart(
+                part_name="primary_bitmap",
+                filename=primary_bitmap.filename or "primary_bitmap",
+                media_type=primary_bitmap.content_type or "application/octet-stream",
+                content=await primary_bitmap.read(),
+            )
+        finally:
+            await primary_bitmap.close()
         return submission_from_multipart_payload(payload, primary_bitmap=upload)
 
     if content_type.startswith("application/json") or not content_type:
