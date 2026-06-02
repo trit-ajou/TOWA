@@ -6,6 +6,13 @@
 
 ## 2026-06-02
 
+### 13:21 — PR #59 self-review 후속 fix (Critical #1/#3, Important #5; #2는 후속 이슈 #60)
+- **#1 savePage silent return → throw** (`usePageLoader.ts`): `!doc`/`!thumbnail`/`!originalImage`/`!page` 4 경로가 silent return이었음. `doSave`는 예외 없이 정상 완료로 인지하고 `dirty.value=false`로 리셋 → 새 페이지의 originalImage가 캐시에 없는 상태에서 편집 + 페이지 전환 시 변경분 영구 손실 가능. throw로 바꿔 `doSave` catch가 dirty 유지하도록
+- **#3 사전 조건 실패 시 사용자 toast** (`usePageLoader.ts`): 4 throw는 fileAdapter try-catch 밖이라 `showError`가 호출되지 않음. AI active path에서 false success 토스트가 뜨는 케이스. `failSave` helper로 사용자 메시지 + throw 묶음
+- **#5 ProjectView `onBeforeUnmount`에도 `resetPageLoaderState()`** (`ProjectView.vue`): `onBeforeRouteLeave`는 둘 다 호출, `onBeforeUnmount` 안전망은 cleanup 루프만 호출했음. 비-router unmount(테스트 등) 시 `currentLoadedPageId` stale 가능
+- **#2 follow-up 이슈 발행** ([#60](https://github.com/trit-ajou/TOWA/issues/60)): `useAutoSave` singleton 결합. 다중 인스턴스 window listener 이중 등록 문제. 큰 리팩토링이라 별도 처리
+- 검증: typecheck PASS, e2e 6/6 PASS
+
 ### 08:24 — ProjectView unmount cascade fix (먹통 재발 케이스)
 - 증상: 라이브러리로 돌아갈 때 간헐적으로 `insertBefore NotFoundError` + `parentNode null` 콘솔 에러. 트레이스는 `at <RouterView> at <ProjectView onVnodeUnmounted=...> at <RouterView> at <App>`. KeepAlive 제거(07:45 freeze fix) 이후에도 *별도 트리거*로 같은 증상이 남아 있었음
 - Root cause: `ProjectView.onBeforeUnmount`의 `while (activeDocument) closeActiveDocument` 루프가 unmount 진행 중에 실행. `bmp/closeActiveDocument`는 `state.documents`를 splice + `flushLayerRenderers` + resource-manager의 blob URL dispose cascade를 발사하는데, 이게 inner router-view가 자식(EditorTab/DetailEditorTab) DOM을 정리하려는 시점과 race
