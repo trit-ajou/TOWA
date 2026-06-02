@@ -6,6 +6,11 @@
 
 ## 2026-06-02
 
+### 20:18 — PageTransitionOverlay thumbnail이 캔버스 영역을 채우지 못함
+- 증상: 페이지 로딩 시 overlay 안의 thumbnail 미리보기가 캔버스 영역 가운데에 *작은 박스*로만 표시. 사용자가 서버에 올려서 확인한 케이스
+- Root cause: thumbnail blob의 natural pixel size가 `captureThumbnail`의 상한(200×300)으로 작은데, `<img>` 클래스가 `max-h-full max-w-full object-contain`만 갖고 있었음. `max-w-full`은 "부모를 초과 X" 제약일 뿐 "부모를 채워" 제약은 아니라 natural size 그대로 표시됨
+- 수정: img 클래스를 `w-full h-full object-contain`으로. object-contain이 doc 비율을 유지하며 캔버스 영역을 가득 채움
+
 ### 19:17 — AI 입력으로 doc 합성이 아닌 원본 이미지 사용 (detect/translate OCR 품질 차이 fix)
 - 증상: 사용자 보고 "검출(detect) OCR이 번역(translate) OCR보다 명백히 좋다". 검출/번역이 서로 다른 텍스트박스를 만들고 번역은 자체적으로 OCR을 다시 돌리는 동작
 - Root cause 분석:
