@@ -51,9 +51,30 @@ vi.mock('@bitmappery/factories/document-factory', () => ({
 }))
 
 describe('applyAiJobSnapshotToCurrentPage', () => {
-  it('replaces existing text layers and creates new ones for succeeded jobs', async () => {
+  it('updates existing text layer in place on translate response (no remove/add)', async () => {
     const page = makePage()
-    const existingTextLayer = { id: 'layer_99', type: 'text' }
+    // detect가 만들어둔 layer. meta.blockId가 응답의 block_id와 매치되어야
+    // translate 결과가 이 layer 위에 in-place로 반영된다. bbox는 layer 위치로
+    // 표현되며 translate 응답이 와도 left/top/width/height는 건드리지 않는다.
+    const existingTextLayer = {
+      id: 'layer_99',
+      type: 'text',
+      left: 10,
+      top: 20,
+      width: 100,
+      height: 50,
+      text: { value: '', font: 'Noto Sans KR', size: 24, color: '#000000' },
+      meta: {
+        blockId: 'tb-existing',
+        original: 'こんにちは',
+        status: 'detected',
+        boxMode: 'fixed',
+        polygon: [[10, 20], [110, 20], [110, 70], [10, 70]],
+        readingOrder: 1,
+        writingMode: 'vertical',
+        sourceRegionRef: 'region_0001',
+      },
+    }
     const store = makeStore(page, { layers: [existingTextLayer] })
     const autosave = makeAutoSaveStubs()
     const snapshot = makeSnapshot({
@@ -65,10 +86,12 @@ describe('applyAiJobSnapshotToCurrentPage', () => {
             payload: {
               text_blocks: [
                 {
-                  block_id: 'tb-new',
-                  source_lang_text: 'hello',
-                  translated_text: '안녕',
+                  block_id: 'tb-existing',
+                  source_lang_text: 'こんにちは',
+                  translated_text: '안녕하세요',
                   bbox: { x: 10, y: 20, width: 100, height: 50 },
+                  reading_order: 1,
+                  writing_mode: 'vertical',
                 },
               ],
             },
@@ -92,34 +115,130 @@ describe('applyAiJobSnapshotToCurrentPage', () => {
     })
 
     expect(result).toMatchObject({ applied: true, textLayerCount: 1, graphicLayerCount: 0 })
-    // 기존 텍스트 layer 제거 호출
-    expect(store.commit).toHaveBeenCalledWith('bmp/removeLayer', 0)
-    // 새 텍스트 layer 추가 — meta 포함. bbox는 left/top으로, width/height는 document 전체.
-    expect(store.commit).toHaveBeenCalledWith(
-      'bmp/addLayer',
-      expect.objectContaining({
-        name: 'AI Translate 20260507 1530 #01',
-        type: 'text',
-        left: 10,
-        top: 20,
-        text: expect.objectContaining({
-          value: '안녕',
-          font: 'Noto Sans KR',
-          size: 24,
-          color: '#000000',
-        }),
+    // 기존 layer를 in-place 갱신. text.value만 번역문으로 바뀌고 status는 translated.
+    expect(store.commit).toHaveBeenCalledWith('bmp/updateLayer', {
+      index: 0,
+      opts: {
+        text: expect.objectContaining({ value: '안녕하세요' }),
         meta: expect.objectContaining({
-          blockId: 'tb-new',
-          original: 'hello',
+          blockId: 'tb-existing',
+          original: 'こんにちは',
           status: 'translated',
-          boxMode: 'fixed',
+          polygon: [[10, 20], [110, 20], [110, 70], [10, 70]],
+          readingOrder: 1,
+          writingMode: 'vertical',
+          sourceRegionRef: 'region_0001',
         }),
-      }),
-    )
-    // page status는 이제 query cache에 기록된다 (Vuex 모듈 제거됨).
+      },
+    })
+    // layer 삭제/신규 생성은 절대 일어나지 않아야 한다.
+    expect(store.commit).not.toHaveBeenCalledWith('bmp/removeLayer', expect.anything())
+    expect(store.commit).not.toHaveBeenCalledWith('bmp/addLayer', expect.anything())
+
     const cached = qc.getQueryData<PageSummary[]>(queryKeys.pages.byProject(page.projectId)) ?? []
     expect(cached.find((p) => p.id === page.id)?.status).toBe('in-progress')
     expect(autosave.saveImmediately).toHaveBeenCalledWith(page.id)
+  })
+
+  it('skips translate response blocks that do not match any existing layer', async () => {
+    const page = makePage()
+    const existingTextLayer = {
+      id: 'layer_99',
+      type: 'text',
+      left: 0, top: 0, width: 100, height: 50,
+      text: { value: '', font: 'Noto Sans KR', size: 24, color: '#000000' },
+      meta: { blockId: 'tb-existing', original: 'a', status: 'detected', boxMode: 'fixed' },
+    }
+    const store = makeStore(page, { layers: [existingTextLayer] })
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const snapshot = makeSnapshot({
+      operationKind: 'translate',
+      documentPatch: {
+        patches: [
+          {
+            op: 'replace_text_blocks',
+            payload: {
+              text_blocks: [
+                { block_id: 'tb-orphan', source_lang_text: 'x', translated_text: 'y' },
+              ],
+            },
+          },
+        ],
+      },
+    })
+
+    const result = await applyAiJobSnapshotToCurrentPage({
+      store,
+      queryClient: makeQueryClient(page),
+      backend: { getArtifact: vi.fn() },
+      snapshot,
+      projectId: page.projectId,
+      pageId: page.id,
+      fileAdapter: stubFileAdapter,
+      markDirty: vi.fn(),
+      saveImmediately: vi.fn().mockResolvedValue(undefined),
+    })
+
+    expect(result.textLayerCount).toBe(0)
+    expect(store.commit).not.toHaveBeenCalledWith('bmp/updateLayer', expect.anything())
+    expect(store.commit).not.toHaveBeenCalledWith('bmp/addLayer', expect.anything())
+    expect(warn).toHaveBeenCalled()
+    warn.mockRestore()
+  })
+
+  it('preserves polygon/reading_order/writing_mode/source_region_ref from detect response onto meta', async () => {
+    const page = makePage()
+    const store = makeStore(page)
+    const snapshot = makeSnapshot({
+      operationKind: 'detect',
+      documentPatch: {
+        patches: [
+          {
+            op: 'replace_text_blocks',
+            payload: {
+              text_blocks: [
+                {
+                  block_id: 'tb-1',
+                  source_lang_text: 'こんにちは',
+                  bbox: { x: 10, y: 20, width: 100, height: 50 },
+                  polygon: [[10, 20], [110, 20], [110, 70], [10, 70]],
+                  reading_order: 3,
+                  writing_mode: 'vertical',
+                  source_region_ref: 'region_0001',
+                },
+              ],
+            },
+          },
+        ],
+      },
+    })
+
+    await applyAiJobSnapshotToCurrentPage({
+      store,
+      queryClient: makeQueryClient(page),
+      backend: { getArtifact: vi.fn() },
+      snapshot,
+      projectId: page.projectId,
+      pageId: page.id,
+      fileAdapter: stubFileAdapter,
+      markDirty: vi.fn(),
+      saveImmediately: vi.fn().mockResolvedValue(undefined),
+      appliedAt: new Date(2026, 4, 7, 15, 30),
+    })
+
+    expect(store.commit).toHaveBeenCalledWith(
+      'bmp/addLayer',
+      expect.objectContaining({
+        meta: expect.objectContaining({
+          blockId: 'tb-1',
+          original: 'こんにちは',
+          polygon: [[10, 20], [110, 20], [110, 70], [10, 70]],
+          readingOrder: 3,
+          writingMode: 'vertical',
+          sourceRegionRef: 'region_0001',
+        }),
+      }),
+    )
   })
 
   it('adds bitmap artifact results as new graphic layers without replacing existing layers', async () => {
