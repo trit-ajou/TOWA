@@ -69,6 +69,29 @@ class ModelJobAPITests(unittest.TestCase):
         self.assertEqual("image/png", artifact_response.headers["content-type"])
         self.assertEqual(b"fake-png", artifact_response.content)
 
+    def test_multipart_translate_accepts_metadata_without_primary_bitmap(self) -> None:
+        job_manager = ModelJobManager(
+            executor=PlaceholderJobExecutor(sleep_seconds=0.0),
+        )
+        app = create_app(job_manager=job_manager)
+        client = TestClient(app)
+        payload = _job_payload(operation_kind="translate", mode="local")
+        payload["artifacts"] = {}
+        payload["document"]["text_blocks"] = [_detected_text_block_payload()]
+
+        response = client.post(
+            "/v1/jobs",
+            files={
+                "metadata": (None, json.dumps(payload), "application/json"),
+            },
+        )
+
+        self.assertEqual(202, response.status_code)
+        detail = _wait_for_terminal_job(client, response.json()["job_id"])
+        self.assertEqual("succeeded", detail["status"])
+        self.assertEqual(["translation"], [report["stage_name"] for report in detail["stage_reports"]])
+        self.assertEqual({}, detail["artifacts"])
+
     def test_local_job_lifecycle_returns_placeholder_stage_reports(self) -> None:
         app = create_app(
             job_manager=ModelJobManager(
@@ -521,6 +544,19 @@ def _job_payload(*, operation_kind: str, mode: str) -> dict[str, object]:
             "target_regions": [],
             "selected_layer_ids": [],
         },
+    }
+
+
+def _detected_text_block_payload() -> dict[str, object]:
+    return {
+        "block_id": "block_0001",
+        "source_lang_text": "縦書きテキスト",
+        "translated_text": "",
+        "polygon": [],
+        "bbox": {"x": 4, "y": 4, "width": 16, "height": 20},
+        "reading_order": 1,
+        "writing_mode": "vertical",
+        "source_region_ref": "region_0001",
     }
 
 

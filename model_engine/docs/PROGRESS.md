@@ -514,13 +514,13 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 
 - 기본 `ModelJobManager` executor를 placeholder에서 orchestrator 기반 executor로 전환
 - `detect`는 `text_detection -> ocr` 조합 사용. CRAFT는 region artifact만 만들고, UI에 내려가는 `replace_text_blocks`는 manga OCR 결과의 원문 일본어를 담는다.
-- `translate`는 `text_detection -> ocr -> translation` 조합 사용
+- `translate`는 기존 `document.text_blocks`만 입력으로 받아 `translation` stage만 실행한다. 선행 `detect` 결과의 `source_lang_text`를 UI가 요청 document에 포함해야 하며, translate는 CRAFT/manga OCR을 다시 실행하지 않는다.
 - `inpaint`는 `text_detection -> mask_or_erase_planning -> inpaint` 조합 사용
 - planner 함수는 API job, 직접 stage 테스트, 샘플 경로에서 재사용 가능하도록 유지
 
 비고:
 
-- 실제 `/v1/jobs` 경로에서도 `ocr`와 `translation` stage가 더 이상 샘플 전용이 아니라 기본 실행 경로 일부가 된다.
+- 실제 `/v1/jobs` 경로에서 `detect`의 `ocr` stage와 `translate`의 `translation` stage가 더 이상 샘플 전용이 아니라 기본 실행 경로 일부가 된다.
 
 ### 9-2. Built-in Vertex Translation
 
@@ -896,3 +896,22 @@ PYTHONPYCACHEPREFIX=/tmp/pythoncache python3 -m unittest discover -s model_engin
 - 현재 Dockerfile은 CPU 개발용 최소 이미지다.
 - 실제 provider key는 코드/저장소에 하드코딩하지 않고 credential binding 경로로만 주입한다.
 - custom model 통합은 "모델 import"보다 "runtime worker 호출"을 기본 방향으로 기억한다.
+
+## Translate Existing Blocks 검증 스크립트
+
+- `model_engine/scripts/verify_translate_existing_blocks.py`를 추가했다.
+- 목적: UI가 `detect` 결과의 `document.text_blocks`를 올바르게 넘겼다고 가정할 때, `/v1/jobs` translate 요청이 `translation` stage만 실행하고 CRAFT/manga OCR을 다시 호출하지 않는지 검증한다.
+- 스크립트는 FastAPI in-process app에 UI 형태의 payload를 넣고, 번역 provider는 deterministic fake로 patch한다. CRAFT/OCR 함수는 호출되면 즉시 실패하게 patch한다.
+- 실행 예:
+
+```bash
+docker compose run --no-deps --rm model-engine \
+  python3 scripts/verify_translate_existing_blocks.py
+```
+
+- multipart metadata-only 전송 확인:
+
+```bash
+docker compose run --no-deps --rm model-engine \
+  python3 scripts/verify_translate_existing_blocks.py --transport multipart
+```

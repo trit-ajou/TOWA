@@ -100,7 +100,7 @@ SERVICE_USAGE_OPERATION_KIND = {
 OPERATION_STAGE_NAMES = {
     "detect": ["text_detection", "ocr"],
     "inpaint": ["text_detection", "mask_or_erase_planning", "inpaint"],
-    "translate": ["text_detection", "ocr", "translation"],
+    "translate": ["translation"],
 }
 OPERATION_META_KEYS = {
     "detect": "text_detection",
@@ -927,15 +927,9 @@ def _build_operation_stages(
     *,
     registry: ModelRegistry,
 ) -> list[Stage]:
-    input_artifact_ref = _resolve_primary_bitmap_artifact_ref(request.artifacts)
-    common_detection_config = {
-        "input_artifact_ref": input_artifact_ref,
-        "text_threshold": 0.7,
-        "link_threshold": 0.4,
-        "low_text": 0.4,
-    }
-
     if request.operation_kind == "detect":
+        input_artifact_ref = _resolve_primary_bitmap_artifact_ref(request.artifacts)
+        common_detection_config = _common_detection_config(input_artifact_ref)
         return [
             AdapterBackedStage(
                 "text_detection",
@@ -956,20 +950,6 @@ def _build_operation_stages(
     if request.operation_kind == "translate":
         return [
             AdapterBackedStage(
-                "text_detection",
-                stage_kind=StageKind.TEXT_DETECTION,
-                registry=registry,
-                preferred_model_id=CRAFT_TEXT_DETECTION_MODEL_ID,
-                config=common_detection_config,
-            ),
-            AdapterBackedStage(
-                "ocr",
-                stage_kind=StageKind.OCR,
-                registry=registry,
-                preferred_model_id=MANGA_OCR_MODEL_ID,
-                config=_manga_ocr_stage_config(input_artifact_ref),
-            ),
-            AdapterBackedStage(
                 "translation",
                 stage_kind=StageKind.TRANSLATION,
                 registry=registry,
@@ -983,6 +963,8 @@ def _build_operation_stages(
         ]
 
     if request.operation_kind == "inpaint":
+        input_artifact_ref = _resolve_primary_bitmap_artifact_ref(request.artifacts)
+        common_detection_config = _common_detection_config(input_artifact_ref)
         return [
             AdapterBackedStage(
                 "text_detection",
@@ -1016,6 +998,15 @@ def _build_operation_stages(
         ]
 
     raise ValueError(f"Unsupported operation_kind: {request.operation_kind}")
+
+
+def _common_detection_config(input_artifact_ref: str) -> dict[str, object]:
+    return {
+        "input_artifact_ref": input_artifact_ref,
+        "text_threshold": 0.7,
+        "link_threshold": 0.4,
+        "low_text": 0.4,
+    }
 
 
 def _manga_ocr_stage_config(input_artifact_ref: str) -> dict[str, object]:

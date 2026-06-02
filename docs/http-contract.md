@@ -958,20 +958,23 @@ terminal state:
 
 - `detect` -> `text_detection`, `ocr`
 - `inpaint` -> `text_detection`, `mask_or_erase_planning`, `inpaint`
-- `translate` -> `text_detection`, `ocr`, `translation`
+- `translate` -> `translation`
 - `pipeline` -> 명시된 pipeline config에 따름
 
 `detect` 성공 응답 규칙:
 
 - CRAFT `text_detection`은 `text_regions` artifact를 생성한다.
 - 외부 `detect` 작업에서는 `manga_ocr`가 `text_regions`를 읽은 뒤 원문 일본어가 들어간 UI merge용 `replace_text_blocks` patch를 반환한다.
-- 내부 pipeline의 `translate`/`inpaint` 선행 검출 단계는 빈 text block patch를 만들지 않고, downstream stage용 `text_regions` artifact만 만든다.
+- `translate`는 text detection/OCR을 다시 실행하지 않는다. UI는 선행 `detect` 결과를 적용한 `document.text_blocks`를 `translate` 요청에 포함해야 한다.
+- `translate` 입력의 `document.text_blocks` 중 최소 1개는 비어 있지 않은 `source_lang_text`를 가져야 한다.
+- `translate` 응답의 `replace_text_blocks`는 새 bbox 검출 결과가 아니라 기존 block geometry를 유지하고 `translated_text`만 채운 결과다.
+- `inpaint` 선행 검출 단계는 빈 text block patch를 만들지 않고, downstream stage용 `text_regions` artifact만 만든다.
 
 현재 구현 상태:
 
 - `detect` 관련 built-in 있음
 - `inpaint` 관련 built-in 있음
-- `translate` pipeline은 아직 미완성이다
+- `translate` 관련 built-in 있음. `translate`는 기존 OCR text block을 번역만 한다.
 
 ## Billing Boundary
 

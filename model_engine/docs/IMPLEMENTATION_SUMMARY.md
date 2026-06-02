@@ -126,7 +126,7 @@
 - operation별 placeholder stage는 아래처럼 고정했다.
   - `detect` -> `text_detection`, `ocr`
   - `inpaint` -> `text_detection`, `mask_or_erase_planning`, `inpaint`
-  - `translate` -> `text_detection`, `ocr`, `translation`
+  - `translate` -> `translation` (`document.text_blocks`에 선행 detect/OCR 결과가 들어와야 함)
   - `pipeline` -> 현재 `422 model_validation_error`
 - placeholder 결과는 문서와 artifact shape를 최대한 유지하고, `stage_reports`와 상태 전이만 채운다.
 
