@@ -148,7 +148,7 @@ async function verifyProjectPages() {
       source_lang: 'ja',
       target_lang: 'ko',
       status: 'todo',
-      folder: 'smoke',
+      folder_id: null,
       config: {
         auto_detect: true,
       },
