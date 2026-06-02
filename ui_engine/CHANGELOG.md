@@ -6,6 +6,22 @@
 
 ## 2026-06-02
 
+### 19:17 — AI 입력으로 doc 합성이 아닌 원본 이미지 사용 (detect/translate OCR 품질 차이 fix)
+- 증상: 사용자 보고 "검출(detect) OCR이 번역(translate) OCR보다 명백히 좋다". 검출/번역이 서로 다른 텍스트박스를 만들고 번역은 자체적으로 OCR을 다시 돌리는 동작
+- Root cause 분석:
+  - model_engine `OPERATION_STAGE_NAMES[translate] = ["text_detection", "ocr", "translation"]` — translate는 매번 처음부터 detect+OCR을 수행. ui_engine이 보낸 `document.text_blocks`는 ocr stage의 `replace_text_blocks` patch가 덮어쓰므로 재활용 경로 없음 (의도된 파이프라인)
+  - detect/translate의 text_detection/ocr config는 동일 (`CRAFT_TEXT_DETECTION_MODEL_ID` + `MANGA_OCR_MODEL_ID`). 즉 모델 자체 차이 X
+  - 차이의 원인은 입력 이미지: `useAiActions.buildInput`이 `createSyncSnapshot(activeDocument)`로 visible 레이어 합성을 보냈음. detect 후 페이지에는 OCR 원문이 그려진 텍스트 레이어가 누적되고 (`render-service.ts` line 90: text.value 비었을 때 `meta.original` fallback 렌더링), 그 다음 translate를 돌리면 "원본 + 렌더된 OCR 원문 텍스트"가 합성된 노이즈 큰 이미지가 다시 입력으로 들어가서 두 번째 OCR이 망가짐
+- 수정 (`useAiActions.ts`, `usePageLoader.ts`):
+  - 모든 AI operation이 `originalImage` Blob을 그대로 입력으로 사용. `createSyncSnapshot` + `resizeImage` + `canvasToBlob` 합성 경로 제거
+  - inpaint도 일단 원본 입력 — 부분 inpaint(AI 지우개)처럼 편집 상태를 보내야 하는 도구는 별도 스콥에서 추가
+  - `usePageLoader`에 `getOriginalImage(pageId, fileAdapter)` helper export (세션 캐시 + snapshot fallback). `savePage` 안의 중복 로직도 이걸 사용
+- 검증:
+  - typecheck PASS, unit test 3 spec/37 tests PASS (`result-applier.spec.ts`의 `@tanstack/vue-query` import 에러는 stash 후에도 동일 — 기존 환경 문제)
+  - API 직접 비교(UI 우회): 동일 원본 이미지(`samples/dlsite/sample.jpg`)로 `POST /v1/jobs` 두 번 호출. detect와 translate의 ocr stage 출력(`document_patch.patches[op=replace_text_blocks]`) **12/12 블록 bbox·텍스트 완전 일치** → 가설 확정. (translate job 자체는 translation provider unavailable로 failed지만 그 앞의 ocr 단계까지는 succeeded라 비교 가능)
+  - Playwright e2e 12 tests: 11 PASS / 1 flaky(01-entry-flow의 helper navigation race, 단독 재실행 시 PASS, 변경 범위 외). savePage 회귀 범위 03/04/07 전부 PASS
+- 잔여: 사용자 manual 검증으로 실제 UI 경로에서 detect → translate 시 OCR 결과가 같아지는지 최종 확인 필요
+
 ### 13:21 — PR #59 self-review 후속 fix (Critical #1/#3, Important #5; #2는 후속 이슈 #60)
 - **#1 savePage silent return → throw** (`usePageLoader.ts`): `!doc`/`!thumbnail`/`!originalImage`/`!page` 4 경로가 silent return이었음. `doSave`는 예외 없이 정상 완료로 인지하고 `dirty.value=false`로 리셋 → 새 페이지의 originalImage가 캐시에 없는 상태에서 편집 + 페이지 전환 시 변경분 영구 손실 가능. throw로 바꿔 `doSave` catch가 dirty 유지하도록
 - **#3 사전 조건 실패 시 사용자 toast** (`usePageLoader.ts`): 4 throw는 fileAdapter try-catch 밖이라 `showError`가 호출되지 않음. AI active path에서 false success 토스트가 뜨는 케이스. `failSave` helper로 사용자 메시지 + throw 묶음

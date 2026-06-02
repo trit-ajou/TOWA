@@ -6,6 +6,7 @@ import { useAutoSave } from '@/composables/useAutoSave'
 import { useFileAdapter } from '@/composables/useFileAdapter'
 import { useErrorDialog } from '@/composables/useErrorDialog'
 import { useCanvasNotice } from '@/composables/useCanvasNotice'
+import { getOriginalImage } from '@/composables/usePageLoader'
 import { queryKeys } from '@/composables/queryKeys'
 import { DEPLOYMENT_MODE } from '@/config/deployment'
 import { BackendError } from '@/backend/errors'
@@ -15,10 +16,6 @@ import type { PageSummary } from '@/file-adapter'
 import { applyAiJobSnapshotToCurrentPage } from '@/ai/result-applier'
 import { getTextMeta, isTextLayer } from '@/utils/text-layer'
 import type { Layer } from '@bitmappery/definitions/document'
-// @ts-expect-error bitmappery JS module
-import { createSyncSnapshot } from '@bitmappery/utils/document-util'
-// @ts-expect-error bitmappery JS module
-import { canvasToBlob, resizeImage } from '@bitmappery/utils/canvas-util'
 
 export interface AiActionResult {
   op: string
@@ -63,9 +60,15 @@ export function useAiActions() {
     if (!activeDocument) {
       throw new Error('No active Bitmappery document is loaded')
     }
-    const snapshot = createSyncSnapshot(activeDocument)
-    const normalizedSnapshot = await resizeImage(snapshot, activeDocument.width, activeDocument.height)
-    const primaryBitmap = await canvasToBlob(normalizedSnapshot, 'image/png')
+    // AI 입력은 항상 원본(편집 전) 페이지 이미지. doc 합성(createSyncSnapshot)을
+    // 보내면 누적된 텍스트/inpaint 레이어가 함께 그려져서 text_detection/OCR이
+    // 노이즈가 큰 이미지를 분석하게 되고, detect와 translate 사이 OCR 품질이
+    // 명백히 달라진다. 부분 inpaint(AI 지우개) 같이 "현재 편집 상태"를 입력으로
+    // 받아야 하는 도구는 별도 스콥에서 추가한다.
+    const primaryBitmap = await getOriginalImage(page, fileAdapter)
+    if (!primaryBitmap) {
+      throw new Error(`Original image not available for page ${page}`)
+    }
     const requestedBy = currentUserEmail() ?? 'ui-engine'
     const textLayers: Layer[] = (activeDocument.layers ?? []).filter(isTextLayer)
     return {
