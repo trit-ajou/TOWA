@@ -445,44 +445,43 @@ Stage pipeline:
 
 Stage pipeline:
 
-1. `text_detection`
-2. `ocr`
-3. `translation`
+1. `translation`
+
+입력:
+
+- `document.text_blocks`
+- 각 block은 선행 `detect` 결과에서 온 `source_lang_text`를 포함해야 한다.
+- bitmap artifact는 필요하지 않다.
 
 출력:
 
 - `document_patch.patches`
-  - `set_stage_meta` with key `text_detection`
-  - `replace_text_blocks`
-  - `set_stage_meta` with key `ocr`
   - `replace_text_blocks`
   - `set_stage_meta` with key `translation`
 - `artifacts`
-  - `kind=text_regions`
-  - `kind=ocr_text_blocks`
   - `kind=translated_text_blocks`
 - `stage_reports`
-  - `text_detection`, `ocr`, `translation`
+  - `translation`
 
-OCR 대표 patch:
+주의:
+
+- `translate`는 CRAFT text detection을 다시 실행하지 않는다.
+- `translate`는 manga OCR을 다시 실행하지 않는다.
+- `translate` 응답의 `replace_text_blocks`는 새 bbox가 아니라 기존 block geometry에 `translated_text`만 채운 결과다.
+
+Translate 요청의 `document.text_blocks` 예시:
 
 ```json
-{
-  "op": "replace_text_blocks",
-  "target": {},
-  "payload": {
-    "text_blocks": [
-      {
-        "block_id": "ocr_0001",
-        "source_lang_text": "こんにちは",
-        "translated_text": "",
-        "bbox": {"x": 10.0, "y": 20.0, "width": 100.0, "height": 40.0},
-        "writing_mode": "vertical",
-        "reading_order": 1
-      }
-    ]
+[
+  {
+    "block_id": "ocr_0001",
+    "source_lang_text": "こんにちは",
+    "translated_text": "",
+    "bbox": {"x": 10.0, "y": 20.0, "width": 100.0, "height": 40.0},
+    "writing_mode": "vertical",
+    "reading_order": 1
   }
-}
+]
 ```
 
 Translation 대표 patch:

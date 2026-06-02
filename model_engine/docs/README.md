@@ -1381,7 +1381,7 @@ v1에서는 planner를 규칙 기반으로 시작한다.
 입력 규칙:
 
 - 입력은 `DocumentIR.text_blocks`다.
-- `translation` stage는 OCR이 만든 `source_lang_text`를 읽고 `translated_text`만 채운다.
+- `translation` stage는 선행 detect/OCR이 만든 `source_lang_text`를 읽고 `translated_text`만 채운다.
 - geometry, reading order, writing mode, region ref는 번역 stage에서 바꾸지 않는다.
 
 출력 규칙:
