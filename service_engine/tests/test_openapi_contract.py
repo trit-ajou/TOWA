@@ -131,7 +131,7 @@ def test_openapi_documents_project_and_page_storage_contract() -> None:
     assert "multipart/mixed" in snapshot_get_content
 
     thumbnail_get_content = paths["/api/v1/pages/{page_id}/thumbnail"]["get"]["responses"]["200"]["content"]
-    assert {"image/jpeg", "image/png", "image/webp"}.issubset(set(thumbnail_get_content.keys()))
+    assert set(thumbnail_get_content.keys()) == {"image/webp"}
 
     project_response = schemas["ProjectResponse"]
     assert "thumbnail_url" in project_response["properties"]

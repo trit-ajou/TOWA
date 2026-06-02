@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request, Response
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_session_token
 from app.api.errors import openapi_error_responses, raise_project_http_error
+from app.api.http_cache import conditional_not_modified_response, etag_for_parts, latest_datetime, set_cache_headers
 from app.api.schemas.projects import (
     FolderCreateRequest,
     FolderDeleteResponse,
@@ -26,14 +27,22 @@ router = APIRouter(prefix="/api/v1", tags=["folders"])
     responses=openapi_error_responses(401),
 )
 def list_folders(
+    request: Request,
+    response: Response,
     search: str | None = None,
     session_token: str = Depends(get_session_token),
     session: Session = Depends(get_db_session),
-) -> FolderListResponse:
+) -> FolderListResponse | Response:
     try:
         folders = folder_service.list_folders(session, session_token=session_token, search=search)
     except Exception as exc:  # noqa: BLE001
         raise_project_http_error(exc)
+    etag = etag_for_parts("folders-list", {"search": search, "items": folders})
+    last_modified = latest_datetime(folder["updated_at"] for folder in folders)
+    not_modified = conditional_not_modified_response(request, etag=etag, last_modified=last_modified)
+    if not_modified is not None:
+        return not_modified
+    set_cache_headers(response, etag=etag, last_modified=last_modified)
     return FolderListResponse(items=[FolderResponse.model_validate(folder) for folder in folders])
 
 
@@ -134,11 +143,23 @@ def restore_folder(
     responses=openapi_error_responses(401),
 )
 def list_trash(
+    request: Request,
+    response: Response,
     session_token: str = Depends(get_session_token),
     session: Session = Depends(get_db_session),
-) -> TrashListResponse:
+) -> TrashListResponse | Response:
     try:
         items = folder_service.list_trash(session, session_token=session_token)
     except Exception as exc:  # noqa: BLE001
         raise_project_http_error(exc)
+    timestamps = []
+    for item in items:
+        payload = item["item"]
+        timestamps.extend([payload["updated_at"], payload["deleted_at"]])
+    etag = etag_for_parts("trash-list", items)
+    last_modified = latest_datetime(timestamps)
+    not_modified = conditional_not_modified_response(request, etag=etag, last_modified=last_modified)
+    if not_modified is not None:
+        return not_modified
+    set_cache_headers(response, etag=etag, last_modified=last_modified)
     return TrashListResponse(items=[TrashItemResponse.model_validate(item) for item in items])
