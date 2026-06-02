@@ -424,7 +424,7 @@ h1 {
 .closing-copy p:not(.section-kicker) {
   color: var(--muted);
   font-size: 31px;
-  font-weight: 300;
+  font-weight: 500;
   line-height: 1.52;
 }
 
@@ -465,7 +465,7 @@ h1 {
   margin: 0;
   color: var(--muted);
   font-size: 27px;
-  font-weight: 300;
+  font-weight: 500;
   line-height: 1.42;
 }
 
@@ -626,7 +626,7 @@ h1 {
   margin: 0;
   color: var(--muted);
   font-size: 23px;
-  font-weight: 300;
+  font-weight: 500;
   line-height: 1.36;
 }
 
@@ -710,7 +710,7 @@ h1 {
   margin: 8px 0 0;
   color: var(--muted);
   font-size: 26px;
-  font-weight: 300;
+  font-weight: 500;
   line-height: 1.35;
 }
 
