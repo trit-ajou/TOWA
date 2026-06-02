@@ -7,8 +7,11 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_session_token
 from app.api.errors import openapi_error_responses, raise_project_http_error
-from app.api.page_snapshots import build_snapshot_response, parse_snapshot_write
+from app.api.http_cache import conditional_not_modified_response, etag_for_parts, latest_datetime, set_cache_headers
+from app.api.page_snapshots import build_snapshot_response, normalize_snapshot_thumbnail, parse_snapshot_write
 from app.api.schemas.projects import PageDeleteResponse, PageSummaryEnvelope, PageSummaryResponse
+from app.api.thumbnail_images import WEBP_MEDIA_TYPE, normalize_thumbnail_payload
+from app.core.settings import get_settings
 from app.db import get_db_session
 from app.modules.projects.models import Page
 from app.modules.projects import service as project_service
@@ -27,8 +30,44 @@ def _page_summary_response(page: Page, request: Request) -> PageSummaryResponse:
     )
 
 
+def _snapshot_etag_parts(state: project_service.PageSnapshotState) -> dict[str, object]:
+    settings = get_settings()
+    return {
+        "page_id": state.page_id,
+        "project_id": state.project_id,
+        "page_status": state.page_status,
+        "page_updated_at": state.page_updated_at,
+        "snapshot_updated_at": state.snapshot_updated_at,
+        "metadata": state.metadata,
+        "original_image_media_type": state.original_image_media_type,
+        "original_image_byte_size": state.original_image_byte_size,
+        "layer_blob_media_type": state.layer_blob_media_type,
+        "layer_blob_byte_size": state.layer_blob_byte_size,
+        "thumbnail_media_type": state.thumbnail_media_type,
+        "thumbnail_byte_size": state.thumbnail_byte_size,
+        "thumbnail_target_media_type": WEBP_MEDIA_TYPE,
+        "thumbnail_max_width": settings.project_thumbnail_max_width,
+        "thumbnail_webp_quality": settings.project_thumbnail_webp_quality,
+    }
+
+
+def _thumbnail_etag_parts(state: project_service.PageSnapshotState) -> dict[str, object]:
+    settings = get_settings()
+    return {
+        "page_id": state.page_id,
+        "page_updated_at": state.page_updated_at,
+        "snapshot_updated_at": state.snapshot_updated_at,
+        "thumbnail_media_type": state.thumbnail_media_type,
+        "thumbnail_byte_size": state.thumbnail_byte_size,
+        "thumbnail_target_media_type": WEBP_MEDIA_TYPE,
+        "thumbnail_max_width": settings.project_thumbnail_max_width,
+        "thumbnail_webp_quality": settings.project_thumbnail_webp_quality,
+    }
+
+
 @router.get(
     "/pages/{page_id}/snapshot",
+    response_class=Response,
     responses={
         200: {
             "content": {
@@ -37,23 +76,37 @@ def _page_summary_response(page: Page, request: Request) -> PageSummaryResponse:
                 },
             },
         },
-        **openapi_error_responses(401, 404, 409),
+        **openapi_error_responses(401, 404, 409, 422),
     },
 )
 def get_page_snapshot(
     page_id: str,
+    request: Request,
     session_token: str = Depends(get_session_token),
     session: Session = Depends(get_db_session),
 ) -> Response:
     try:
+        state = project_service.get_page_snapshot_state(
+            session,
+            session_token=session_token,
+            page_id=page_id,
+        )
+        last_modified = latest_datetime([state.page_updated_at, state.snapshot_updated_at])
+        etag = etag_for_parts("page-snapshot", _snapshot_etag_parts(state))
+        not_modified = conditional_not_modified_response(request, etag=etag, last_modified=last_modified)
+        if not_modified is not None:
+            return not_modified
         snapshot = project_service.get_page_snapshot(
             session,
             session_token=session_token,
             page_id=page_id,
         )
+        snapshot = normalize_snapshot_thumbnail(snapshot)
     except Exception as exc:  # noqa: BLE001
         raise_project_http_error(exc)
-    return build_snapshot_response(snapshot)
+    response = build_snapshot_response(snapshot)
+    set_cache_headers(response, etag=etag, last_modified=last_modified)
+    return response
 
 
 @router.put(
@@ -114,28 +167,46 @@ def delete_page(
 
 @router.get(
     "/pages/{page_id}/thumbnail",
+    response_class=Response,
     responses={
         200: {
             "content": {
-                "image/jpeg": {},
-                "image/png": {},
                 "image/webp": {},
             },
         },
-        **openapi_error_responses(401, 404, 409),
+        **openapi_error_responses(401, 404, 409, 422),
     },
 )
 def get_page_thumbnail(
     page_id: str,
+    request: Request,
     session_token: str = Depends(get_session_token),
     session: Session = Depends(get_db_session),
 ) -> Response:
     try:
+        state = project_service.get_page_snapshot_state(
+            session,
+            session_token=session_token,
+            page_id=page_id,
+        )
+        last_modified = latest_datetime([state.page_updated_at, state.snapshot_updated_at])
+        etag = etag_for_parts("page-thumbnail", _thumbnail_etag_parts(state))
+        not_modified = conditional_not_modified_response(request, etag=etag, last_modified=last_modified)
+        if not_modified is not None:
+            return not_modified
         thumbnail = project_service.get_page_thumbnail(
             session,
             session_token=session_token,
             page_id=page_id,
         )
+        settings = get_settings()
+        thumbnail = normalize_thumbnail_payload(
+            thumbnail,
+            max_width=settings.project_thumbnail_max_width,
+            quality=settings.project_thumbnail_webp_quality,
+        )
     except Exception as exc:  # noqa: BLE001
         raise_project_http_error(exc)
-    return Response(content=thumbnail.content, media_type=thumbnail.media_type)
+    response = Response(content=thumbnail.content, media_type=thumbnail.media_type)
+    set_cache_headers(response, etag=etag, last_modified=last_modified)
+    return response

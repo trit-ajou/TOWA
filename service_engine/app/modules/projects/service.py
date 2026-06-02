@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import re
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import Select, func, select, update
@@ -74,6 +75,22 @@ class StoredPageSnapshot:
     original_image: BinaryPayload
     layer_blob: BinaryPayload
     thumbnail: BinaryPayload
+
+
+@dataclass(frozen=True)
+class PageSnapshotState:
+    page_id: str
+    project_id: str
+    page_status: PageStatus
+    page_updated_at: datetime
+    snapshot_updated_at: datetime
+    metadata: dict[str, Any]
+    original_image_media_type: str
+    original_image_byte_size: int
+    layer_blob_media_type: str
+    layer_blob_byte_size: int
+    thumbnail_media_type: str
+    thumbnail_byte_size: int
 
 
 def _normalize_ulid(value: str, *, field_name: str) -> str:
@@ -462,6 +479,55 @@ def get_page_snapshot(session: Session, *, session_token: str, page_id: str) -> 
             reason="snapshot_missing",
         )
     return _snapshot_from_model(snapshot)
+
+
+def get_page_snapshot_state(session: Session, *, session_token: str, page_id: str) -> PageSnapshotState:
+    normalized_page_id = _normalize_ulid(page_id, field_name="page_id")
+    context = auth_service.authenticate_session_token(session, session_token=session_token)
+    row = session.execute(
+        select(
+            Page.id.label("page_id"),
+            Page.project_id.label("project_id"),
+            Page.status.label("page_status"),
+            Page.updated_at.label("page_updated_at"),
+            PageSnapshot.updated_at.label("snapshot_updated_at"),
+            PageSnapshot.metadata_json.label("metadata"),
+            PageSnapshot.original_image_media_type.label("original_image_media_type"),
+            PageSnapshot.original_image_byte_size.label("original_image_byte_size"),
+            PageSnapshot.layer_blob_media_type.label("layer_blob_media_type"),
+            PageSnapshot.layer_blob_byte_size.label("layer_blob_byte_size"),
+            PageSnapshot.thumbnail_media_type.label("thumbnail_media_type"),
+            PageSnapshot.thumbnail_byte_size.label("thumbnail_byte_size"),
+        )
+        .join(Project, Page.project_id == Project.id)
+        .outerjoin(PageSnapshot, PageSnapshot.page_id == Page.id)
+        .where(
+            Page.id == normalized_page_id,
+            Project.user_id == context.user.id,
+            Project.deleted_at.is_(None),
+        ),
+    ).mappings().one_or_none()
+    if row is None:
+        raise PageNotFoundError(f"Page {normalized_page_id} was not found.")
+    if row["snapshot_updated_at"] is None:
+        raise PageConflictError(
+            f"Page {normalized_page_id} is missing its snapshot.",
+            reason="snapshot_missing",
+        )
+    return PageSnapshotState(
+        page_id=row["page_id"],
+        project_id=row["project_id"],
+        page_status=row["page_status"],
+        page_updated_at=row["page_updated_at"],
+        snapshot_updated_at=row["snapshot_updated_at"],
+        metadata=copy.deepcopy(row["metadata"]),
+        original_image_media_type=row["original_image_media_type"],
+        original_image_byte_size=row["original_image_byte_size"],
+        layer_blob_media_type=row["layer_blob_media_type"],
+        layer_blob_byte_size=row["layer_blob_byte_size"],
+        thumbnail_media_type=row["thumbnail_media_type"],
+        thumbnail_byte_size=row["thumbnail_byte_size"],
+    )
 
 
 def update_page_snapshot(

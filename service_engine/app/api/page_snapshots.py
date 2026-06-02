@@ -7,6 +7,7 @@ from fastapi import Response, UploadFile
 from pydantic import ValidationError
 
 from app.api.schemas.projects import PageSnapshotMetadata
+from app.api.thumbnail_images import normalize_thumbnail_payload
 from app.core.settings import get_settings
 from app.modules.projects.service import BinaryPayload, PageSnapshotWrite, SnapshotValidationError, StoredPageSnapshot
 
@@ -92,6 +93,11 @@ async def parse_snapshot_write(
         allowed_media_types=IMAGE_MEDIA_TYPES,
         max_bytes=settings.project_thumbnail_max_bytes,
     )
+    thumbnail_payload = normalize_thumbnail_payload(
+        thumbnail_payload,
+        max_width=settings.project_thumbnail_max_width,
+        quality=settings.project_thumbnail_webp_quality,
+    )
     return PageSnapshotWrite(
         page_id=metadata_payload.page.id,
         project_id=metadata_payload.page.project_id,
@@ -101,6 +107,20 @@ async def parse_snapshot_write(
         original_image=original_image_payload,
         layer_blob=layer_blob_payload,
         thumbnail=thumbnail_payload,
+    )
+
+
+def normalize_snapshot_thumbnail(snapshot: StoredPageSnapshot) -> StoredPageSnapshot:
+    settings = get_settings()
+    return StoredPageSnapshot(
+        metadata=snapshot.metadata,
+        original_image=snapshot.original_image,
+        layer_blob=snapshot.layer_blob,
+        thumbnail=normalize_thumbnail_payload(
+            snapshot.thumbnail,
+            max_width=settings.project_thumbnail_max_width,
+            quality=settings.project_thumbnail_webp_quality,
+        ),
     )
 
 

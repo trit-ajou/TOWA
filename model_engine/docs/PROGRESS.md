@@ -34,6 +34,7 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 
 최근 추가된 wiring:
 
+- 인페인트 보존성 정량 평가용 `scripts/evaluate_inpaint_preservation.py`를 추가했다. `model_engine/datasets/benchmark/`에 수동으로 넣은 만화 페이지를 대상으로 기존 `CRAFT -> mask_or_erase_planning -> inpaint` 파이프라인을 돌리고, provider full-page output을 baseline, UI alpha overlay 합성본을 experiment로 비교해 full/outside-mask/inside-mask MSE, RMSE, MAE, PSNR, global SSIM, changed pixel ratio, mask coverage를 `summary.json`, `results.json`, `results.csv`로 저장한다. 일본어 파일명 같은 non-ASCII benchmark input은 page workspace의 `input_page.png`로 물질화한 뒤 stage artifact로 넘긴다.
 - 2026-05-29 기준 `detect` 결과 bbox 좌표계 검증을 완료했다. model-engine은 원본 이미지/문서 좌상단 기준 AABB(`bbox: {x, y, width, height}`)와 `polygon`을 함께 반환하며, Docker에서 현재 HEAD로 `CRAFT -> manga_ocr`를 새로 실행한 결과 OCR text block 12개와 CRAFT raw region 38개 모두 원본 `1075x1547` 이미지 범위 안에 있었다.
 - 같은 응답 JSON을 원본 이미지 위에 직접 그려 확인한 overlay에서도 bbox가 실제 말풍선/글자 위치에 정상적으로 겹쳤다. 확인용 산출물은 `model_engine/.runtime/bbox_debug_current_overlay/current_ocr_blocks_bbox_overlay.jpg`, `current_craft_regions_bbox_overlay.jpg`, `summary.json`에 남겨 두었다.
 - 따라서 현재 관측된 "텍스트 검출 시 UI에서 bbox 표시가 안 됨" 문제는 model-engine 좌표 산출 문제가 아니라 UI 결과 적용/렌더링 병목으로 판단한다. UI `result-applier`는 `bbox.x/y`만 텍스트 layer의 `left/top`으로 쓰고, `bbox.width/height`는 표시용 box로 보존/렌더링하지 않으며 layer 크기는 문서 전체 크기로 대체한다.
