@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Page } from '@/types/page'
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-vue-next'
+import PageSidePanelItem from './PageSidePanelItem.vue'
 
 defineProps<{
   pages: Page[]
@@ -23,22 +24,13 @@ const statusColors: Record<string, string> = {
 
 <template>
   <aside
-    class="bg-towa-surface border-r border-towa-border flex flex-col shrink-0 h-full transition-all overflow-hidden"
+    class="bg-towa-surface border-r border-towa-border flex flex-col shrink-0 h-full transition-all relative"
     :class="collapsed ? 'w-10' : 'w-40'"
   >
-    <!-- Toggle button -->
-    <button
-      class="p-2 text-towa-text-muted hover:text-towa-text transition-colors shrink-0 flex justify-center"
-      @click="$emit('update:collapsed', !collapsed)"
-    >
-      <PanelLeftClose v-if="!collapsed" :size="16" />
-      <PanelLeftOpen v-else :size="16" />
-    </button>
-
     <!-- Page list -->
     <div class="flex-1 overflow-y-auto">
       <!-- Collapsed: page numbers only -->
-      <div v-if="collapsed" class="flex flex-col items-center gap-1 py-1">
+      <div v-if="collapsed" class="flex flex-col items-center gap-1 py-1 pb-10">
         <button
           v-for="page in pages"
           :key="page.id"
@@ -57,35 +49,26 @@ const statusColors: Record<string, string> = {
       </div>
 
       <!-- Expanded: thumbnails + info -->
-      <div v-else class="flex flex-col gap-1 p-2">
-        <button
+      <div v-else class="flex flex-col gap-1 p-2 pb-10">
+        <PageSidePanelItem
           v-for="page in pages"
           :key="page.id"
-          class="rounded-md overflow-hidden border-2 transition-colors"
-          :class="page.id === currentPageId
-            ? 'border-towa-accent'
-            : 'border-transparent hover:border-towa-surface-light'"
-          @click="$emit('selectPage', page.id)"
-        >
-          <div class="relative">
-            <img
-              v-if="page.thumbnail"
-              :src="page.thumbnail"
-              :alt="`${page.index}p`"
-              class="w-full aspect-[2/3] object-cover"
-            />
-            <div v-else class="w-full aspect-[2/3] bg-towa-bg flex items-center justify-center text-towa-text-muted text-xs">
-              {{ page.index }}p
-            </div>
-            <span
-              class="absolute top-1 right-1 text-[8px] font-medium text-white px-1 py-0.5 rounded"
-              :class="statusColors[page.status] ?? 'bg-gray-500'"
-            >
-              {{ page.index }}p
-            </span>
-          </div>
-        </button>
+          :page="page"
+          :active="page.id === currentPageId"
+          :status-color="statusColors[page.status] ?? 'bg-gray-500'"
+          @select="$emit('selectPage', page.id)"
+        />
       </div>
     </div>
+
+    <!-- Collapse toggle: 패널 내부 하단 (오른쪽 정렬, 패널의 collapse 방향과 일치하는 우측 가장자리) -->
+    <button
+      class="absolute bottom-2 right-2 w-7 h-7 flex items-center justify-center rounded-md bg-towa-surface-light text-towa-text-muted hover:text-towa-accent hover:bg-towa-surface transition-colors shadow-sm"
+      :title="collapsed ? '페이지 패널 펼치기' : '페이지 패널 접기'"
+      @click="$emit('update:collapsed', !collapsed)"
+    >
+      <PanelLeftClose v-if="!collapsed" :size="14" />
+      <PanelLeftOpen v-else :size="14" />
+    </button>
   </aside>
 </template>

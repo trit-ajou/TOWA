@@ -34,6 +34,16 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 
 최근 추가된 wiring:
 
+- 2026-05-29 기준 `detect` 결과 bbox 좌표계 검증을 완료했다. model-engine은 원본 이미지/문서 좌상단 기준 AABB(`bbox: {x, y, width, height}`)와 `polygon`을 함께 반환하며, Docker에서 현재 HEAD로 `CRAFT -> manga_ocr`를 새로 실행한 결과 OCR text block 12개와 CRAFT raw region 38개 모두 원본 `1075x1547` 이미지 범위 안에 있었다.
+- 같은 응답 JSON을 원본 이미지 위에 직접 그려 확인한 overlay에서도 bbox가 실제 말풍선/글자 위치에 정상적으로 겹쳤다. 확인용 산출물은 `model_engine/.runtime/bbox_debug_current_overlay/current_ocr_blocks_bbox_overlay.jpg`, `current_craft_regions_bbox_overlay.jpg`, `summary.json`에 남겨 두었다.
+- 따라서 현재 관측된 "텍스트 검출 시 UI에서 bbox 표시가 안 됨" 문제는 model-engine 좌표 산출 문제가 아니라 UI 결과 적용/렌더링 병목으로 판단한다. UI `result-applier`는 `bbox.x/y`만 텍스트 layer의 `left/top`으로 쓰고, `bbox.width/height`는 표시용 box로 보존/렌더링하지 않으며 layer 크기는 문서 전체 크기로 대체한다.
+- API `inpaint` job을 `text_detection -> mask_or_erase_planning -> inpaint` 3단계로 되돌렸다. i2i provider 호출에는 여전히 원본 bitmap 한 장만 보내고, 생성된 `inpaint_tasks` 마스크는 최종 `inpainting_layer_bitmap` 합성에만 사용해 마스크 영역은 불투명, 나머지는 투명하게 UI로 전달한다.
+- API `inpaint`의 최종 합성은 `output_mask_mode=mask_artifact`와 `output_mask_dilate_radius=2`를 사용한다. `expanded_bbox`는 글자를 잘 덮지만 휴대폰 화면 같은 비말풍선 영역을 과하게 덮어서, 기본 UI alpha는 CRAFT text mask 주변의 작은 dilation까지만 사용한다.
+- Nanobanana/Mindlogic 공통 인페인트 prompt는 “보존”보다 “기존 글자 완전 제거”가 우선임을 명시하도록 강화했다. 남은 glyph/stroke/ghost text를 허용하지 않고, 제거 영역은 말풍선 내부/종이톤/스크린톤/배경 텍스처로 채우게 한다.
+- provider가 작은 글자를 그대로 복사하는 경우가 있어, mask 기반 inpaint 경로에서는 provider raw output을 보존한 뒤 UI용 합성 전에 CRAFT text mask를 OpenCV Telea inpaint로 한 번 더 정리한다. metrics에는 `local_text_cleanup`, `cleanup_mask_pixel_count`, `cleanup_text_mask_dilate_radius`, `cleanup_inpaint_radius`를 남긴다.
+- 현재 인페인트 상태와 라이브 확인 결과는 `docs/INPAINT_TEXT_REMOVAL_STATUS.md`에 별도 정리했다. provider에는 원본 페이지 1장만 보내고, UI용 `inpainting_layer_bitmap`만 text region mask 주변으로 투명 합성한다.
+- Mindlogic inpaint provider 호출을 prod 기준 Google edit endpoint로 정렬했다. 기본 model은 `imagen-3.0-capability-001`, endpoint는 `/v1/api/google/models/edit-image`, payload는 `reference_images[].reference_image.image_bytes` base64 + `config.edit_mode=EDIT_MODE_DEFAULT`를 사용한다.
+- bitmap-only inpaint 경로의 UI용 `inpainting_layer_bitmap`은 provider full-page output 전체가 아니라 원본과 provider output의 pixel diff overlay만 담는다. provider raw output은 계속 `provider_output_bitmap` artifact로 별도 보존한다.
 - `service_engine` client/errors/models 패키지 추가
 - `ServiceBackedPipelineRunner` 추가
 - `StageRuntimeContext`에 SaaS usage wiring 필드 추가
@@ -60,17 +70,52 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 - API job 실행 시 `workspace://...` 같은 외부 논리 workspace를 서버 내부 `file://` 실행 workspace로 보정해 stage artifact 저장이 실제 서빙 경로에서도 동작
 - job 생성/시작/완료, background executor 예외, billing finalization 실패, stage 시작/종료/실패를 structured app log로 남기도록 보강
 - 로그 payload는 `job_id`, `pipeline_id`, `operation_kind`, `request_ref`, `stage_name`, `stage_run_id`, `status`, `error_code` 중심으로 남기고 credential/session/token 계열 값은 redaction
-- Mindlogic image 연동 전 실 API shape를 확인하기 위한 `scripts/probe_mindlogic_image_edit.py` probe 스크립트 추가. `/v1/gateway/images/generate/`와 legacy `/v1/api/google/models/edit-image` payload를 모두 확인할 수 있게 구성
-- built-in `inpaint=mindlogic` adapter 추가. 기존 나노바나나 인페인트와 동일한 `NANOBANANA_DEFAULT_PROMPT`, full-page provider call, local mask composite 계약을 유지하고 provider 호출부만 Mindlogic Google edit endpoint로 분리
+- Mindlogic image 연동 전 실 API shape를 확인하기 위한 `scripts/probe_mindlogic_image_edit.py` probe 스크립트 추가. `/v1/gateway/images/generate/`와 `/v1/api/google/models/edit-image` payload를 모두 확인할 수 있게 구성
+- built-in `inpaint=mindlogic` adapter 추가. 기존 나노바나나 인페인트와 동일한 `NANOBANANA_DEFAULT_PROMPT`, full-page provider call, local mask/diff composite 계약을 유지하고 provider 호출부만 Mindlogic Google edit API로 분리
 - API job inpaint 경로는 `TOWA_INPAINT_PROVIDER=mindlogic` 또는 runtime metadata `inpaint_provider=mindlogic`일 때 `builtin.mindlogic.inpaint`를 선택한다. SaaS/platform key env는 `TOWA_PLATFORM_PROVIDER_MINDLOGIC_API_KEY`
 - Docker inference sample에서 `CRAFT -> mask_or_erase_planning -> Mindlogic inpaint` 추론 성공 확인. 결과 artifact는 `model_engine/.runtime/mindlogic_inpaint_docker/transactions/pipe_inpaint_sample/inpaint/pipe_inpaint_sample_inpaint_3/`
 - Docker `model-engine`은 `model_engine/.runtime`을 `/app/model_engine/.runtime`로 마운트해 API 서버도 `runtime_config.json`을 읽는다. `TOWA_INPAINT_PROVIDER`, `TOWA_INPAINT_MODEL_NAME`, provider API key는 env 우선, runtime config fallback 순서로 해석한다
 - Docker `model-engine`은 `model_engine/.cache/models`도 `/cache/models`로 마운트한다. UI에서 첫 inpaint job을 테스트할 때 CRAFT detector/refiner 가중치를 컨테이너 재생성마다 다시 다운로드하지 않도록 하여 polling timeout 가능성을 줄인다
 - 공통 stage artifact dump 기능 추가. `TOWA_MODEL_ENGINE_STAGE_DUMP=1` 또는 `runtime_context.metadata.stage_artifact_dump=true`일 때 각 stage transaction 아래 `stage_artifact_dump/`를 만들고 `stage_request.json`, `stage_response.json`, `artifacts_before.json`, `artifacts_after.json`, `document_after.json`을 저장한다. 기본값으로 `file://` artifact는 `files/input`, `files/output` 아래 hardlink/copy하며, `TOWA_MODEL_ENGINE_STAGE_DUMP_COPY_FILES=0` 또는 metadata `stage_artifact_dump_copy_files=false`로 바이너리 복사를 끌 수 있다. dump JSON은 credential/session/token 계열 값을 redaction한다.
-- bitmap-only inpaint 경로의 UI용 `inpainting_layer_bitmap`은 provider full-page output을 그대로 전달하지 않고, base image와 provider output의 pixel diff를 기반으로 투명 overlay를 생성한다. 전체 provider 결과는 계속 `provider_output_bitmap` artifact로 남긴다. diff 경로는 `diff_threshold`, `diff_dilate_radius`, `diff_large_region_ratio_threshold` stage config를 지원하며 stage report에 diff bbox/changed pixel metrics를 남긴다.
+- bitmap-only inpaint 경로의 UI용 `inpainting_layer_bitmap`은 provider full-page output과 원본의 pixel diff overlay를 전달한다. 전체 provider 결과는 debug용 `provider_output_bitmap` artifact로 함께 남긴다.
 - Mindlogic/Nanobanana inpaint provider 호출 prompt에 입력 bitmap의 실제 canvas 크기를 동적으로 추가한다. 예를 들어 UI에서 받은 source bitmap이 `1333x750`이면 provider prompt에 output이 정확히 `1333x750 pixels`이고 crop/pad/stretch/scale 변경을 하면 안 된다는 제약을 붙인다. stage report에는 `prompt_output_size`를 남긴다.
-- API `inpaint` job은 다시 `text_detection -> mask_or_erase_planning -> inpaint` 순서로 실행한다. UI에는 provider full-page 결과가 아니라 `mask_or_erase_planning`의 expanded bbox 영역만 불투명한 `inpainting_layer_bitmap`을 반환하고, bbox 밖은 alpha 0으로 유지한다. provider full-page output은 debug용 `provider_output_bitmap`으로 계속 남긴다.
-- Mindlogic inpaint provider 호출은 gateway mask 계약 오류를 피하기 위해 raw 원본 bitmap 1장만 nested `reference_image` payload로 전달한다. API `inpaint` job은 여전히 `text_detection -> mask_or_erase_planning -> inpaint` 순서로 실행하고, UI에는 provider full-page output 중 `mask_or_erase_planning` expanded bbox 영역만 불투명한 `inpainting_layer_bitmap`으로 잘라 전달한다. stage report에는 `provider_reference_image_count=1`, `provider_mask_guide=no`를 남긴다.
+- API `inpaint` job은 다시 `text_detection -> mask_or_erase_planning -> inpaint` 3단계로 실행한다. UI에는 provider full-page output 전체가 아니라 마스크/diff 합성 결과인 `inpainting_layer_bitmap`을 반환하고, provider 결과도 debug용 `provider_output_bitmap`으로 남긴다.
+- Mindlogic inpaint provider 호출은 Google edit/Imagen endpoint `/v1/api/google/models/edit-image`의 `imagen-3.0-capability-001` 경로를 기본으로 사용한다. raw 원본 bitmap 1장을 `reference_images`에 넣고 stage report에는 `provider_reference_image_count=1`, `provider_mask_guide=no`, mask 없는 경로에서는 `composite_mask_mode=pixel_diff`를 남긴다.
+
+## 2026-05-26 Mindlogic inpaint 장애 기록
+
+문제:
+
+- Vertex/Nanobanana 크레딧 문제를 피하려고 Mindlogic gateway 기반 inpaint를 사용했다.
+- UI에서 inpaint를 누르면 요청 자체는 성공하고 `provider_output_bitmap`, `inpainting_layer_bitmap` artifact도 생성됐지만, 결과 이미지가 원본 만화에서 글자만 지워진 이미지가 아니라 완전히 다른 새 만화 페이지처럼 생성되는 현상이 발생했다.
+- UI 렌더링 문제인지 model engine/provider 문제인지 헷갈릴 수 있었으므로, model engine artifact를 직접 확인했다.
+
+확인한 증거:
+
+- 최근 실패 job의 model engine input artifact는 원본 페이지 그대로였고, 크기도 정상으로 들어왔다. 즉 UI -> model engine 이미지 전달 자체가 깨진 것은 아니었다.
+- 실패 provider output은 원본과 다른 새 만화 페이지였고, 최종 `inpainting.png`도 provider output을 그대로 따라갔다.
+- 저장된 정상 산출물 `model_engine/.runtime/debug/job_bab0fabc6076486d86c51357c957f7b4/.../provider_output.png`는 원본 페이지 구도와 캐릭터/패널을 유지한 채 말풍선/텍스트만 제거된 결과였다.
+- 또 다른 sample run `model_engine/.runtime/mindlogic_inpaint_docker/.../provider_output.png`는 텍스트가 남은 원본에 가까웠고, `inpainting.png`는 mask 영역만 남긴 중간 실험 결과였으므로 최종 e2e 판단 기준으로 쓰지 않는다.
+
+원인 판단(수정됨):
+
+- UI 업로드 누락이 아니라 로컬 model_engine이 prod와 다른 Mindlogic 호출 경로를 사용한 것이 핵심이었다.
+- prod 기준 정상 경로는 Mindlogic `/v1/api/google/models/edit-image` + `imagen-3.0-capability-001` + `reference_images[].reference_image.image_bytes` 조합이다.
+- `/v1/gateway/images/generate/` + flat `image` data URL 조합은 원본을 엄격한 편집 대상이 아니라 생성 참고 이미지처럼 다루는 경향이 있어 새 만화 페이지를 만들 수 있다.
+- 따라서 이번 문제는 prompt 누락보다 provider endpoint/payload shape mismatch로 취급한다.
+
+복구:
+
+- `builtin.mindlogic.inpaint` 기본 모델을 prod와 같은 `imagen-3.0-capability-001`로 맞췄다.
+- endpoint는 Mindlogic Google edit `/v1/api/google/models/edit-image`를 사용한다.
+- `builtin.nanobanana.inpaint`의 Vertex 기본값은 그대로 `gemini-3.1-flash-image-preview`를 유지한다. 변경 범위는 Mindlogic provider 기본값만이다.
+- mask 없는 bitmap-only 경로는 provider full-page output 전체를 UI layer로 넘기지 않고 pixel diff overlay만 `inpainting_layer_bitmap`에 담는다.
+
+주의:
+
+- Mindlogic inpaint endpoint/payload/model을 다시 바꾸려면, UI e2e가 아니라 먼저 model engine artifact 기준으로 provider output이 원본 페이지를 보존하며 글자만 제거하는지 확인해야 한다.
+- 이때 비교 기준은 UI 화면이 아니라 `provider_output_bitmap`과 source bitmap이다. UI 레이어 렌더링/스케일 문제와 provider 생성 품질 문제를 섞어 보면 원인 파악이 어려워진다.
+- 실패 시에는 `TOWA_MODEL_ENGINE_STAGE_DUMP=1` 또는 runtime metadata `stage_artifact_dump=true`를 켜고, stage transaction 아래 `stage_artifact_dump/` 및 `provider_output_bitmap`을 먼저 확인한다.
 
 ## 2026-05-14 세션 handoff
 
@@ -125,16 +170,15 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 
 변경 후:
 
-- `inpaint` 요청 시 `inpaint` 1단계만 실행
-- 프롬프트가 이미 "모든 텍스트를 찾아서 지워라"고 지시하므로 CRAFT 검출이 불필요
-- provider에 원본 이미지 전체를 보내고, provider 결과를 그대로 `layer_inpainting`으로 사용
-- `inpaint_tasks` artifact가 있으면(기존 마스크 기반 경로) 여전히 마스크 합성 fallback으로 동작
+- 이 단순화는 이후 되돌렸다. 현재 `inpaint` 요청은 `text_detection(CRAFT) -> mask_or_erase_planning -> inpaint` 3단계로 실행한다.
+- provider에는 원본 이미지 전체만 보내고 마스크는 보내지 않는다. 생성된 `inpaint_tasks`는 최종 `layer_inpainting` 합성에만 사용한다.
+- `inpaint_tasks` artifact가 있으면 마스크 영역만 합성하고, 없으면 bitmap-only pixel diff overlay fallback으로 동작한다.
 - `builtin.nanobanana.inpaint`, `builtin.mindlogic.inpaint` manifest의 필수 artifact를 `bitmap`으로 맞춰 UI 단독 inpaint 요청에서도 registry selection이 통과하도록 수정
 
 효과:
 
-- CRAFT 모델 로딩/추론 시간 생략 → 인페인트 속도 개선
-- 파이프라인 단계 감소로 실패 지점 감소
+- UI에 전달되는 `inpainting_layer_bitmap`은 마스크 영역만 불투명하고 나머지는 투명하게 유지된다.
+- provider output 전체는 debug용 `provider_output_bitmap` artifact로만 남긴다.
 
 ### 3. 임시 변경 (커밋 미포함)
 
@@ -468,10 +512,10 @@ README 기준서는 현재 코드와 동기화해 유지 중이다. 특히 stage
 구현 내용:
 
 - 기본 `ModelJobManager` executor를 placeholder에서 orchestrator 기반 executor로 전환
-- `detect`는 built-in `CRAFT text_detection` stage 조합 사용
+- `detect`는 `text_detection -> ocr` 조합 사용. CRAFT는 region artifact만 만들고, UI에 내려가는 `replace_text_blocks`는 manga OCR 결과의 원문 일본어를 담는다.
 - `translate`는 `text_detection -> ocr -> translation` 조합 사용
 - `inpaint`는 `text_detection -> mask_or_erase_planning -> inpaint` 조합 사용
-- planner 함수를 job executor 안에서 재사용할 수 있도록 경량 function-stage 래퍼 추가
+- planner 함수는 API job, 직접 stage 테스트, 샘플 경로에서 재사용 가능하도록 유지
 
 비고:
 

@@ -70,6 +70,10 @@ export const TOWA_FEATURES = {
     VIEW_PIXEL_GRID: true,
     UI_PREFERENCES: true,
     UI_HEADER_MENU: true,
+    UI_TOOLBOX: true,
+    UI_TOOL_OPTIONS_PANEL: true,
+    UI_LAYER_PANEL: true,
+    UI_DOCUMENT_HEADER: true,
 
     // ── 기타 ──
     FONT_GOOGLE_FONTS: true,

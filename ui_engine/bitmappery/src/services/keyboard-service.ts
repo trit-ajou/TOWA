@@ -54,7 +54,10 @@ let lastKeyCode = -1;
 const DEFAULT_BLOCKED    = [ 8, 32, 37, 38, 39, 40 ];
 const MOVABLE_TOOL_TYPES = [ ToolTypes.DRAG, ToolTypes.SELECTION, ToolTypes.LASSO, ToolTypes.WAND ];
 const BRUSH_TOOL_TYPES   = [ ToolTypes.BRUSH, ToolTypes.ERASER, ToolTypes.CLONE ];
-const LAYER_SELECT_EXCLUDE_TYPES = [ ToolTypes.CLONE, ToolTypes.ZOOM ];
+// EYEDROPPER 추가: 스포이드 사용 중 Alt가 눌리면 layerSelectMode가 켜져서 클릭 시
+// 원본/다른 레이어로 active layer가 전환되는 부작용이 있다. 스포이드는 색만 추출하는
+// 도구라 토글이 일어나면 의도와 어긋난다 (towa issue #50).
+const LAYER_SELECT_EXCLUDE_TYPES = [ ToolTypes.CLONE, ToolTypes.ZOOM, ToolTypes.EYEDROPPER ];
 
 const defaultBlock = ( e: KeyboardEvent ): void => e.preventDefault();
 
@@ -194,13 +197,11 @@ function handleKeyDown( event: KeyboardEvent ): void {
             break;
 
         case 18: // Alt
-            // alt key sets layer select mode so we can select the active layer on click (by performing transparency checks on the clicked coordinate)
-            // we ignore this when zooming and clone brushing (as alt+clicking then zooms out / selects source coordinate)
-            // and when we have a selection tool selected when there is an active selection (so we can subtract newly added selections from existing ones)
-            if ( !LAYER_SELECT_EXCLUDE_TYPES.includes( getters.activeTool ) &&
-                ( !getters.activeDocument?.activeSelection?.length || !SELECTION_TOOLS.includes( getters.activeTool ))) {
-                commit( "setLayerSelectMode", true );
-            }
+            // TOWA에서는 Alt+클릭이 EyedropperHandler의 색 추출 단축키로 예약되어 있다.
+            // bitmappery 원래 동작은 Alt 누름 시 layerSelectMode를 켜서 클릭 시 transparency 검사로
+            // 가장 위 비투명 layer를 active로 전환하는 것인데, 이 동작이 색 추출 단축키와
+            // 충돌해 사용자가 색을 뽑으려고 클릭하면 의도와 무관하게 layer가 자동 전환됐다.
+            // TOWA 정책: layer 선택은 LayerPanel UI에서만 명시적으로 수행. (towa issue #50)
             break;
 
         case 27: // escape
@@ -402,10 +403,12 @@ function handleKeyDown( event: KeyboardEvent ): void {
 
         case 83: // S
             if ( nativeModifier ) {
-                if ( getters.activeDocument ) {
-                    openModal( SAVE_DOCUMENT );
-                }
-                preventDefault( event ); // page save
+                // TOWA #39: Ctrl/Cmd+S is reserved for the host app's
+                // savePage flow (useAutoSave.saveImmediately). The native
+                // Save Document modal would write a .bpy file, which is
+                // not the persistence model TOWA uses. The host app
+                // attaches its own capture-phase keydown that runs first.
+                preventDefault( event );
             } else if ( canDrawOnActiveLayer() ) {
                 setActiveTool( ToolTypes.CLONE );
             }

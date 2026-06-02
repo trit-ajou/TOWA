@@ -21,10 +21,11 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 <template>
-    <div id="bitmappery-app" ref="app">
-        <header-menu />
+    <div id="bitmappery-app" ref="app" :class="{ 'header-hidden': !showHeaderMenu }">
+        <header-menu v-if="showHeaderMenu" />
         <section class="main">
             <toolbox
+                v-if="showToolbox"
                 ref="toolbox"
                 class="toolbox"
                 :class="{ 'collapsed': !toolboxOpened }"
@@ -33,14 +34,17 @@
                 <component :is="documentCanvas" ref="documentCanvas" />
             </div>
             <div
+                v-if="showOptionsPanel || showLayerPanel"
                 ref="panels"
                 class="panels"
                 :class="{ 'collapsed': !openedPanels.length }"
             >
                 <tool-options-panel
+                    v-if="showOptionsPanel"
                     class="tool-options-panel"
                 />
                 <layer-panel
+                    v-if="showLayerPanel"
                     class="layer-panel"
                 />
             </div>
@@ -83,6 +87,7 @@ import type { Document } from "@/definitions/document";
 import ToolTypes from "@/definitions/tool-types";
 import DocumentFactory from "@/factories/document-factory";
 import { isMobile } from "@/utils/environment-util";
+import { isFeatureEnabled } from "@/config/towa-features";
 import { loadImageFiles } from "@/services/file-loader-queue";
 import { renderState } from "@/services/render-service";
 import ImageToDocumentManager from "@/mixins/image-to-document-manager";
@@ -202,6 +207,11 @@ export default {
         showLoader(): boolean {
             return this.isLoading || renderState.pending > 0;
         },
+        // TOWA: bitmappery 기본 UI는 mode preset으로 일괄 off, towa-app이 대체
+        showHeaderMenu(): boolean { return isFeatureEnabled( "UI_HEADER_MENU" ); },
+        showToolbox(): boolean { return isFeatureEnabled( "UI_TOOLBOX" ); },
+        showOptionsPanel(): boolean { return isFeatureEnabled( "UI_TOOL_OPTIONS_PANEL" ); },
+        showLayerPanel(): boolean { return isFeatureEnabled( "UI_LAYER_PANEL" ); },
     },
     watch: {
         activeDocument( document: Document ): void {
@@ -355,6 +365,25 @@ export default {
         @include mixins.large() {
             padding: variables.$spacing-medium;
         }
+    }
+
+    // TOWA: header-menu가 비활성화된 모드에서는 .main이 부모(=#bitmappery-app)를 꽉 채우고
+    // padding/document-container margin도 제거 (캔버스 영역 하단 여백 방지).
+    &.header-hidden .main {
+        height: 100%;
+        @include mixins.large() {
+            padding: 0;
+        }
+    }
+    &.header-hidden .document-container {
+        margin: 0;
+    }
+    // canvas-wrapper는 @include component.component() 으로 .component__content height/padding이
+    // heading-height 기준 calc. 우리는 component__header를 v-if로 숨기므로 이 보정도 제거해야
+    // 캔버스가 wrapper 전체를 채움 (하단 여백 방지).
+    &.header-hidden .canvas-wrapper .component__content {
+        height: 100%;
+        padding: 0;
     }
 
     .blind {

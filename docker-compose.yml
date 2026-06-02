@@ -87,9 +87,12 @@ services:
       VITE_PUBLIC_HOST: ${VITE_PUBLIC_HOST:-}
       VITE_SERVICE_ENGINE_URL: ${VITE_SERVICE_ENGINE_URL:-http://localhost:8000}
       VITE_MODEL_ENGINE_URL: ${VITE_MODEL_ENGINE_URL:-http://localhost:8100}
-      VITE_UI_AUTH_BACKEND: ${VITE_UI_AUTH_BACKEND:-emulated}
-      VITE_UI_AI_BACKEND: ${VITE_UI_AI_BACKEND:-emulated}
-      VITE_UI_FILES_BACKEND: ${VITE_UI_FILES_BACKEND:-emulated}
+      # Master switch. Per-domain overrides (VITE_UI_AUTH_BACKEND etc.) only apply
+      # when master is 'emulated'. See ui_engine/towa-app/src/backend/index.ts.
+      VITE_UI_BACKEND_MODE: ${VITE_UI_BACKEND_MODE:-real}
+      VITE_UI_AUTH_BACKEND: ${VITE_UI_AUTH_BACKEND:-}
+      VITE_UI_AI_BACKEND: ${VITE_UI_AI_BACKEND:-}
+      VITE_UI_FILES_BACKEND: ${VITE_UI_FILES_BACKEND:-}
     depends_on:
       service-engine:
         condition: service_healthy

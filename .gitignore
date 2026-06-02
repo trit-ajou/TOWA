@@ -1,6 +1,13 @@
 # OS
 .DS_Store
 
+# Claude Code worktrees (per-session feature branches; not part of repo state)
+.claude/worktrees/
+
+# Playwright artifacts (#39 e2e)
+ui_engine/towa-app/test-results/
+ui_engine/towa-app/playwright-report/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
@@ -213,6 +220,11 @@ __marimo__/
 # platform별 native binary 차이로 cross-platform 충돌만 발생해서 추적 해제)
 package-lock.json
 node_modules/
+.env.local
+
+# deploy.sh stuck-rebuild marker (server-side, written when a build attempt leaves
+# services down; prevents 5-min cron rebuild loop until SHA advances or marker removed)
+.deploy-stuck-at-sha
 
 # Local poster/reference artifacts generated during assistant sessions
 /output/poster_reference/

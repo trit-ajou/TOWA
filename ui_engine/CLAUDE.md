@@ -10,22 +10,24 @@ TOWA (Translator's One-stop Workstation with AI)의 UI 엔진 (프론트엔드).
 
 ## 현재 단계
 
-**설계 + 프로토타이핑 단계** (2026-03-18 기준, 3주차)
+**기능 안정화 단계** (2026-06-02 기준)
 
-당면 목표: 전체 UI 와이어프레임 완성 → HTML 프로토타입 → bitmappery 커스터마이징
+주요 인프라(파일 어댑터·캐싱·자동저장·인증·AI 통합)는 #39까지 정리 완료. 다음은 데모 안정화 + 일괄 AI(#57) 등 잔여 기능.
 
 ## 기술 스택
 
 | 항목 | 선택 | 비고 |
 |------|------|------|
-| 프레임워크 | Vue 3 + TypeScript | bitmappery가 Vue 3 기반 |
-| 상태 관리 | Vuex 4 | bitmappery에서 사용 중 |
-| 라우팅 | Vue Router | 화면 전환용 |
-| 빌드 | Vite | |
+| 프레임워크 | Vue 3.5 + TypeScript 5.6 | bitmappery가 Vue 3 기반 |
+| 상태 관리 | Vuex 4 (UI/Editor in-memory) + TanStack Query v5 (서버 상태) | #39 마이그레이션 후 도메인 데이터(projects/pages)는 vue-query, bitmappery는 그대로 vuex |
+| 캐시/영속화 | `idb` 8 + `@tanstack/query-persist-client-core` | IndexedDB. per-user namespace(`towa-cache-${userId}`, `towa-query-${userId}`) |
+| 라우팅 | Vue Router 4 | onBeforeRouteLeave/Update guard로 페이지 저장 await |
+| 빌드 | Vite 6 | |
 | 캔버스 엔진 | zCanvas | bitmappery의 렌더링 엔진 |
-| 1차 배포 | 웹앱 (브라우저 접속) | |
-| 2차 배포 | Electron (추후) | 데스크톱 앱 래핑 |
-| UI 프레임워크 | 미정 | |
+| UI 스타일 | Tailwind CSS 4 | |
+| 테스트 | Vitest (unit) + Playwright (e2e 12 spec) | |
+| 1차 배포 | 웹앱 + Docker + Cloudflare tunnel | |
+| 2차 배포 | Electron (추후) | LocalFileManager 도입 시점 |
 
 ## 화면 구성 (4개 화면)
 

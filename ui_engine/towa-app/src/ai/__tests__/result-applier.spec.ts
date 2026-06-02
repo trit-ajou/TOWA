@@ -1,13 +1,53 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Store } from 'vuex'
+import { QueryClient } from '@tanstack/vue-query'
 
 import type { AiJobSnapshot } from '@/backend/contracts'
+import type { FileAdapter } from '@/file-adapter'
 import type { Page } from '@/types/page'
+import type { PageSummary } from '@/file-adapter'
 import { applyAiJobSnapshotToCurrentPage } from '@/ai/result-applier'
+import { queryKeys } from '@/composables/queryKeys'
 import { blobToCanvas } from '@bitmappery/utils/canvas-util'
+
+function makeQueryClient(page: Page): QueryClient {
+  const qc = new QueryClient()
+  const summary: PageSummary = {
+    id: page.id,
+    projectId: page.projectId,
+    index: page.index,
+    status: page.status,
+    updatedAt: new Date().toISOString(),
+  }
+  qc.setQueryData<PageSummary[]>(queryKeys.pages.byProject(page.projectId), [summary])
+  return qc
+}
+
+// Minimal stub — background path is exercised by e2e, unit tests only cover
+// the active path which never touches fileAdapter.
+const stubFileAdapter = {} as FileAdapter
+
+function makeAutoSaveStubs() {
+  return {
+    markDirty: vi.fn(),
+    saveImmediately: vi.fn().mockResolvedValue(undefined),
+  }
+}
 
 vi.mock('@bitmappery/utils/canvas-util', () => ({
   blobToCanvas: vi.fn(),
+  canvasToBlob: vi.fn().mockResolvedValue(new Blob()),
+}))
+
+vi.mock('@bitmappery/utils/document-util', () => ({
+  createSyncSnapshot: vi.fn(() => document.createElement('canvas')),
+}))
+
+vi.mock('@bitmappery/factories/document-factory', () => ({
+  default: {
+    fromBlob: vi.fn(),
+    toBlob: vi.fn().mockResolvedValue(new Blob()),
+  },
 }))
 
 describe('applyAiJobSnapshotToCurrentPage', () => {
@@ -15,7 +55,7 @@ describe('applyAiJobSnapshotToCurrentPage', () => {
     const page = makePage()
     const existingTextLayer = { id: 'layer_99', type: 'text' }
     const store = makeStore(page, { layers: [existingTextLayer] })
-    const savePage = vi.fn().mockResolvedValue(undefined)
+    const autosave = makeAutoSaveStubs()
     const snapshot = makeSnapshot({
       operationKind: 'translate',
       documentPatch: {
@@ -37,13 +77,17 @@ describe('applyAiJobSnapshotToCurrentPage', () => {
       },
     })
 
+    const qc = makeQueryClient(page)
     const result = await applyAiJobSnapshotToCurrentPage({
       store,
+      queryClient: qc,
       backend: { getArtifact: vi.fn() },
       snapshot,
       projectId: page.projectId,
       pageId: page.id,
-      savePage,
+      fileAdapter: stubFileAdapter,
+      markDirty: autosave.markDirty,
+      saveImmediately: autosave.saveImmediately,
       appliedAt: new Date(2026, 4, 7, 15, 30),
     })
 
@@ -72,15 +116,10 @@ describe('applyAiJobSnapshotToCurrentPage', () => {
         }),
       }),
     )
-    // page status만 갱신, textBlocks 필드는 더 이상 없음
-    expect(store.commit).toHaveBeenCalledWith(
-      'pages/UPDATE_PAGE',
-      expect.objectContaining({
-        id: page.id,
-        status: 'in-progress',
-      }),
-    )
-    expect(savePage).toHaveBeenCalledWith(page.id)
+    // page status는 이제 query cache에 기록된다 (Vuex 모듈 제거됨).
+    const cached = qc.getQueryData<PageSummary[]>(queryKeys.pages.byProject(page.projectId)) ?? []
+    expect(cached.find((p) => p.id === page.id)?.status).toBe('in-progress')
+    expect(autosave.saveImmediately).toHaveBeenCalledWith(page.id)
   })
 
   it('adds bitmap artifact results as new graphic layers without replacing existing layers', async () => {
@@ -120,11 +159,14 @@ describe('applyAiJobSnapshotToCurrentPage', () => {
 
     const result = await applyAiJobSnapshotToCurrentPage({
       store,
+      queryClient: makeQueryClient(page),
       backend: { getArtifact },
       snapshot,
       projectId: page.projectId,
       pageId: page.id,
-      savePage: vi.fn().mockResolvedValue(undefined),
+      fileAdapter: stubFileAdapter,
+      markDirty: vi.fn(),
+      saveImmediately: vi.fn().mockResolvedValue(undefined),
       appliedAt: new Date(2026, 4, 7, 15, 30),
     })
 
@@ -139,14 +181,126 @@ describe('applyAiJobSnapshotToCurrentPage', () => {
         top: 8,
         width: 800,
         height: 1200,
+        meta: expect.objectContaining({ role: 'inpaint' }),
       }),
     )
     expect(store.commit).not.toHaveBeenCalledWith('bmp/removeLayer', expect.anything())
   })
 
+  it('inserts inpaint graphic layer below existing text layers so text stays on top', async () => {
+    const page = makePage()
+    const existingText = { id: 'layer_99', type: 'text' }
+    const store = makeStore(page, { width: 800, height: 1200, layers: [existingText] })
+    const getArtifact = vi.fn().mockResolvedValue(new Blob(['png'], { type: 'image/png' }))
+    vi.mocked(blobToCanvas).mockResolvedValue({ width: 800, height: 1200 } as HTMLCanvasElement)
+    const snapshot = makeSnapshot({
+      operationKind: 'inpaint',
+      artifacts: {
+        'artifact://output/inpaint.png': {
+          artifact_ref: 'artifact://output/inpaint.png',
+          kind: 'bitmap',
+          media_type: 'image/png',
+          uri: 'file:///tmp/inpaint.png',
+        },
+      },
+      documentPatch: {
+        patches: [
+          {
+            op: 'add_layer',
+            payload: {
+              layer: {
+                id: 'g-1',
+                type: 'graphic',
+                left: 0,
+                top: 0,
+                width: 800,
+                height: 1200,
+                source_ref: 'artifact://output/inpaint.png',
+              },
+            },
+          },
+        ],
+      },
+    })
+
+    await applyAiJobSnapshotToCurrentPage({
+      store,
+      queryClient: makeQueryClient(page),
+      backend: { getArtifact },
+      snapshot,
+      projectId: page.projectId,
+      pageId: page.id,
+      fileAdapter: stubFileAdapter,
+      markDirty: vi.fn(),
+      saveImmediately: vi.fn().mockResolvedValue(undefined),
+      appliedAt: new Date(2026, 4, 7, 15, 30),
+    })
+
+    // 기존 텍스트 인덱스 0 직전에 insert → graphic이 텍스트 아래로 깔림
+    expect(store.commit).toHaveBeenCalledWith(
+      'bmp/insertLayerAtIndex',
+      expect.objectContaining({
+        index: 0,
+        layer: expect.objectContaining({
+          type: 'graphic',
+          meta: expect.objectContaining({ role: 'inpaint' }),
+        }),
+      }),
+    )
+  })
+
+  it('accepts bbox in [x, y, w, h] array form from model engine', async () => {
+    const page = makePage()
+    const store = makeStore(page)
+    const snapshot = makeSnapshot({
+      operationKind: 'detect',
+      documentPatch: {
+        patches: [
+          {
+            op: 'replace_text_blocks',
+            payload: {
+              text_blocks: [
+                {
+                  block_id: 'tb-arr',
+                  source_lang_text: 'やあ',
+                  bbox: [12, 34, 56, 78],
+                },
+              ],
+            },
+          },
+        ],
+      },
+    })
+
+    await applyAiJobSnapshotToCurrentPage({
+      store,
+      queryClient: makeQueryClient(page),
+      backend: { getArtifact: vi.fn() },
+      snapshot,
+      projectId: page.projectId,
+      pageId: page.id,
+      fileAdapter: stubFileAdapter,
+      markDirty: vi.fn(),
+      saveImmediately: vi.fn().mockResolvedValue(undefined),
+      appliedAt: new Date(2026, 4, 7, 15, 30),
+    })
+
+    expect(store.commit).toHaveBeenCalledWith(
+      'bmp/addLayer',
+      expect.objectContaining({
+        left: 12,
+        top: 34,
+        // detect-only: translated_text 없으면 text.value는 빈 값. 원문은 meta.original에만.
+        text: expect.objectContaining({ value: '' }),
+        meta: expect.objectContaining({ original: 'やあ', status: 'detected' }),
+      }),
+    )
+  })
+
   it('does not apply partial jobs automatically', async () => {
-    const store = makeStore(makePage())
-    const savePage = vi.fn()
+    const page = makePage()
+    const store = makeStore(page)
+    const autosave = makeAutoSaveStubs()
     const snapshot = makeSnapshot({
       status: 'partial',
       documentPatch: {
@@ -161,21 +315,27 @@ describe('applyAiJobSnapshotToCurrentPage', () => {
 
     const result = await applyAiJobSnapshotToCurrentPage({
       store,
+      queryClient: makeQueryClient(page),
       backend: { getArtifact: vi.fn() },
       snapshot,
       projectId: 'proj-1',
       pageId: 'page-1',
-      savePage,
+      fileAdapter: stubFileAdapter,
+      markDirty: autosave.markDirty,
+      saveImmediately: autosave.saveImmediately,
     })
 
     expect(result).toMatchObject({ applied: false, reason: 'status_not_succeeded' })
     expect(store.commit).not.toHaveBeenCalled()
-    expect(savePage).not.toHaveBeenCalled()
+    expect(autosave.saveImmediately).not.toHaveBeenCalled()
   })
 })
 
-function makeStore(page: Page, activeDocument: { layers?: unknown[] } = {}): Store<unknown> {
+function makeStore(page: Page, activeDocument: { layers?: unknown[]; width?: number; height?: number } = {}): Store<unknown> {
   return {
+    // Active-path branch checks state.editor.selectedPageId to decide whether
+    // to mutate the live store or go via the detached background path.
+    state: { editor: { selectedPageId: page.id } },
     getters: {
       'pages/byId': (projectId: string, pageId: string) => (
         projectId === page.projectId && pageId === page.id ? page : undefined

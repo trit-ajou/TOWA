@@ -2,15 +2,10 @@
 
 장기 계획은 `Project_Plan.md` 참조 (gitignore 대상, 로컬 전용).
 
-## 이번 주 작업 (10주차 마무리, 05/10 ~ 05/11) — 3 세션 병렬
+## 진행 중 / 다음 할 일
 
-- [ ] **U1** 페이지 전환 깜빡임 개선 (로딩 오버레이 / 이전 캔버스 유지)
-- [ ] **U6** Bitmappery 백그라운드 단축키 비활성 가드 (캔버스 미노출 화면에서 키 입력 차단)
-- [ ] **F5** TranslationPanel ↔ bitmappery 텍스트 레이어 양방향 동기화
-
-## 다음 할 일 (이번 주 후)
-
-- [ ] **F3** 만화 번역 특화 UI/UX 재설계 (11주차)
+- [ ] **#57** 프로젝트 생성 시 일괄 AI 적용 (#39 인프라 위 후속 — active/background 분기, savePage 직접 호출 기반)
+- [ ] **F3** 만화 번역 특화 UI/UX 재설계
 - [ ] **F7** 페이지 export (PNG/ZIP)
 - [ ] **F9** cloud 모드 통합 e2e 검증 (실 페이지 AI 사이클)
 - [ ] **F11** LoginModal 세션 만료 overlay
@@ -20,7 +15,7 @@
 
 ## 이슈 / 버그
 
-- [ ] **B1 (= U6)** Bitmappery preload로 인한 백그라운드 단축키 발사 — 라이브러리/프로젝트 홈에서 `C` 등 키 누르면 캔버스 툴바가 활성화되는 등 의도치 않은 동작. bitmappery `KeyboardService.setSuspended(true)`로 가드 필요. 발생 위치: 캔버스가 마운트되어 있되 노출되지 않는 화면 전부.
+(현재 비어있음)
 
 ## 정리 필요 (eocodn 변경사항)
 
@@ -48,3 +43,8 @@
 - [x] package-lock.json 추적 해제 (cross-platform 충돌 방지)
 - [x] Landing(`/`) / Login(`/login`) 풀페이지 + 라우터 가드 (`meta.requiresAuth` + `beforeEach` redirect to `/login?redirect=...`)
 - [x] AppNavbar 로그인 메뉴 navigate + logout redirect
+- [x] **U6 / B1** Bitmappery 백그라운드 단축키 가드 — `router/index.ts` beforeEach에서 `KeyboardService.setSuspended` 호출로 처리
+- [x] **#22 일부** 편집 화면 UI 개편 — 새 toolbox/패널/AI 드롭다운, Hand(Space)/Zoom 도구, AI 진행 알림, FG/BG swap+X, 우클릭 브러쉬 옵션, Alt+클릭 스포이드, 비-커스텀 레이어 paint 가드 토스트 (Ctrl+T transform은 Project_Plan.md U7로 분리)
+- [x] **U1** 페이지 전환 깜빡임 개선 — #39에서 PageTransitionOverlay (캔버스 영역 한정, 300ms delay)로 해결
+- [x] **F5** TranslationPanel ↔ bitmappery 텍스트 레이어 양방향 동기화 — EditorTab에서 update/add/remove 핸들러로 bmp/updateLayer·addLayer·removeLayer 호출, layer 상태 ↔ TranslationPanel 양방향
+- [x] **#39** FileAdapter sync 레이어 재구성 — TanStack Query 마이그레이션, 페이지 캐시(IDB + per-user namespace), prefetch, 자동저장/수동저장(Ctrl+S), per-page "저장 안 됨" 뱃지, AI 결과 적용 active/background 분기, 페이지 전환 즉시 저장, KeepAlive 제거(vuejs/core#8509), thumbnail viewport→doc snapshot. 자세한 내역은 CHANGELOG 참조

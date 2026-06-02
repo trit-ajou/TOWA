@@ -5,6 +5,8 @@ import { useStore } from 'vuex'
 import { Settings, Download, Trash2, MoreHorizontal, User, LogIn, LogOut, Coins } from 'lucide-vue-next'
 import { useModal } from '@/composables/useModal'
 import { useDeploymentMode } from '@/composables/useDeploymentMode'
+import { useProjects } from '@/composables/useProjects'
+import { useFolders } from '@/composables/useFolders'
 import DropdownMenu from './DropdownMenu.vue'
 import SettingsModal from './SettingsModal.vue'
 import LoginModal from './LoginModal.vue'
@@ -30,14 +32,30 @@ async function handleLogout() {
 }
 const settingsModal = useModal()
 
+const projectsApi = useProjects()
+const foldersApi = useFolders()
+
 const isInProject = computed(() => route.path.startsWith('/project/'))
 const isInLibrary = computed(() => route.name === 'library')
 const projectId = computed(() => route.params.id as string | undefined)
-const project = computed(() => projectId.value ? store.getters['projects/byId'](projectId.value) : null)
+const project = computed(() => projectId.value ? projectsApi.byId(projectId.value) : null)
 const selectedPageId = computed(() => store.getters['editor/selectedPageId'])
 
-// Library folder path (from store)
-const libraryPath = computed<string[]>(() => store.getters['library/currentPath'])
+// Library breadcrumb (folder ids from root → current)
+const currentFolderId = computed<string | null>(() => store.getters['library/currentFolderId'])
+
+interface BreadcrumbSegment { id: string; name: string }
+const libraryBreadcrumb = computed<BreadcrumbSegment[]>(() => {
+  const segments: BreadcrumbSegment[] = []
+  let cur = currentFolderId.value
+  while (cur) {
+    const node = foldersApi.byId(cur)
+    if (!node) break
+    segments.unshift({ id: node.id, name: node.name })
+    cur = node.parentId
+  }
+  return segments
+})
 
 const currentTab = computed<ProjectTab>(() => {
   if (route.name === 'editor') return 'edit'
@@ -51,20 +69,27 @@ const tabs = computed(() => [
   { id: 'detail' as const, label: '상세 편집', enabled: !!selectedPageId.value },
 ])
 
-// Project folder path segments
-const projectFolderSegments = computed(() => {
-  if (!project.value?.folder) return []
-  return project.value.folder.split('/')
+// Project folder breadcrumb (derived from project.folderId)
+const projectFolderBreadcrumb = computed<BreadcrumbSegment[]>(() => {
+  const segments: BreadcrumbSegment[] = []
+  let cur: string | null = (project.value as { folderId?: string | null } | null)?.folderId ?? null
+  while (cur) {
+    const node = foldersApi.byId(cur)
+    if (!node) break
+    segments.unshift({ id: node.id, name: node.name })
+    cur = node.parentId
+  }
+  return segments
 })
 
 function goHome() {
-  store.commit('library/SET_PATH', [])
-  router.push('/')
+  store.commit('library/SET_CURRENT_FOLDER', null)
+  router.push(isCloud.value && !isLoggedIn.value ? '/' : '/library')
 }
 
-function goToLibraryPath(path: string[]) {
-  store.commit('library/SET_PATH', path)
-  if (!isInLibrary.value) router.push('/')
+function goToFolder(folderId: string | null) {
+  store.commit('library/SET_CURRENT_FOLDER', folderId)
+  if (!isInLibrary.value) router.push(isCloud.value && !isLoggedIn.value ? '/' : '/library')
 }
 
 function switchTab(tab: ProjectTab) {
@@ -100,29 +125,29 @@ function switchTab(tab: ProjectTab) {
       </button>
 
       <!-- Library folder path -->
-      <template v-if="isInLibrary && libraryPath.length > 0">
-        <template v-for="(seg, i) in libraryPath" :key="i">
+      <template v-if="isInLibrary && libraryBreadcrumb.length > 0">
+        <template v-for="(seg, i) in libraryBreadcrumb" :key="seg.id">
           <span class="text-towa-text-muted mx-2 shrink-0 text-xs">&gt;</span>
           <button
-            v-if="i < libraryPath.length - 1"
+            v-if="i < libraryBreadcrumb.length - 1"
             class="text-towa-text-muted hover:text-towa-accent transition-colors cursor-pointer truncate"
-            @click="goToLibraryPath(libraryPath.slice(0, i + 1))"
+            @click="goToFolder(seg.id)"
           >
-            {{ seg }}
+            {{ seg.name }}
           </button>
-          <span v-else class="font-medium text-towa-text truncate">{{ seg }}</span>
+          <span v-else class="font-medium text-towa-text truncate">{{ seg.name }}</span>
         </template>
       </template>
 
       <!-- Project path -->
       <template v-if="isInProject && project">
-        <template v-for="(seg, i) in projectFolderSegments" :key="i">
+        <template v-for="seg in projectFolderBreadcrumb" :key="seg.id">
           <span class="text-towa-text-muted mx-2 shrink-0 text-xs">&gt;</span>
           <button
             class="text-towa-text-muted hover:text-towa-accent transition-colors cursor-pointer truncate"
-            @click="goToLibraryPath(projectFolderSegments.slice(0, i + 1))"
+            @click="goToFolder(seg.id)"
           >
-            {{ seg }}
+            {{ seg.name }}
           </button>
         </template>
         <span class="text-towa-text-muted mx-2 shrink-0 text-xs">&gt;</span>

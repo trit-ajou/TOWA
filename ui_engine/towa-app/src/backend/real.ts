@@ -16,6 +16,11 @@ import type {
   ProjectCreateInput,
   ProjectDto,
   ProjectPatchInput,
+  FolderDto,
+  FolderCreateInput,
+  FolderPatchInput,
+  DeleteFolderQuery,
+  TrashEntryDto,
   TransportArtifactDescriptor,
   TransportDocument,
   TransportDocumentPatch,
@@ -126,7 +131,7 @@ async function requestJson(url: string, init: RequestInit): Promise<JsonObject> 
   const rawText = await response.text()
   const payload = parseJsonObject(rawText)
   if (!response.ok) {
-    throw new BackendError(extractError(payload, response.statusText))
+    throw new BackendError(extractError(payload, response.statusText), response.status)
   }
   return payload
 }
@@ -351,7 +356,7 @@ export function createRealFilesBackend(options: RealBackendOptions): FilesBacken
           source_lang: input.sourceLang,
           target_lang: input.targetLang,
           status: input.status,
-          folder: input.folder,
+          folder_id: input.folderId ?? null,
           config: input.config,
           thumbnail_url: input.thumbnailUrl,
         }),
@@ -366,7 +371,7 @@ export function createRealFilesBackend(options: RealBackendOptions): FilesBacken
       if (patch.sourceLang !== undefined) body.source_lang = patch.sourceLang
       if (patch.targetLang !== undefined) body.target_lang = patch.targetLang
       if (patch.status !== undefined) body.status = patch.status
-      if (patch.folder !== undefined) body.folder = patch.folder
+      if (patch.folderId !== undefined) body.folder_id = patch.folderId
       if (patch.config !== undefined) body.config = patch.config
 
       const payload = await requestJson(`${base}/api/v1/projects/${projectId}`, {
@@ -382,6 +387,81 @@ export function createRealFilesBackend(options: RealBackendOptions): FilesBacken
         method: 'DELETE',
         headers: { Authorization: `Bearer ${ensureSessionKey(opts.sessionKey)}` },
       })
+    },
+
+    async restoreProject(projectId: string, opts: AuthRequestOptions): Promise<ProjectDto> {
+      const payload = await requestJson(`${base}/api/v1/projects/${projectId}/restore`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${ensureSessionKey(opts.sessionKey)}` },
+      })
+      return toProjectDto(payload)
+    },
+
+    async permanentlyDeleteProject(projectId: string, opts: AuthRequestOptions): Promise<void> {
+      await requestJson(`${base}/api/v1/projects/${projectId}?permanent=true`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${ensureSessionKey(opts.sessionKey)}` },
+      })
+    },
+
+    async listFolders(opts: AuthRequestOptions, params?: { search?: string }): Promise<FolderDto[]> {
+      const url = new URL(`${base}/api/v1/folders`)
+      if (params?.search) url.searchParams.set('search', params.search)
+      const payload = await requestJson(url.toString(), {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${ensureSessionKey(opts.sessionKey)}` },
+      })
+      const items = Array.isArray(payload.items) ? payload.items : []
+      return items.map((item) => toFolderDto(asObject(item, 'folder')))
+    },
+
+    async createFolder(input: FolderCreateInput, opts: AuthRequestOptions): Promise<FolderDto> {
+      const payload = await requestJson(`${base}/api/v1/folders`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${ensureSessionKey(opts.sessionKey)}` },
+        body: JSON.stringify({ name: input.name, parent_id: input.parentId }),
+      })
+      return toFolderDto(payload)
+    },
+
+    async updateFolder(folderId: string, patch: FolderPatchInput, opts: AuthRequestOptions): Promise<FolderDto> {
+      const body: Record<string, unknown> = {}
+      if (patch.name !== undefined) body.name = patch.name
+      if (patch.parentId !== undefined) body.parent_id = patch.parentId
+      const payload = await requestJson(`${base}/api/v1/folders/${folderId}`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${ensureSessionKey(opts.sessionKey)}` },
+        body: JSON.stringify(body),
+      })
+      return toFolderDto(payload)
+    },
+
+    async deleteFolder(folderId: string, query: DeleteFolderQuery, opts: AuthRequestOptions): Promise<void> {
+      const url = new URL(`${base}/api/v1/folders/${folderId}`)
+      if (query.mode === 'cascade-trash') url.searchParams.set('cascade', 'trash')
+      else if (query.mode === 'reparent') url.searchParams.set('reparent', 'true')
+      else if (query.mode === 'permanent') url.searchParams.set('permanent', 'true')
+      await requestJson(url.toString(), {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${ensureSessionKey(opts.sessionKey)}` },
+      })
+    },
+
+    async restoreFolder(folderId: string, opts: AuthRequestOptions): Promise<FolderDto> {
+      const payload = await requestJson(`${base}/api/v1/folders/${folderId}/restore`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${ensureSessionKey(opts.sessionKey)}` },
+      })
+      return toFolderDto(payload)
+    },
+
+    async listTrash(opts: AuthRequestOptions): Promise<TrashEntryDto[]> {
+      const payload = await requestJson(`${base}/api/v1/trash`, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${ensureSessionKey(opts.sessionKey)}` },
+      })
+      const items = Array.isArray(payload.items) ? payload.items : []
+      return items.map((item) => toTrashEntryDto(asObject(item, 'trash_item')))
     },
 
     async listPageSummaries(projectId: string, opts: AuthRequestOptions): Promise<PageSummaryDto[]> {
@@ -420,7 +500,7 @@ export function createRealFilesBackend(options: RealBackendOptions): FilesBacken
       if (!response.ok) {
         const text = await response.text()
         const errorPayload = parseJsonObject(text)
-        throw new BackendError(extractError(errorPayload, response.statusText))
+        throw new BackendError(extractError(errorPayload, response.statusText), response.status)
       }
       return parseMultipartMixed(response)
     },
@@ -460,7 +540,7 @@ async function parseJsonResponse(response: Response): Promise<JsonObject> {
   const rawText = await response.text()
   const payload = parseJsonObject(rawText)
   if (!response.ok) {
-    throw new BackendError(extractError(payload, response.statusText))
+    throw new BackendError(extractError(payload, response.statusText), response.status)
   }
   return payload
 }
@@ -480,7 +560,7 @@ async function requestBlob(url: string, init: RequestInit): Promise<Blob> {
   if (!response.ok) {
     const rawText = await response.text()
     const payload = parseJsonObject(rawText)
-    throw new BackendError(extractError(payload, response.statusText))
+    throw new BackendError(extractError(payload, response.statusText), response.status)
   }
   return response.blob()
 }
@@ -663,11 +743,38 @@ function toProjectDto(json: Record<string, unknown>): ProjectDto {
     targetLang: String(json.target_lang),
     pageCount: Number(json.page_count ?? 0),
     status: String(json.status),
-    folder: String(json.folder ?? ''),
+    folderId: json.folder_id != null ? String(json.folder_id) : null,
+    folderPath: json.folder_path != null ? String(json.folder_path) : null,
     config: (json.config && typeof json.config === 'object' && !Array.isArray(json.config)) ? json.config as Record<string, unknown> : {},
     createdAt: String(json.created_at),
     updatedAt: String(json.updated_at),
+    deletedAt: json.deleted_at != null ? String(json.deleted_at) : null,
   }
+}
+
+function toFolderDto(json: Record<string, unknown>): FolderDto {
+  return {
+    id: String(json.id),
+    name: String(json.name),
+    parentId: json.parent_id != null ? String(json.parent_id) : null,
+    path: String(json.path ?? ''),
+    createdAt: String(json.created_at),
+    updatedAt: String(json.updated_at),
+    deletedAt: json.deleted_at != null ? String(json.deleted_at) : null,
+  }
+}
+
+function toTrashEntryDto(json: Record<string, unknown>): TrashEntryDto {
+  const type = String(json.type)
+  const item = asObject(json.item, 'trash_item.item')
+  if (type === 'folder') return { type: 'folder', item: toFolderDto(item) }
+  if (type === 'project') return { type: 'project', item: toProjectDto(item) }
+  throw new BackendError({
+    code: 'invalid_response',
+    message: `unknown trash entry type: ${type}`,
+    retryable: false,
+    details: null,
+  })
 }
 
 function toPageSummaryDto(json: Record<string, unknown>): PageSummaryDto {

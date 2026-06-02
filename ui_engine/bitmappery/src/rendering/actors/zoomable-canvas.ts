@@ -105,33 +105,78 @@ class ZoomableCanvas extends canvas {
         }
     }
 
-    setDocumentScale( targetWidth: number, targetHeight: number, scale: number, zoom: number, activeDocument: Document = null ): void {
-        const { left, top, width, height } = this._viewport;
+    setDocumentScale(
+        targetWidth: number, targetHeight: number, scale: number, zoom: number,
+        activeDocument: Document = null,
+        anchor: { localX: number; localY: number; focalX: number; focalY: number } | null = null,
+    ): void {
+        const oldViewport = { ...this._viewport };
+        const oldWidth    = this._width;
+        const oldHeight   = this._height;
+        const { width: vpW, height: vpH } = oldViewport;
 
-        let scrollWidth  = this._width  - width;
-        let scrollHeight = this._height - height;
+        // anchor 모드: 클릭/커서 위치의 world point가 화면에서 같은 viewport 위치에 유지
+        // 기본 모드: 캔버스가 viewport보다 크면 이전 viewport ratio 유지, 작으면 centered
+        let worldRatioX: number, worldRatioY: number;
+        let focalX: number, focalY: number;
 
-        // cache the current scroll offset so we can zoom from the current offset
-        // note that by default we zoom from the center (when document was unscrolled)
-        const ratioX = ( left / scrollWidth )  || .5;
-        const ratioY = ( top  / scrollHeight ) || .5;
+        if ( anchor ) {
+            // localX/Y는 canvas element 내부 좌표 (world point 식별용)
+            worldRatioX = ( oldViewport.left + anchor.localX ) / oldWidth;
+            worldRatioY = ( oldViewport.top  + anchor.localY ) / oldHeight;
+            // focalX/Y는 viewport(container) 내 좌표 (줌 후에도 이 화면 위치 유지)
+            focalX = anchor.focalX / vpW;
+            focalY = anchor.focalY / vpH;
+        } else {
+            // 캔버스가 viewport보다 클 때만 이전 ratio 의미 있음
+            const oldScrollW = oldWidth  - vpW;
+            const oldScrollH = oldHeight - vpH;
+            const ratioX = oldScrollW > 0 ? ( oldViewport.left / oldScrollW ) : 0.5;
+            const ratioY = oldScrollH > 0 ? ( oldViewport.top  / oldScrollH ) : 0.5;
+            worldRatioX = focalX = ratioX;
+            worldRatioY = focalY = ratioY;
+        }
 
         this.setDimensions( fastRound( targetWidth ), fastRound( targetHeight ), true, true );
-        this.setZoomFactor( scale * zoom ); // eventually replace with zCanvas.setZoom()
+        this.setZoomFactor( scale * zoom );
 
-        // update scroll widths after scaling operation
+        // 캔버스가 viewport보다 크면 element는 viewport 좌상단 (offset 0), viewport pan으로 anchor 유지
+        // 캔버스가 작으면 element offset(transform)으로 anchor 유지 (viewport.left=0)
+        let newViewportLeft: number, newViewportTop: number;
+        let elementOffsetX: number, elementOffsetY: number;
 
-        scrollWidth  = this._width  - width;
-        scrollHeight = this._height - height;
+        // 캔버스가 viewport보다 크면 anchor 유지(클릭 위치 고정), 작으면 centered로 snap.
+        // 사용자 직관: 캔버스가 화면에 다 들어오면 가운데 정렬이 자연스러움.
+        // 줌인 상태에서 자유 이동이 필요하면 Space+드래그 pan 도구 사용.
+        if ( this._width >= vpW ) {
+            elementOffsetX = 0;
+            newViewportLeft = anchor
+                ? worldRatioX * this._width - focalX * vpW
+                : ( this._width - vpW ) * worldRatioX;
+        } else {
+            newViewportLeft = 0;
+            elementOffsetX = ( vpW - this._width ) / 2;
+        }
+        if ( this._height >= vpH ) {
+            elementOffsetY = 0;
+            newViewportTop = anchor
+                ? worldRatioY * this._height - focalY * vpH
+                : ( this._height - vpH ) * worldRatioY;
+        } else {
+            newViewportTop = 0;
+            elementOffsetY = ( vpH - this._height ) / 2;
+        }
 
-        // maintain relative scroll offset after rescale
-        this.panViewport(
-            fastRound( scrollWidth  * ratioX ),
-            fastRound( scrollHeight * ratioY ), true
-        );
+        this.panViewport( fastRound( newViewportLeft ), fastRound( newViewportTop ), true );
+
+        // TOWA: canvas element 위치를 직접 제어. .center CSS는 document-canvas.vue에서 비활성화됨.
+        this._element.style.position = "absolute";
+        this._element.style.left = `${fastRound( elementOffsetX )}px`;
+        this._element.style.top  = `${fastRound( elementOffsetY )}px`;
+        this._element.style.transform = ""; // .center 클래스의 잔존 transform 제거
 
         if ( activeDocument ) {
-            this.documentScale = activeDocument.width / this._width; // the scale of the Document relative to this on-screen canvas
+            this.documentScale = activeDocument.width / this._width;
         }
     }
 

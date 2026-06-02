@@ -15,11 +15,22 @@ import type {
   ProjectCreateInput,
   ProjectDto,
   ProjectPatchInput,
+  FolderDto,
+  TrashEntryDto,
   TransportArtifactDescriptor,
   TransportDocumentPatch,
   TransportStageReport,
 } from './contracts'
 import { BackendError, ensureSessionKey } from './errors'
+
+function notImplementedInEmulated(name: string): BackendError {
+  return new BackendError({
+    code: 'not_implemented_in_emulated',
+    message: `Emulated backend does not implement ${name}. Use VITE_UI_FILES_BACKEND=real.`,
+    retryable: false,
+    details: null,
+  })
+}
 
 interface EmulatedJobRecord {
   jobId: string
@@ -361,10 +372,12 @@ export function createEmulatedFilesBackend(): FilesBackend {
         targetLang: input.targetLang,
         pageCount: 0,
         status: input.status ?? 'todo',
-        folder: input.folder ?? '',
+        folderId: input.folderId ?? null,
+        folderPath: null,
         config: input.config ?? {},
         createdAt: now,
         updatedAt: now,
+        deletedAt: null,
       }
       projects.set(input.id, project)
       pagesByProject.set(input.id, [])
@@ -387,7 +400,7 @@ export function createEmulatedFilesBackend(): FilesBackend {
       if (patch.sourceLang !== undefined) project.sourceLang = patch.sourceLang
       if (patch.targetLang !== undefined) project.targetLang = patch.targetLang
       if (patch.status !== undefined) project.status = patch.status
-      if (patch.folder !== undefined) project.folder = patch.folder
+      if (patch.folderId !== undefined) project.folderId = patch.folderId
       if (patch.config !== undefined) project.config = patch.config
       project.updatedAt = new Date().toISOString()
       project.pageCount = getPageCount(projectId)
@@ -411,6 +424,31 @@ export function createEmulatedFilesBackend(): FilesBackend {
       }
       pagesByProject.delete(projectId)
       projects.delete(projectId)
+    },
+
+    async restoreProject(_projectId, _opts): Promise<ProjectDto> {
+      throw notImplementedInEmulated('restoreProject')
+    },
+    async permanentlyDeleteProject(_projectId, _opts): Promise<void> {
+      throw notImplementedInEmulated('permanentlyDeleteProject')
+    },
+    async listFolders(_opts, _params): Promise<FolderDto[]> {
+      throw notImplementedInEmulated('listFolders')
+    },
+    async createFolder(_input, _opts): Promise<FolderDto> {
+      throw notImplementedInEmulated('createFolder')
+    },
+    async updateFolder(_folderId, _patch, _opts): Promise<FolderDto> {
+      throw notImplementedInEmulated('updateFolder')
+    },
+    async deleteFolder(_folderId, _query, _opts): Promise<void> {
+      throw notImplementedInEmulated('deleteFolder')
+    },
+    async restoreFolder(_folderId, _opts): Promise<FolderDto> {
+      throw notImplementedInEmulated('restoreFolder')
+    },
+    async listTrash(_opts): Promise<TrashEntryDto[]> {
+      throw notImplementedInEmulated('listTrash')
     },
 
     async listPageSummaries(projectId: string, opts: AuthRequestOptions): Promise<PageSummaryDto[]> {
