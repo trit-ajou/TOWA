@@ -29,9 +29,9 @@
 ```bash
 docker compose -f presentation/towa-softcon/docker-compose.subtitles.yml build
 docker compose -f presentation/towa-softcon/docker-compose.subtitles.yml run --rm subtitle-pipeline run \
-  --video path/to/presentation-recording.mp4 \
-  --script path/to/spoken-script.txt \
-  --out-dir output/presentation-subtitles/towa-demo \
+  --video presentation/towa-softcon/subtitle-pipeline/presentation-input/full-presentation.mov \
+  --script presentation/towa-softcon/subtitle-pipeline/presentation-input/full-script.txt \
+  --out-dir output/presentation-subtitles/full-presentation \
   --model small \
   --device cpu \
   --compute-type int8 \
@@ -55,9 +55,9 @@ docker compose -f presentation/towa-softcon/docker-compose.subtitles.yml run --r
 
 ```bash
 docker compose -f presentation/towa-softcon/docker-compose.subtitles.yml run --rm subtitle-pipeline write-subtitles \
-  --alignment output/presentation-subtitles/towa-demo/alignment.json \
-  --srt output/presentation-subtitles/towa-demo/subtitles.srt \
-  --ass output/presentation-subtitles/towa-demo/subtitles.ass
+  --alignment output/presentation-subtitles/full-presentation/alignment.json \
+  --srt output/presentation-subtitles/full-presentation/subtitles.srt \
+  --ass output/presentation-subtitles/full-presentation/subtitles.ass
 ```
 
 ## 싱크 조정
