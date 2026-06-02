@@ -1,12 +1,17 @@
 import { computed, ref } from 'vue'
 import { useStore } from 'vuex'
+import { useQueryClient } from '@tanstack/vue-query'
 import { useAppBackend } from '@/composables/useAppBackend'
-import { usePageLoader } from '@/composables/usePageLoader'
+import { useAutoSave } from '@/composables/useAutoSave'
+import { useFileAdapter } from '@/composables/useFileAdapter'
 import { useErrorDialog } from '@/composables/useErrorDialog'
+import { useCanvasNotice } from '@/composables/useCanvasNotice'
+import { queryKeys } from '@/composables/queryKeys'
 import { DEPLOYMENT_MODE } from '@/config/deployment'
 import { BackendError } from '@/backend/errors'
 import type { AiJobCreateInput, AiJobSnapshot, AiOperationKind } from '@/backend/contracts'
 import type { Page, PageStatus } from '@/types/page'
+import type { PageSummary } from '@/file-adapter'
 import { applyAiJobSnapshotToCurrentPage } from '@/ai/result-applier'
 import { getTextMeta, isTextLayer } from '@/utils/text-layer'
 import type { Layer } from '@bitmappery/definitions/document'
@@ -24,13 +29,27 @@ export interface AiActionResult {
 // AI 진행 상태는 module-scope singleton. 여러 컴포넌트(toolbox + 진행 알림 오버레이)가
 // 같은 상태를 구독해야 하므로 useAiActions() 호출마다 새 ref를 만들면 안 됨.
 const loading = ref<AiOperationKind | null>(null)
+// AiProgressOverlay가 spinner 옆에 "N페이지 ... 중" 형태로 활성 페이지를 표시할 수
+// 있도록 노출. background path에서 사용자가 페이지를 이동한 뒤에도 어디서 시작된
+// 작업인지 추적된다.
+const activePageIndex = ref<number | null>(null)
 const lastResult = ref<AiActionResult | null>(null)
 
 export function useAiActions() {
   const store = useStore()
   const backend = useAppBackend()
-  const { savePage } = usePageLoader()
+  const qc = useQueryClient()
+  const fileAdapter = useFileAdapter()
+  const { markDirty, saveImmediately } = useAutoSave()
   const { showError } = useErrorDialog()
+  const { showNotice } = useCanvasNotice()
+
+  function patchPageInCache(proj: string, pageId: string, patch: Partial<PageSummary>) {
+    qc.setQueryData<PageSummary[]>(queryKeys.pages.byProject(proj), (old) => {
+      if (!old) return old
+      return old.map((p) => (p.id === pageId ? { ...p, ...patch } : p))
+    })
+  }
 
   const projectId = computed(() => store.getters['editor/currentProjectId'] as string | null)
   const selectedPageId = computed(() => store.getters['editor/selectedPageId'] as string | null)
@@ -116,8 +135,13 @@ export function useAiActions() {
       const pageId = requirePageId()
       const pageRecord = requireCurrentPage(proj, pageId)
       previousPage = { ...pageRecord }
-      store.commit('pages/UPDATE_PAGE', { ...pageRecord, status: 'ai-processing' satisfies PageStatus })
+      patchPageInCache(proj, pageId, { status: 'ai-processing' satisfies PageStatus })
       restorePreviousPage = true
+
+      // Expose the originating page index so AiProgressOverlay can label its
+      // spinner with "N페이지 ...중" — important on the background path where
+      // the user may have moved on to a different page.
+      activePageIndex.value = pageRecord.index
 
       const input = await buildInput(action)
       const sessionKey = (store.state as { auth?: { sessionKey: string | null } }).auth?.sessionKey ?? null
@@ -127,11 +151,17 @@ export function useAiActions() {
       if (final.status === 'succeeded') {
         const applied = await applyAiJobSnapshotToCurrentPage({
           store,
+          queryClient: qc,
           backend: backend.aiJobs,
+          fileAdapter,
           snapshot: final,
           projectId: proj,
           pageId,
-          savePage,
+          markDirty,
+          saveImmediately,
+          onBackgroundApplied: (index) => {
+            showNotice(`${index}페이지 AI ${aiActionLabel(action)} 완료`)
+          },
           sessionKey,
         })
         restorePreviousPage = false
@@ -171,6 +201,7 @@ export function useAiActions() {
         void store.dispatch('auth/refreshCredit')
       }
       loading.value = null
+      activePageIndex.value = null
     }
   }
 
@@ -183,17 +214,22 @@ export function useAiActions() {
     return selectedPageId.value
   }
   function requireCurrentPage(proj: string, pageId: string): Page {
-    const pageRecord = store.getters['pages/byId'](proj, pageId) as Page | undefined
-    if (!pageRecord) throw new Error(`Page ${pageId} is not loaded`)
-    return pageRecord
+    const list = qc.getQueryData<PageSummary[]>(queryKeys.pages.byProject(proj)) ?? []
+    const summary = list.find((p) => p.id === pageId)
+    if (!summary) throw new Error(`Page ${pageId} is not loaded`)
+    return { id: summary.id, projectId: summary.projectId, index: summary.index, status: summary.status }
   }
   function restorePage(pageRecord: Page | null): void {
-    if (pageRecord) store.commit('pages/UPDATE_PAGE', pageRecord)
+    if (pageRecord) patchPageInCache(pageRecord.projectId, pageRecord.id, { status: pageRecord.status })
   }
   function currentUserEmail(): string | null {
     const state = store.state as { auth?: { user?: { email?: string } | null } }
     return state.auth?.user?.email ?? null
   }
 
-  return { loading, lastResult, runAction }
+  return { loading, activePageIndex, lastResult, runAction }
+}
+
+function aiActionLabel(action: AiOperationKind): string {
+  return { detect: '검출', inpaint: '지움', translate: '번역', pipeline: '파이프라인' }[action] ?? action
 }

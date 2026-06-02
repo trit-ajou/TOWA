@@ -5,6 +5,8 @@ import { useRoute } from 'vue-router'
 import { usePageLoader } from '@/composables/usePageLoader'
 import { useAutoSave } from '@/composables/useAutoSave'
 import { useSpacePanModifier } from '@/composables/useSpacePanModifier'
+import { usePages } from '@/composables/usePages'
+import { usePageBinaryPrefetch } from '@/composables/usePageBinaryPrefetch'
 import PageSidePanel from '@/components/editor/PageSidePanel.vue'
 import TranslationPanel from '@/components/editor/TranslationPanel.vue'
 import CanvasToolbox from '@/components/editor/CanvasToolbox.vue'
@@ -34,10 +36,17 @@ const { switchPage } = usePageLoader()
 const { saveImmediately, markDirty } = useAutoSave()
 
 const projectId = computed(() => route.params.id as string)
-const pages = computed(() => store.getters['pages/forProject'](projectId.value))
+const pagesApi = usePages(projectId)
+const pages = pagesApi.list
 const selectedPageId = computed(() => store.getters['editor/selectedPageId'])
+
+// Drive page-binary prefetch off the active page (#39 §page-binary-prefetch).
+usePageBinaryPrefetch({
+  pageIds: computed(() => pages.value.map((p) => p.id)),
+  activePageId: selectedPageId,
+})
 const currentPage = computed(() =>
-  selectedPageId.value ? store.getters['pages/byId'](projectId.value, selectedPageId.value) : null
+  selectedPageId.value ? pagesApi.byId(selectedPageId.value) : null
 )
 const selectedLayerId = computed<string | null>(() => store.getters['editor/selectedLayerId'])
 const pagePanelCollapsed = computed(() => store.getters['editor/pagePanelCollapsed'])
@@ -226,6 +235,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 
 <template>
   <div>
+    <!-- defer 필요: ProjectView template에서 #towa-right-panel이 router-view 뒤에 있어
+         EditorTab의 setup 시점엔 target이 아직 없다. defer가 현재 render cycle 후에
+         teleport를 처리해 ProjectView가 full DOM을 만든 뒤 target을 점유하게 한다. -->
     <Teleport to="#towa-canvas-area" defer>
       <ZoomToolHandler />
       <CanvasToolbox />

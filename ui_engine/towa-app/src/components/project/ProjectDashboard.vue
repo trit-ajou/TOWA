@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import type { Project } from '@/types/project'
 import type { Page } from '@/types/page'
 import { ChevronRight, Edit3, Paintbrush } from 'lucide-vue-next'
+import { useThumbnailUrl } from '@/composables/useThumbnailUrl'
 
 const props = defineProps<{
   project: Project
@@ -41,6 +42,12 @@ const lastPage = computed(() => {
   return props.pages[0] ?? null
 })
 
+// Page thumbnails are blob URLs owned by useThumbnailUrl (Object URL gets
+// revoked on unmount). The legacy `lastPage.thumbnail` string was wiped when
+// usePages started returning thumbnail: undefined.
+const lastPageId = computed<string | null>(() => lastPage.value?.id ?? null)
+const { url: lastPageThumbUrl } = useThumbnailUrl(lastPageId)
+
 const completedCount = computed(() =>
   props.pages.filter((p) => p.status === 'done').length
 )
@@ -73,12 +80,16 @@ function onResumeMode(mode: 'edit' | 'detail') {
 <template>
   <div class="bg-towa-surface border border-towa-border rounded-lg overflow-hidden p-4 flex flex-col gap-3">
     <!-- Thumbnail -->
-    <div v-if="lastPage" class="w-full rounded-md overflow-hidden border border-towa-border">
+    <div v-if="lastPage" class="w-full rounded-md overflow-hidden border border-towa-border bg-towa-bg">
       <img
-        :src="lastPage.thumbnail"
+        v-if="lastPageThumbUrl"
+        :src="lastPageThumbUrl"
         :alt="`${lastPage.index}p`"
         class="w-full aspect-[2/3] object-cover"
       />
+      <div v-else class="w-full aspect-[2/3] flex items-center justify-center text-towa-text-muted text-sm">
+        {{ lastPage.index }}p
+      </div>
     </div>
 
     <!-- Title -->

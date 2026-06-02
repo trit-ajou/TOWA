@@ -403,10 +403,12 @@ function handleKeyDown( event: KeyboardEvent ): void {
 
         case 83: // S
             if ( nativeModifier ) {
-                if ( getters.activeDocument ) {
-                    openModal( SAVE_DOCUMENT );
-                }
-                preventDefault( event ); // page save
+                // TOWA #39: Ctrl/Cmd+S is reserved for the host app's
+                // savePage flow (useAutoSave.saveImmediately). The native
+                // Save Document modal would write a .bpy file, which is
+                // not the persistence model TOWA uses. The host app
+                // attaches its own capture-phase keydown that runs first.
+                preventDefault( event );
             } else if ( canDrawOnActiveLayer() ) {
                 setActiveTool( ToolTypes.CLONE );
             }

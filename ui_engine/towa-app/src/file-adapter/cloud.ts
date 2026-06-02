@@ -136,8 +136,18 @@ export class CloudFileAdapter implements FileAdapter {
   // --- Pages (summary list) ---
 
   async listPageSummaries(projectId: string): Promise<PageSummary[]> {
-    const items = await this.backend.files.listPageSummaries(projectId, this.authOpts())
-    return items.map(toPageSummary)
+    try {
+      const items = await this.backend.files.listPageSummaries(projectId, this.authOpts())
+      return items.map(toPageSummary)
+    } catch (e) {
+      // Per #39 — list endpoints also absorb 404 so consumers can simply
+      // redirect on `undefined` without distinguishing "no pages" from
+      // "project gone". We use an empty array since the contract returns
+      // a list, not optional; callers should check via the parent project
+      // existence (which is the actual signal for redirect).
+      if (isNotFound(e)) return []
+      throw e
+    }
   }
 
   // --- Pages (full snapshot) ---
