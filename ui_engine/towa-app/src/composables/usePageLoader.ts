@@ -130,11 +130,20 @@ export function usePageLoader() {
    * dirty 플래그를 유지하고 다음 자동저장 사이클에서 재시도하게 해야 한다.
    * silent return은 doSave가 정상 완료로 인지해 dirty=false로 리셋시켜
    * 변경분이 영구 손실되는 경로를 만든다 (PR #59 self-review #1).
+   *
+   * 사전 조건 실패(activeDocument/thumbnail/originalImage/pageSummary 부재)는
+   * 사용자도 알 수 있도록 즉시 showError 호출. fileAdapter 실패는 try-catch
+   * 안에서 별도 처리 (network 메시지 포함). (PR #59 self-review #3 부분 해결)
    */
+  function failSave(pageId: string, userMessage: string, detail: string): never {
+    showError('저장 실패', userMessage)
+    throw new Error(`[PageLoader] savePage(${pageId}): ${detail}`)
+  }
+
   async function savePage(pageId: string): Promise<void> {
     const doc = store.getters['bmp/activeDocument']
     if (!doc) {
-      throw new Error(`[PageLoader] savePage(${pageId}): no active document`)
+      failSave(pageId, '편집 중인 문서가 없습니다. 페이지를 다시 열어주세요.', 'no active document')
     }
 
     const layerBlob = await DocumentFactory.toBlob(doc)
@@ -142,7 +151,7 @@ export function usePageLoader() {
     // 썸네일 캡처
     const thumbnail = await captureThumbnail()
     if (!thumbnail) {
-      throw new Error(`[PageLoader] savePage(${pageId}): thumbnail capture failed`)
+      failSave(pageId, '썸네일 캡처에 실패했습니다.', 'thumbnail capture failed')
     }
 
     // originalImage: 세션 캐시에서 가져옴. 없으면 snapshot에서 재조회
@@ -155,7 +164,7 @@ export function usePageLoader() {
       }
     }
     if (!originalImage) {
-      throw new Error(`[PageLoader] savePage(${pageId}): no originalImage available`)
+      failSave(pageId, '원본 이미지를 찾을 수 없습니다. 페이지를 다시 열어주세요.', 'no originalImage available')
     }
 
     // page metadata 조회: query cache가 PageSummary[]을 갖고 있음.
@@ -163,7 +172,7 @@ export function usePageLoader() {
     const summaries = qc.getQueryData<PageSummary[]>(queryKeys.pages.byProject(projectId)) ?? []
     const page = summaries.find((p) => p.id === pageId)
     if (!page) {
-      throw new Error(`[PageLoader] savePage(${pageId}): page summary missing from query cache`)
+      failSave(pageId, '페이지 정보가 로드되지 않았습니다. 잠시 후 다시 시도해주세요.', 'page summary missing from query cache')
     }
 
     try {
