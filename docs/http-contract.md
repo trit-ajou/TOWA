@@ -83,6 +83,18 @@ UI env는 `localhost` 기준, 컨테이너 간 호출은 compose service name �
 
 ## Shared Rules
 
+### Response Optimization
+
+service storage GET 응답은 conditional GET을 지원한다.
+
+- 대상: `GET /api/v1/projects`, `GET /api/v1/projects/{project_id}`, `GET /api/v1/projects/{project_id}/pages`, `GET /api/v1/pages/{page_id}/snapshot`, `GET /api/v1/pages/{page_id}/thumbnail`, `GET /api/v1/folders`, `GET /api/v1/trash`
+- 200 응답은 `ETag`, `Last-Modified`, `Cache-Control: private, no-cache`를 포함한다
+- 클라이언트가 `If-None-Match` 또는 `If-Modified-Since`를 보내고 저장 상태가 같으면 `304 Not Modified`를 반환한다
+- `304` 응답은 body를 포함하지 않는다
+- ETag는 저장 상태 기반 weak validator다
+- JSON/text 응답은 `Accept-Encoding`에 따라 Brotli/Zstd 압축될 수 있다
+- `multipart/mixed` snapshot과 `image/webp` thumbnail 응답은 HTTP 압축 대상이 아니다
+
 ### Auth
 
 cloud 모드에서는 세 엔진 간 사용자 식별 토큰으로 현재 `session_key` 하나만 사용한다.
@@ -555,7 +567,8 @@ media validation:
 - `original_image`는 mutable current page asset이다
 - `layer_blob`은 bitmappery `DocumentFactory.toBlob()` 결과를 그대로 저장하는 opaque binary다
 - service는 `layer_blob` 내부를 해석하지 않는다
-- `thumbnail`은 project/page list 최적화를 위한 current preview다
+- `thumbnail`은 project/page list 최적화를 위한 current preview이며 service가 `image/webp` 손실 인코딩으로 정규화한다
+- `original_image`는 WebP 변환 대상이 아니며 업로드된 bytes를 그대로 저장/응답한다
 - `metadata.page.id`, `metadata.page.project_id`는 canonical ULID string이다
 
 #### `POST /api/v1/projects/{project_id}/pages`
@@ -589,18 +602,19 @@ media validation:
   - `metadata`
   - `original_image`
   - `layer_blob`
-  - `thumbnail`
+  - `thumbnail` (`image/webp`)
 
 #### `GET /api/v1/pages/{page_id}/thumbnail`
 
 응답:
 
-- `Content-Type: image/jpeg | image/png | image/webp`
+- `Content-Type: image/webp`
 
 규칙:
 
 - 현재 유저가 소유한 page만 fetch 가능하다
 - 이 endpoint의 absolute URL이 `Page Summary.thumbnail_url`의 기본 구현이다
+- 응답 thumbnail은 max width 512px, quality 80 기준 WebP다
 
 #### `PUT /api/v1/pages/{page_id}/snapshot`
 

@@ -141,13 +141,16 @@ part names:
 
 응답 형식:
 
-- `Content-Type: multipart/mixed`
+- snapshot: `Content-Type: multipart/mixed`
+- thumbnail: `Content-Type: image/webp`
 
 part names는 save와 동일하다.
 
 thumbnail fetch 규칙:
 
 - `thumbnail_url`은 bearer 인증이 필요한 private service URL이다
+- service는 저장/조회 시 thumbnail을 max width 512px, quality 80 기준 손실 WebP로 정규화한다
+- `original_image`는 WebP 변환 없이 업로드 bytes를 그대로 보존한다
 - 대표 project cover용 `project.thumbnail_url`은 별도 project metadata 필드다
 
 ## Ownership Boundaries
@@ -200,3 +203,5 @@ standalone과 cloud는 같은 logical 모델을 공유한다.
 - page delete는 hard delete이며 뒤 page들의 `index`를 당겨 항상 dense `1..N`을 유지한다
 - snapshot binary backend는 현재 DB BLOB이다
 - 허용 media type은 `image/jpeg`, `image/png`, `image/webp`, `application/octet-stream`이다
+- storage GET은 `ETag`, `Last-Modified`, `Cache-Control: private, no-cache`를 제공하고 변경 없을 때 `304 Not Modified`를 반환한다
+- JSON/text 응답은 Brotli/Zstd 압축 대상이며 snapshot multipart와 image 응답은 압축하지 않는다

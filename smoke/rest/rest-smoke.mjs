@@ -14,6 +14,7 @@ const createdProjects = []
 const createdPages = []
 const results = []
 let sessionKey = null
+const thumbnailPngBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
 
 main().catch(async (error) => {
   console.error('SMOKE_FAILED')
@@ -562,7 +563,7 @@ function snapshotForm(status) {
   form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }), 'metadata.json')
   form.append('original_image', new Blob([new Uint8Array([137, 80, 78, 71, 13, 10])], { type: 'image/png' }), 'original.png')
   form.append('layer_blob', new Blob([new Uint8Array([1, 2, 3, 4])], { type: 'application/octet-stream' }), 'page.layer')
-  form.append('thumbnail', new Blob([new Uint8Array([82, 73, 70, 70, 1, 2])], { type: 'image/webp' }), 'thumbnail.webp')
+  form.append('thumbnail', new Blob([new Uint8Array(Buffer.from(thumbnailPngBase64, 'base64'))], { type: 'image/png' }), 'thumbnail.png')
   return form
 }
 

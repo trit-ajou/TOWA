@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette_compress import CompressMiddleware, remove_compress_type
 
 import app.modules  # noqa: F401
 from app.api.errors import APIError, handle_api_error, handle_http_exception, handle_validation_error
@@ -17,6 +18,11 @@ from app.core.settings import get_settings
 def create_app() -> FastAPI:
     settings = get_settings()
     application = FastAPI(title=settings.app_name)
+    remove_compress_type("multipart/mixed")
+    application.add_middleware(
+        CompressMiddleware,
+        minimum_size=settings.http_compression_minimum_size,
+    )
     application.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins(),
