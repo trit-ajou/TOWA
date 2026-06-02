@@ -27,6 +27,7 @@ import type {
     SelectionToolOptions, FillToolOptions, WandToolOptions
 } from "@bitmappery/definitions/editor";
 import ToolTypes, { TOOL_SRC_MERGED } from "@bitmappery/definitions/tool-types";
+import { isFeatureEnabled, type FeatureKey } from "@bitmappery/config/towa-features";
 import BrushTypes from "@bitmappery/definitions/brush-types";
 import { runRendererFn } from "@bitmappery/factories/renderer-factory";
 
@@ -94,6 +95,16 @@ const EditorModule: Module<EditorState, any> = {
     },
     mutations: {
         setActiveTool( state: EditorState, { tool, document }: { tool: ToolTypes, document: Document }): void {
+            // TOWA mode gate: translator(역자) mode disables paint-style tools
+            // (brush/eraser/fill/clone/lasso/...) via towa-mode-presets. The
+            // legacy entry points — keyboard shortcuts, toolbox clicks, AI flows
+            // — all funnel through this mutation, so guarding once here is
+            // enough to prevent the user from accidentally drawing on the
+            // original layer in 편집 mode.
+            // null/undefined tool is a reset and bypasses the check.
+            if ( tool && !isFeatureEnabled( `TOOL_${ String( tool ).toUpperCase() }` as FeatureKey )) {
+                return;
+            }
             state.activeTool = tool;
             runRendererFn( renderer => {
                 // @ts-expect-error Element implicitly has an 'any' type because expression of type 'ToolTypes' can't be used to index type

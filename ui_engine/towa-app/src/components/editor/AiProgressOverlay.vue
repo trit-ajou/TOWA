@@ -7,7 +7,7 @@ import { Loader2 } from 'lucide-vue-next'
 import { useAiActions } from '@/composables/useAiActions'
 import type { AiOperationKind } from '@/backend/contracts'
 
-const { loading } = useAiActions()
+const { loading, activePageIndex } = useAiActions()
 
 const LABELS: Record<AiOperationKind, string> = {
   detect: '텍스트 검출 중',
@@ -16,7 +16,13 @@ const LABELS: Record<AiOperationKind, string> = {
   pipeline: 'AI 파이프라인 실행 중',
 }
 
-const label = computed(() => (loading.value ? LABELS[loading.value] : ''))
+// "3p 텍스트 검출 중" — 진행 중인 페이지를 spinner 옆에 표시. background path
+// (사용자가 다른 페이지로 이동한 경우)에서도 어디서 시작된 작업인지 보임.
+const label = computed(() => {
+  if (!loading.value) return ''
+  const operation = LABELS[loading.value]
+  return activePageIndex.value != null ? `${activePageIndex.value}p ${operation}` : operation
+})
 </script>
 
 <template>

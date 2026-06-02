@@ -131,7 +131,7 @@ async function requestJson(url: string, init: RequestInit): Promise<JsonObject> 
   const rawText = await response.text()
   const payload = parseJsonObject(rawText)
   if (!response.ok) {
-    throw new BackendError(extractError(payload, response.statusText))
+    throw new BackendError(extractError(payload, response.statusText), response.status)
   }
   return payload
 }
@@ -500,7 +500,7 @@ export function createRealFilesBackend(options: RealBackendOptions): FilesBacken
       if (!response.ok) {
         const text = await response.text()
         const errorPayload = parseJsonObject(text)
-        throw new BackendError(extractError(errorPayload, response.statusText))
+        throw new BackendError(extractError(errorPayload, response.statusText), response.status)
       }
       return parseMultipartMixed(response)
     },
@@ -540,7 +540,7 @@ async function parseJsonResponse(response: Response): Promise<JsonObject> {
   const rawText = await response.text()
   const payload = parseJsonObject(rawText)
   if (!response.ok) {
-    throw new BackendError(extractError(payload, response.statusText))
+    throw new BackendError(extractError(payload, response.statusText), response.status)
   }
   return payload
 }
@@ -560,7 +560,7 @@ async function requestBlob(url: string, init: RequestInit): Promise<Blob> {
   if (!response.ok) {
     const rawText = await response.text()
     const payload = parseJsonObject(rawText)
-    throw new BackendError(extractError(payload, response.statusText))
+    throw new BackendError(extractError(payload, response.statusText), response.status)
   }
   return response.blob()
 }

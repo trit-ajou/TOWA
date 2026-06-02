@@ -5,11 +5,14 @@ import { useRoute, useRouter } from 'vue-router'
 import type { EditMode } from '@/store/modules/editor'
 import type { PageStatus } from '@/types/page'
 import { useModal } from '@/composables/useModal'
+import { useProjects } from '@/composables/useProjects'
+import { usePages } from '@/composables/usePages'
 import ProjectDashboard from '@/components/project/ProjectDashboard.vue'
 import PageGrid from '@/components/project/PageGrid.vue'
 import BaseModal from '@/components/common/BaseModal.vue'
 import BaseButton from '@/components/common/BaseButton.vue'
 import { buildPageSnapshotFromFile } from '@/utils/page-from-file'
+import { RefreshCw } from 'lucide-vue-next'
 
 defineOptions({ name: 'ProjectHomeTab' })
 
@@ -18,8 +21,10 @@ const route = useRoute()
 const router = useRouter()
 
 const projectId = computed(() => route.params.id as string)
-const project = computed(() => store.getters['projects/byId'](projectId.value))
-const allPages = computed(() => store.getters['pages/forProject'](projectId.value))
+const projectsApi = useProjects()
+const pagesApi = usePages(projectId)
+const project = computed(() => projectsApi.byId(projectId.value))
+const allPages = pagesApi.list
 const selectedPageId = computed(() => store.getters['editor/selectedPageId'])
 const lastEditMode = computed<EditMode>(() => store.getters['editor/lastEditMode'])
 const layout = computed(() => store.getters['editor/projectHomeLayout'])
@@ -43,11 +48,11 @@ function confirmDeletePage(pageId: string) {
 async function deletePage() {
   if (!pageToDeleteId.value) return
   const pid = projectId.value
-  await store.dispatch('pages/removePage', { projectId: pid, pageId: pageToDeleteId.value })
+  await pagesApi.removePage({ projectId: pid, pageId: pageToDeleteId.value })
 
   const proj = project.value
   if (proj) {
-    await store.dispatch('projects/update', {
+    await projectsApi.update({
       ...proj,
       pageCount: allPages.value.length,
       updatedAt: new Date().toISOString(),
@@ -93,16 +98,27 @@ function selectAndDetail(pageId: string) {
   router.push(`/project/${projectId.value}/detail`)
 }
 
+const refreshing = ref(false)
+async function refreshPages() {
+  if (refreshing.value) return
+  refreshing.value = true
+  try {
+    await pagesApi.refetch()
+  } finally {
+    refreshing.value = false
+  }
+}
+
 async function addPages(files: File[]) {
   const pid = projectId.value
   for (const file of files) {
     const pageIndex = allPages.value.length + 1
     const snapshot = await buildPageSnapshotFromFile(file, pid, pageIndex)
-    await store.dispatch('pages/addPage', { projectId: pid, snapshot })
+    await pagesApi.addPage({ projectId: pid, snapshot })
   }
   const proj = project.value
   if (proj) {
-    await store.dispatch('projects/update', {
+    await projectsApi.update({
       ...proj,
       pageCount: allPages.value.length,
       updatedAt: new Date().toISOString(),
@@ -127,8 +143,16 @@ async function addPages(files: File[]) {
           />
         </div>
         <div class="flex-1 overflow-y-auto px-6 pb-6">
-          <!-- Status filter chips -->
-          <div class="flex items-center justify-end mb-3">
+          <!-- Status filter chips + refresh -->
+          <div class="flex items-center justify-end gap-2 mb-3">
+            <button
+              class="p-1.5 rounded text-towa-text-muted hover:text-towa-text hover:bg-towa-surface transition-colors"
+              title="서버에서 다시 불러오기"
+              :disabled="refreshing"
+              @click="refreshPages"
+            >
+              <RefreshCw :size="14" :class="{ 'animate-spin': refreshing }" />
+            </button>
             <div class="flex items-center gap-1 bg-towa-surface rounded-lg p-0.5">
               <button
                 v-for="chip in statusChips"

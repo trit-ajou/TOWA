@@ -1,21 +1,80 @@
 import { nextTick, ref } from 'vue'
 import { useStore } from 'vuex'
+import { useQueryClient } from '@tanstack/vue-query'
 import { useFileAdapter } from './useFileAdapter'
-import { PageCache } from '@/file-adapter/page-cache'
+import { queryKeys } from './queryKeys'
+import { isAuthError } from '@/query/query-client'
+import { useErrorDialog } from './useErrorDialog'
+import { pageBinaryCache, thumbnailCache } from '@/file-adapter/cache-instances'
+import type { FileAdapter, PageSummary } from '@/file-adapter'
+
+// Exponential backoff retry for push (savePageSnapshot). #39 §Push 실패 UX
+// — 1s / 2s / 4s, 3 attempts. Auth errors short-circuit so the global 401
+// handler can take over routing.
+async function withPushRetry<T>(fn: () => Promise<T>): Promise<T> {
+  const delays = [1000, 2000, 4000]
+  let lastErr: unknown
+  for (let attempt = 0; attempt <= delays.length; attempt++) {
+    try {
+      return await fn()
+    } catch (e) {
+      lastErr = e
+      if (isAuthError(e)) throw e
+      if (attempt >= delays.length) throw e
+      await new Promise((r) => setTimeout(r, delays[attempt]))
+    }
+  }
+  throw lastErr
+}
 // @ts-expect-error bitmappery JS module
 import DocumentFactory from '@bitmappery/factories/document-factory'
 // @ts-expect-error bitmappery JS module
 import LayerFactory from '@bitmappery/factories/layer-factory'
 // @ts-expect-error bitmappery JS module
-import { getCanvasInstance } from '@bitmappery/services/canvas-service'
+import { createSyncSnapshot } from '@bitmappery/utils/document-util'
+// @ts-expect-error bitmappery JS module
+import { flushLayerRenderers } from '@bitmappery/factories/renderer-factory'
 
-const pageCache = new PageCache()
+// page binary cache replaces the legacy `PageCache` singleton; the BlobCache
+// instance is now user-namespaced via the cache-db layer.
+const pageCache = pageBinaryCache
 
 /** 원본 이미지 세션 캐시. 탭 종료 시 소멸. */
 const originalImageCache = new Map<string, Blob>()
 
+/**
+ * Returns the original (pre-edit) page image Blob. Checks the session cache
+ * first, then falls back to fetching the snapshot from the file adapter.
+ * Returns null only if the snapshot itself is missing.
+ *
+ * AI input bitmap 등 doc 합성이 아닌 "원본 그대로"가 필요한 경로에서 사용.
+ */
+export async function getOriginalImage(
+  pageId: string,
+  fileAdapter: FileAdapter,
+): Promise<Blob | null> {
+  const cached = originalImageCache.get(pageId)
+  if (cached) return cached
+  const snapshot = await fileAdapter.getPageSnapshot(pageId)
+  if (snapshot) {
+    originalImageCache.set(pageId, snapshot.originalImage)
+    return snapshot.originalImage
+  }
+  return null
+}
+
 /** 페이지 전환 중 플래그 (모든 호출자 공유). overlay 노출 트리거. */
 const isPageSwitching = ref(false)
+
+/**
+ * 현재 bitmappery에 로드돼 있는 페이지 id. loadPage 끝에서 set, switchPage 진입
+ * 시점에 toPageId와 일치하면 swap 자체를 skip한다. 편집 탭과 상세 편집 탭은
+ * router 전환 시 각각 unmount/mount 되면서 둘 다 selectedPageId watch를
+ * immediate:true로 fire하는데, 그 때마다 새 doc을 bmp/addNewDocument로 push
+ * 하면 이전 탭에서 진행한 변경이 documents 배열에 고립된 채로 남고 activeIndex
+ * 가 캐시/서버 fetch 결과(옛 상태)를 가리키게 된다.
+ */
+let currentLoadedPageId: string | null = null
 
 /**
  * bitmappery 캔버스와 FileAdapter(저장소) 사이의 오케스트레이션.
@@ -26,6 +85,8 @@ const isPageSwitching = ref(false)
 export function usePageLoader() {
   const store = useStore()
   const fileAdapter = useFileAdapter()
+  const qc = useQueryClient()
+  const { showError } = useErrorDialog()
 
   /**
    * pageId에 해당하는 페이지를 bitmappery에 로드.
@@ -73,6 +134,7 @@ export function usePageLoader() {
     }
 
     store.commit('bmp/addNewDocument', doc)
+    currentLoadedPageId = pageId
     // bitmappery activeDocument watcher가 자동으로 calcIdealDimensions(true)를
     // 호출하여 캔버스 크기를 재계산하므로 별도 트리거 불필요.
     // 이전 코드의 window.dispatchEvent('resize')는 bitmappery.handleResize를 호출하는데,
@@ -84,79 +146,116 @@ export function usePageLoader() {
 
   /**
    * bitmappery의 현재 편집 상태를 snapshot으로 저장.
+   *
+   * 모든 실패 경로는 throw로 전파한다. 호출자(useAutoSave.doSave)가 catch해서
+   * dirty 플래그를 유지하고 다음 자동저장 사이클에서 재시도하게 해야 한다.
+   * silent return은 doSave가 정상 완료로 인지해 dirty=false로 리셋시켜
+   * 변경분이 영구 손실되는 경로를 만든다 (PR #59 self-review #1).
+   *
+   * 사전 조건 실패(activeDocument/thumbnail/originalImage/pageSummary 부재)는
+   * 사용자도 알 수 있도록 즉시 showError 호출. fileAdapter 실패는 try-catch
+   * 안에서 별도 처리 (network 메시지 포함). (PR #59 self-review #3 부분 해결)
    */
+  function failSave(pageId: string, userMessage: string, detail: string): never {
+    showError('저장 실패', userMessage)
+    throw new Error(`[PageLoader] savePage(${pageId}): ${detail}`)
+  }
+
   async function savePage(pageId: string): Promise<void> {
     const doc = store.getters['bmp/activeDocument']
-    if (!doc) return
+    if (!doc) {
+      failSave(pageId, '편집 중인 문서가 없습니다. 페이지를 다시 열어주세요.', 'no active document')
+    }
 
     const layerBlob = await DocumentFactory.toBlob(doc)
 
     // 썸네일 캡처
     const thumbnail = await captureThumbnail()
-    if (!thumbnail) return // 캔버스 없으면 저장 불가
-
-    // originalImage: 세션 캐시에서 가져옴. 없으면 snapshot에서 재조회
-    let originalImage = originalImageCache.get(pageId)
-    if (!originalImage) {
-      const existingSnapshot = await fileAdapter.getPageSnapshot(pageId)
-      if (existingSnapshot) {
-        originalImage = existingSnapshot.originalImage
-        originalImageCache.set(pageId, originalImage)
-      }
-    }
-    if (!originalImage) {
-      console.warn(`[PageLoader] No originalImage for page ${pageId}, skipping save`)
-      return
+    if (!thumbnail) {
+      failSave(pageId, '썸네일 캡처에 실패했습니다.', 'thumbnail capture failed')
     }
 
-    // page metadata 조회
+    const originalImage = await getOriginalImage(pageId, fileAdapter)
+    if (!originalImage) {
+      failSave(pageId, '원본 이미지를 찾을 수 없습니다. 페이지를 다시 열어주세요.', 'no originalImage available')
+    }
+
+    // page metadata 조회: query cache가 PageSummary[]을 갖고 있음.
     const projectId = store.getters['editor/currentProjectId']
-    const page = store.getters['pages/byId'](projectId, pageId)
-    if (!page) return
-
-    await fileAdapter.savePageSnapshot({
-      page: {
-        id: pageId,
-        projectId: page.projectId,
-        index: page.index,
-        status: page.status,
-      },
-      originalImage,
-      layerBlob,
-      thumbnail,
-    })
-
-    // Vuex store의 페이지 thumbnail Blob URL 갱신
-    const url = URL.createObjectURL(thumbnail)
-    store.commit('pages/SET_THUMBNAIL_URL', { pageId, url })
-    if (projectId) {
-      const pageObj = store.getters['pages/byId'](projectId, pageId)
-      if (pageObj) {
-        store.commit('pages/UPDATE_PAGE', { ...pageObj, thumbnail: url })
-      }
+    const summaries = qc.getQueryData<PageSummary[]>(queryKeys.pages.byProject(projectId)) ?? []
+    const page = summaries.find((p) => p.id === pageId)
+    if (!page) {
+      failSave(pageId, '페이지 정보가 로드되지 않았습니다. 잠시 후 다시 시도해주세요.', 'page summary missing from query cache')
     }
+
+    try {
+      await withPushRetry(() =>
+        fileAdapter.savePageSnapshot({
+          page: {
+            id: pageId,
+            projectId: page.projectId,
+            index: page.index,
+            status: page.status,
+          },
+          originalImage,
+          layerBlob,
+          thumbnail,
+        }),
+      )
+    } catch (e) {
+      // Auth errors are already handled globally by the 401 redirect; everything
+      // else surfaces as a user-visible error (#39 §Push 실패 UX — reuse AI
+      // error popup pattern).
+      if (!isAuthError(e)) {
+        const message = e instanceof Error ? e.message : String(e)
+        showError('저장 실패', `잠시 후 다시 시도해주세요.\n${message}`)
+      }
+      throw e
+    }
+
+    // Push the brand-new thumbnail Blob straight into the cache + query data.
+    // Invalidating the binary query and letting it refetch from the server is
+    // racy — service-engine may briefly 404 the thumbnail while it's writing
+    // the snapshot, which then collapses the cached blob to `null` and leaves
+    // an empty thumbnail until the next external invalidation.
+    await thumbnailCache.set(pageId, thumbnail)
+    qc.setQueryData(queryKeys.binary.thumbnail(pageId), thumbnail)
+
+    // Page list metadata (updatedAt etc.) still needs a refresh.
+    qc.invalidateQueries({ queryKey: queryKeys.pages.byProject(projectId) })
   }
 
   /**
-   * 현재 bitmappery 캔버스를 캡처하여 썸네일 Blob 반환.
+   * 현재 bitmappery 문서를 캡처하여 썸네일 Blob 반환.
+   *
+   * zCanvas의 viewport element는 화면(=캔버스 영역 div)에 맞춰진 크기라
+   * doc 원본 비율과 무관하다. 세로 만화 페이지가 가로 넓은 영역에 보이면
+   * viewport는 가로로 넓은 채로 존재하고, 그 canvas를 그대로 캡처하면
+   * 썸네일도 가로로 넓게 잘못 저장된다. (사용자 보고: "작업중" 페이지만
+   * 비율이 깨져 보임 — 저장된 thumbnail이 doc 비율을 따르지 않아서)
+   *
+   * createSyncSnapshot은 doc.width × doc.height의 offscreen canvas에
+   * layer를 모두 렌더하므로 doc 원본 비율이 정확히 유지된다. AI 결과
+   * 적용 background 경로(result-applier.ts)도 같은 패턴.
    */
   function captureThumbnail(): Promise<Blob | null> {
-    const zCanvas = getCanvasInstance()
-    if (!zCanvas) return Promise.resolve(null)
-    const canvasEl = zCanvas.getElement() as HTMLCanvasElement
-    if (!canvasEl) return Promise.resolve(null)
+    const doc = store.getters['bmp/activeDocument']
+    if (!doc) return Promise.resolve(null)
+
+    const composedCanvas = createSyncSnapshot(doc) as HTMLCanvasElement
+    if (!composedCanvas) return Promise.resolve(null)
 
     const maxW = 200
     const maxH = 300
-    const scale = Math.min(maxW / canvasEl.width, maxH / canvasEl.height, 1)
-    const w = Math.round(canvasEl.width * scale)
-    const h = Math.round(canvasEl.height * scale)
+    const scale = Math.min(maxW / composedCanvas.width, maxH / composedCanvas.height, 1)
+    const w = Math.max(1, Math.round(composedCanvas.width * scale))
+    const h = Math.max(1, Math.round(composedCanvas.height * scale))
 
     const thumbCanvas = document.createElement('canvas')
     thumbCanvas.width = w
     thumbCanvas.height = h
     const ctx = thumbCanvas.getContext('2d')!
-    ctx.drawImage(canvasEl, 0, 0, w, h)
+    ctx.drawImage(composedCanvas, 0, 0, w, h)
 
     return new Promise<Blob | null>((resolve) => {
       thumbCanvas.toBlob((blob) => resolve(blob), 'image/png')
@@ -170,6 +269,16 @@ export function usePageLoader() {
    * 3. 새 페이지 로드
    */
   async function switchPage(fromPageId: string | null, toPageId: string): Promise<void> {
+    // Tab navigation (편집 ↔ 상세 편집) unmounts one tab and mounts the other,
+    // both of which fire their selectedPageId watcher with immediate:true.
+    // Without this guard the new tab pushes another doc for the same page,
+    // stranding the outgoing tab's edits in documents[idx] while activeIndex
+    // points at a fresh doc loaded from the cache/server (i.e. an older
+    // version of the same page). The user sees deleted layers reappear.
+    if (toPageId === currentLoadedPageId && store.getters['bmp/activeDocument']) {
+      return
+    }
+
     isPageSwitching.value = true
     try {
       // 1. 현재 페이지 캐시. 서버 저장은 호출자(EditorTab 등)가 useAutoSave의
@@ -200,7 +309,13 @@ export function usePageLoader() {
         if (docs) {
           const idx = docs.findIndex((d: { id: string }) => d.id === prevDocId)
           if (idx !== -1 && idx !== store.state.bmp.document.activeIndex) {
-            docs[idx].layers.forEach((layer: { source?: HTMLCanvasElement; mask?: HTMLCanvasElement }) => {
+            // bitmappery의 rendererCache는 layer.id 단일 키. 다음 페이지의 doc이
+            // 같은 layer id를 재발급하면 이전 doc의 sprite/renderer가 cache hit으로
+            // 재사용되어 새 doc 캔버스 위에 이전 doc의 잔여 paint(예: 텍스트 박스)가
+            // 그대로 그려진다. closeActiveDocument가 같은 cleanup을 수행하므로
+            // (document-module.ts:114) 우리도 splice 전 명시적으로 flush.
+            docs[idx].layers.forEach((layer: { id: string; source?: HTMLCanvasElement; mask?: HTMLCanvasElement }) => {
+              flushLayerRenderers(layer)
               if (layer.source) { layer.source.width = 0; layer.source = undefined as any }
               if (layer.mask) { layer.mask.width = 0; layer.mask = undefined as any }
             })
@@ -218,6 +333,15 @@ export function usePageLoader() {
   }
 
   return { loadPage, savePage, switchPage, pageCache, isPageSwitching }
+}
+
+/**
+ * Reset the page-loader's module-scope state. Call from ProjectView's
+ * onBeforeUnmount after closeActiveDocument so the next project entry doesn't
+ * mistakenly skip loadPage for a page whose doc was just torn down.
+ */
+export function resetPageLoaderState(): void {
+  currentLoadedPageId = null
 }
 
 // --- helpers ---
