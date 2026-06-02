@@ -3,7 +3,7 @@ import type { QueryClient } from '@tanstack/vue-query'
 
 import type { AiJobSnapshot, AiJobsBackend, TransportPatchOperation } from '@/backend/contracts'
 import type { FileAdapter, PageSummary } from '@/file-adapter'
-import type { LayerTextMeta } from '@/types/text-block'
+import type { LayerTextMeta, TextPolygon, WritingMode } from '@/types/text-block'
 import { queryKeys } from '@/composables/queryKeys'
 import { thumbnailCache } from '@/file-adapter/cache-instances'
 // @ts-expect-error bitmappery JS module
@@ -85,6 +85,17 @@ export async function applyAiJobSnapshotToCurrentPage(
   // object, and PUT it back without touching bitmappery's store.
   const editorState = (options.store.state as { editor?: { selectedPageId?: string | null } }).editor
   const onActivePage = editorState?.selectedPageId === options.pageId
+
+  // translate 응답은 detect와 같은 `replace_text_blocks` 패치로 도착하지만 의도가
+  // 다르다 (TRANSLATE_REST_CONTRACT: geometry 보존, translated_text만 채움).
+  // 응답 op 이름이 아니라 요청 시 operationKind로 분기해야 detect용 로직(텍스트
+  // layer 정리·재생성)이 translate 응답에 잘못 적용되어 사용자가 옮긴 박스가
+  // 사라지거나 새 박스가 덧붙는 현상을 막을 수 있다.
+  if (options.snapshot.operationKind === 'translate') {
+    return onActivePage
+      ? applyTranslateOnActive(options, page)
+      : applyTranslateInBackground(options, page)
+  }
 
   if (onActivePage) {
     return applyOnActive(options, page)
@@ -257,6 +268,149 @@ async function applyInBackground(
   }
 }
 
+// --- translate apply paths ---------------------------------------------------
+
+interface TranslateBlockUpdate {
+  translated: string
+}
+
+function buildTranslateUpdates(patches: TransportPatchOperation[]): Map<string, TranslateBlockUpdate> {
+  const updates = new Map<string, TranslateBlockUpdate>()
+  for (const patch of patches) {
+    if (patch.op !== 'replace_text_blocks' && patch.op !== 'append_text_blocks') continue
+    for (const raw of textBlocksFromPatch(patch)) {
+      if (!isRecord(raw)) continue
+      const blockId = stringValue(raw.block_id ?? raw.id)
+      if (!blockId) continue
+      const translated = stringValue(raw.translated_text ?? raw.translated)
+      updates.set(blockId, { translated })
+    }
+  }
+  return updates
+}
+
+async function applyTranslateOnActive(
+  options: ApplyAiJobSnapshotOptions,
+  page: PageSummary,
+): Promise<ApplyAiJobSnapshotResult> {
+  const updates = buildTranslateUpdates(options.snapshot.documentPatch.patches)
+  const activeDocument = options.store.getters['bmp/activeDocument'] as { layers?: Layer[] } | undefined
+  const layers = activeDocument?.layers ?? []
+  let updatedCount = 0
+  for (let idx = 0; idx < layers.length; idx++) {
+    const layer = layers[idx]
+    if (layer.type !== LayerTypes.LAYER_TEXT) continue
+    const blockId = (layer.meta as Partial<LayerTextMeta> | undefined)?.blockId
+    if (typeof blockId !== 'string' || !updates.has(blockId)) continue
+    const update = updates.get(blockId)!
+    const nextText = { ...layer.text, value: update.translated }
+    const nextMeta = { ...(layer.meta ?? {}), status: 'translated' as const }
+    options.store.commit('bmp/updateLayer', { index: idx, opts: { text: nextText, meta: nextMeta } })
+    updates.delete(blockId)
+    updatedCount++
+  }
+  if (updates.size > 0) {
+    console.warn(`[AI translate] ${updates.size} response blocks did not match any layer`, Array.from(updates.keys()))
+  }
+
+  options.queryClient.setQueryData<PageSummary[]>(
+    queryKeys.pages.byProject(options.projectId),
+    (old) => {
+      if (!old) return old
+      return old.map((p) => (p.id === options.pageId ? { ...p, status: 'in-progress' } : p))
+    },
+  )
+  options.markDirty()
+  await options.saveImmediately(options.pageId)
+
+  void page
+  return {
+    applied: true,
+    appliedMode: 'active',
+    textLayerCount: updatedCount,
+    graphicLayerCount: 0,
+  }
+}
+
+async function applyTranslateInBackground(
+  options: ApplyAiJobSnapshotOptions,
+  page: PageSummary,
+): Promise<ApplyAiJobSnapshotResult> {
+  const snapshot = await options.fileAdapter.getPageSnapshot(options.pageId)
+  if (!snapshot) {
+    return {
+      applied: false,
+      reason: 'page_snapshot_missing',
+      textLayerCount: 0,
+      graphicLayerCount: 0,
+      appliedMode: 'background',
+    }
+  }
+
+  const doc = (await DocumentFactory.fromBlob(snapshot.layerBlob)) as Document
+  const updates = buildTranslateUpdates(options.snapshot.documentPatch.patches)
+  let updatedCount = 0
+  for (const layer of doc.layers) {
+    if (layer.type !== LayerTypes.LAYER_TEXT) continue
+    const blockId = (layer.meta as Partial<LayerTextMeta> | undefined)?.blockId
+    if (typeof blockId !== 'string' || !updates.has(blockId)) continue
+    const update = updates.get(blockId)!
+    layer.text = { ...layer.text, value: update.translated }
+    layer.meta = { ...(layer.meta ?? {}), status: 'translated' }
+    updates.delete(blockId)
+    updatedCount++
+  }
+  if (updates.size > 0) {
+    console.warn(`[AI translate bg] ${updates.size} response blocks did not match any layer`, Array.from(updates.keys()))
+  }
+
+  const composedCanvas = createSyncSnapshot(doc) as HTMLCanvasElement
+  const maxW = 200
+  const maxH = 300
+  const scale = Math.min(maxW / composedCanvas.width, maxH / composedCanvas.height, 1)
+  const tw = Math.max(1, Math.round(composedCanvas.width * scale))
+  const th = Math.max(1, Math.round(composedCanvas.height * scale))
+  const thumbCanvas = document.createElement('canvas')
+  thumbCanvas.width = tw
+  thumbCanvas.height = th
+  const tctx = thumbCanvas.getContext('2d')
+  if (tctx) tctx.drawImage(composedCanvas, 0, 0, tw, th)
+  const thumbnail = await canvasToBlob(thumbCanvas, 'image/png')
+
+  const layerBlob = (await DocumentFactory.toBlob(doc)) as Blob
+  await options.fileAdapter.savePageSnapshot({
+    page: {
+      id: page.id,
+      projectId: page.projectId,
+      index: page.index,
+      status: 'in-progress',
+    },
+    originalImage: snapshot.originalImage,
+    layerBlob,
+    thumbnail,
+  })
+
+  await thumbnailCache.set(page.id, thumbnail)
+  options.queryClient.setQueryData(queryKeys.binary.thumbnail(page.id), thumbnail)
+  options.queryClient.setQueryData<PageSummary[]>(
+    queryKeys.pages.byProject(options.projectId),
+    (old) => {
+      if (!old) return old
+      return old.map((p) => (p.id === options.pageId ? { ...p, status: 'in-progress' } : p))
+    },
+  )
+  options.queryClient.invalidateQueries({ queryKey: queryKeys.pages.byProject(options.projectId) })
+
+  options.onBackgroundApplied?.(page.index)
+
+  return {
+    applied: true,
+    appliedMode: 'background',
+    textLayerCount: updatedCount,
+    graphicLayerCount: 0,
+  }
+}
+
 // --- helpers (shared by both paths) -----------------------------------------
 
 function buildTextLayers(
@@ -329,11 +483,19 @@ function createAiTextLayerFromPayload(
   const translated = stringValue(block.translated_text ?? block.translated)
   const bbox = bboxFromPayload(block.bbox)
   const blockId = stringValue(block.block_id ?? block.id) || `ai-block-${index}`
+  const polygon = polygonFromPayload(block.polygon)
+  const readingOrder = numberOrUndefined(block.reading_order ?? block.readingOrder)
+  const writingMode = writingModeFromPayload(block.writing_mode ?? block.writingMode)
+  const sourceRegionRef = stringOrUndefined(block.source_region_ref ?? block.sourceRegionRef)
   const meta: LayerTextMeta = {
     blockId,
     original,
     status: translated ? 'translated' : 'detected',
     boxMode: 'fixed',
+    ...(polygon ? { polygon } : {}),
+    ...(readingOrder !== undefined ? { readingOrder } : {}),
+    ...(writingMode ? { writingMode } : {}),
+    ...(sourceRegionRef ? { sourceRegionRef } : {}),
   }
   // 박스 = bbox.width/height. document 전체가 아닌 검출된 박스 그대로 보존하여
   // box-mode 렌더에서 정렬 기준으로 사용. document 크기는 박스 clamp용으로만.
@@ -365,6 +527,32 @@ function createAiTextLayerFromPayload(
     },
     meta,
   })
+}
+
+function polygonFromPayload(value: unknown): TextPolygon | undefined {
+  if (!Array.isArray(value) || value.length === 0) return undefined
+  const points: TextPolygon = []
+  for (const raw of value) {
+    if (!Array.isArray(raw) || raw.length < 2) continue
+    const x = Number(raw[0])
+    const y = Number(raw[1])
+    if (Number.isFinite(x) && Number.isFinite(y)) points.push([x, y])
+  }
+  return points.length > 0 ? points : undefined
+}
+
+function writingModeFromPayload(value: unknown): WritingMode | undefined {
+  return value === 'horizontal' || value === 'vertical' ? value : undefined
+}
+
+function numberOrUndefined(value: unknown): number | undefined {
+  if (value == null) return undefined
+  const n = Number(value)
+  return Number.isFinite(n) ? n : undefined
+}
+
+function stringOrUndefined(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 ? value : undefined
 }
 
 function bboxFromPayload(value: unknown): { x: number; y: number; width: number; height: number } {

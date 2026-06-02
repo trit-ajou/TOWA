@@ -95,12 +95,21 @@ export function useAiActions() {
         ],
         text_blocks: textLayers.map((layer) => {
           const meta = getTextMeta(layer)
-          return {
+          // detect 응답에서 받은 polygon/reading_order/writing_mode/source_region_ref는
+          // 그대로 다시 model-engine에 돌려주어야 translate stage가 동일 컨텍스트로
+          // 번역만 수행하고 geometry/메타를 임의로 갈아치우지 않는다.
+          // (TRANSLATE_REST_CONTRACT — translate는 OCR/검출 재실행 안 함.)
+          const block: Record<string, unknown> = {
             block_id: meta?.blockId ?? layer.id,
             source_lang_text: meta?.original ?? '',
             translated_text: layer.text.value,
             bbox: { x: layer.left, y: layer.top, width: layer.width, height: layer.height },
           }
+          if (meta?.polygon) block.polygon = meta.polygon
+          if (meta?.readingOrder !== undefined) block.reading_order = meta.readingOrder
+          if (meta?.writingMode) block.writing_mode = meta.writingMode
+          if (meta?.sourceRegionRef) block.source_region_ref = meta.sourceRegionRef
+          return block
         }),
         stage_meta: {},
       },
