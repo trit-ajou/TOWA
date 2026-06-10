@@ -4,6 +4,27 @@
 
 ---
 
+## 2026-06-11
+
+### 08:10 — ④ 상세 편집 텍스트 패널 펼치기 + 헤더 재구성
+- 배경: ④ 도구 옵션의 텍스트 속성이 popover에 갇혀 있어 발견성이 낮았음(줄간격이 "크기" 버튼 popover 안에 숨어 "패널이 전혀 안 바뀐 것처럼" 보임). 우측 패널은 공간이 넓으니 펼쳐 노출
+- `TextLayerInspector.vue` 전면 재구성: 폰트/크기/줄간격/색/정렬을 popover 없이 펼쳐 직접 노출(02:39의 ④ popover/슬라이더 방식을 대체). 폰트는 select 한 줄, **크기·줄간격·색은 한 줄에** 압축(크기/줄간격 number 인풋이 남는 폭을 `flex-1`로 분배), 정렬 한 줄. 원문/번역 *내용* 편집만 popover 유지(긴 텍스트라 인라인 부적합)
+- 슬라이더·"자동" 버튼은 제거(슬라이더는 정밀 입력에 무의미, 패널 세로 공간만 차지해 레이어 패널을 좁힘). 줄간격은 인풋을 비우면(또는 0) 자동 — placeholder "자동"으로 표현
+- 추가/삭제 버튼을 본문 헤더 → "도구 옵션 · 텍스트" 패널 헤더(`ToolOptionsPanel.vue`) 우측으로 이동(레이어 단위가 아니라 패널 레벨 동작임을 명확화). `addTextLayer`/`removeTextLayer` 로직도 ToolOptionsPanel로. 삭제는 텍스트 레이어 선택 시에만 활성
+- 레이어 `#n` 인덱스(내부 식별자 꼬리)·블록 상태 뱃지를 ④에서 제거: 표시 전용이고 어떤 로직에도 안 쓰이며 편집 시 항상 `edited`라 정보가치가 낮음. 페이지 상태(대기/완료, 진행률 계산)와는 별개 시스템 — `status` 데이터 자체는 향후 필터/AI 출처 구분 여지로 보존
+- 검증: `vue-tsc` PASS. Playwright로 ④ 확인 — 헤더 추가/삭제 버튼(미선택 시 삭제 disabled), 펼친 속성 전부 노출, 줄간격 36 store 반영, 삭제 버튼 → 텍스트 레이어 0·선택 해제
+
+### 02:39 — 텍스트 줄간격(lineHeight) 편집 UI 추가 + 크기/줄간격 UX 개선
+- 배경: 엔진(`text.lineHeight`, px·0=자동)·렌더링·스토어·직렬화는 이미 줄간격을 지원했으나, towa-app 텍스트 편집 UI 두 곳(편집·상세 편집)에 컨트롤이 노출돼 있지 않았음. bitmappery 원본 도구 패널은 제거된 상태라 자체 UI에 직접 추가 필요
+- 추가:
+  - **③ 편집**(`TextBlockItem.vue`): 크기·줄간격을 신규 `NumberCombo.vue`로 교체. 식별 아이콘(크기 `ALargeSmall`, 줄간격 `AlignVerticalSpaceAround`) + 포커스 시 프리셋 드롭다운(직접 타이핑 병행). 줄간격 프리셋에 "자동"(0) 포함
+  - **④ 상세 편집**(`TextLayerInspector.vue`): 크기 popover의 줄간격 칸에 슬라이더 + "자동" 버튼 추가(기존엔 number만)
+  - `NumberCombo.vue`: input + 좌측 아이콘 + Teleport 프리셋 드롭다운(포커스 시 자동 오픈, 외부클릭·Esc·스크롤 시 닫힘). 0을 placeholder로 표시하는 옵션
+  - `constants/text-presets.ts`: 크기·줄간격 프리셋(px 절댓값)과 슬라이더 범위를 두 화면이 공유
+- 값 정책: 전부 px 절댓값. 줄간격 `0` = 자동(폰트 메트릭 기반 간격). 배수 표기는 추후 옵션으로 보류
+- 두 경로 모두 기존 `updateText`/`patchText` → `bmp/updateLayer` 배관 재사용 → 렌더·자동저장 자동 반영. 엔진/스토어/렌더링/③ 폰트 select/④ 크기 컨트롤은 무수정
+- 검증: `vue-tsc --noEmit` PASS. 백엔드(service_engine docker)+dev 서버 띄워 Playwright로 양쪽 모드 확인 — ③ 콤보 프리셋(크기 48·줄간격 28) store 반영, ④ 슬라이더·"자동" 버튼(→0) 반영, 콘솔 에러 0
+
 ## 2026-06-02
 
 ### 20:18 — PageTransitionOverlay thumbnail이 캔버스 영역을 채우지 못함

@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, useTemplateRef } from 'vue'
 import {
-  Type, Trash2, Pencil,
+  Type, Trash2, Pencil, ALargeSmall, AlignVerticalSpaceAround,
   AlignLeft, AlignCenter, AlignRight,
   AlignStartVertical, AlignCenterVertical, AlignEndVertical,
 } from 'lucide-vue-next'
 import type { Layer, Text, TextAlign, TextVerticalAlign } from '@bitmappery/definitions/document'
 import { getTextMeta } from '@/utils/text-layer'
+import NumberCombo from './NumberCombo.vue'
+import { SIZE_PRESETS, LINE_HEIGHT_PRESETS } from '@/constants/text-presets'
 
 const HORIZONTAL_ALIGNS: Array<{ value: TextAlign; icon: typeof AlignLeft; title: string }> = [
   { value: 'left',   icon: AlignLeft,   title: '왼쪽 정렬' },
@@ -163,14 +165,24 @@ function onRemove(e: MouseEvent) {
           <option value="Black Han Sans">블랙한산스</option>
         </select>
       </div>
-      <input
-        :value="layer.text.size"
-        type="number"
-        min="8"
-        max="72"
-        class="w-12 bg-towa-bg border border-towa-border rounded px-1.5 py-0.5 text-[11px] text-towa-text text-center focus:outline-none focus:border-towa-accent"
-        @input="$emit('updateText', { size: Number(($event.target as HTMLInputElement).value) })"
-        @click.stop
+      <NumberCombo
+        :model-value="layer.text.size"
+        :icon="ALargeSmall"
+        :presets="SIZE_PRESETS"
+        :min="8"
+        :max="200"
+        title="크기"
+        @update:model-value="(v) => $emit('updateText', { size: v })"
+      />
+      <NumberCombo
+        :model-value="layer.text.lineHeight"
+        :icon="AlignVerticalSpaceAround"
+        :presets="LINE_HEIGHT_PRESETS"
+        :min="0"
+        :max="200"
+        placeholder="자동"
+        title="줄간격 (0 = 자동)"
+        @update:model-value="(v) => $emit('updateText', { lineHeight: v })"
       />
       <input
         :value="layer.text.color"
