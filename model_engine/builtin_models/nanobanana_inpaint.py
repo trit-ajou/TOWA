@@ -4,6 +4,7 @@ import base64
 from datetime import datetime, timezone
 from io import BytesIO
 import json
+import os
 from pathlib import Path
 from typing import Any, Callable, Optional, Sequence
 from urllib import error, request
@@ -354,7 +355,11 @@ def _generate_with_nanobanana_vertex(
             "google-genai is not installed. Add it to the local environment or Docker image before running nanobanana inpaint."
         ) from exc
 
-    client = genai.Client(vertexai=True, api_key=api_key)
+    # Default to the Gemini Developer API (AI Studio) key path. Vertex needs a GCP
+    # project binding, so it stays opt-in via TOWA_GEMINI_USE_VERTEX for deployments
+    # that actually run on Vertex; BYOK/AI Studio keys use the default (vertexai=False).
+    use_vertex = os.environ.get("TOWA_GEMINI_USE_VERTEX", "").strip().lower() in {"1", "true", "yes"}
+    client = genai.Client(vertexai=use_vertex, api_key=api_key)
     contents: list[object] = [
         types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
         for image_bytes, mime_type in reference_images
