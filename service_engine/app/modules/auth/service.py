@@ -25,6 +25,10 @@ class SessionExpiredError(InvalidSessionError):
     pass
 
 
+class EmailNotAllowedError(AuthServiceError):
+    """Dev login is restricted and this email is not on the allowlist."""
+
+
 @dataclass(frozen=True)
 class AuthenticatedContext:
     user: User
@@ -89,6 +93,10 @@ def create_dev_session(
     nickname: str | None,
 ) -> DevLoginResult:
     normalized_email = _normalize_email(email)
+    # Temporary access gate: when an allowlist is configured, only those emails may sign in.
+    allowed_emails = get_settings().dev_login_allowed_emails()
+    if allowed_emails and normalized_email.lower() not in allowed_emails:
+        raise EmailNotAllowedError(f"Email not permitted to sign in: {normalized_email}")
     normalized_nickname = _normalize_optional_nickname(nickname)
     session_bundle = generate_session_token()
 

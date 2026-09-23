@@ -23,6 +23,7 @@ services:
       APP_ENV: docker
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-towa}:${POSTGRES_PASSWORD:-towa}@db:5432/${POSTGRES_DB:-towa}
       SERVICE_ENGINE_CORS_ALLOW_ORIGINS: ${SERVICE_ENGINE_CORS_ALLOW_ORIGINS:-http://localhost:5173}
+      SERVICE_ENGINE_DEV_LOGIN_ALLOWLIST: ${SERVICE_ENGINE_DEV_LOGIN_ALLOWLIST:-}
     depends_on:
       db:
         condition: service_healthy
