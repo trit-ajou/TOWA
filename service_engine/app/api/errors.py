@@ -12,7 +12,12 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.requests import Request
 
 from app.api.schemas.common import ErrorBody, ErrorResponse
-from app.modules.auth.service import AuthServiceError, InvalidSessionError, SessionExpiredError
+from app.modules.auth.service import (
+    AuthServiceError,
+    EmailNotAllowedError,
+    InvalidSessionError,
+    SessionExpiredError,
+)
 from app.modules.billing.credits import (
     CreditServiceError,
     InsufficientCreditsError,
@@ -169,6 +174,12 @@ def raise_auth_http_error(exc: Exception) -> None:
         raise APIError(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             code="validation_error",
+            message=str(exc),
+        ) from exc
+    if isinstance(exc, EmailNotAllowedError):
+        raise APIError(
+            status_code=status.HTTP_403_FORBIDDEN,
+            code="email_not_allowed",
             message=str(exc),
         ) from exc
     if isinstance(exc, AuthServiceError):
