@@ -60,6 +60,12 @@ class DefaultCredentialResolver(CredentialResolver):
         if provider is None:
             return {}, {}
 
+        # BYOK: a user-supplied session key wins in every mode so cloud users can
+        # spend their own provider credit instead of the shared platform key.
+        session_secret = runtime_context.session_provider_secrets.get(provider)
+        if session_secret:
+            return self._session_binding(provider, session_secret)
+
         if runtime_context.mode is ExecutionMode.SAAS:
             return self._resolve_platform_binding(provider)
         return self._resolve_local_binding(provider, runtime_context)
@@ -111,23 +117,27 @@ class DefaultCredentialResolver(CredentialResolver):
         resolved = ResolvedCredential(binding=binding, secrets={"api_key": secret})
         return {"primary_provider": binding}, {"primary_provider": resolved}
 
+    def _session_binding(
+        self,
+        provider: str,
+        session_secret: str,
+    ) -> tuple[dict[str, CredentialBinding], dict[str, ResolvedCredential]]:
+        # A per-request user key (USER_PERSONAL_SESSION); billed to the user, never persisted.
+        binding = CredentialBinding(
+            provider=provider,
+            credential_source=CredentialSource.USER_PERSONAL_SESSION,
+            credential_id=f"session/{provider}/active",
+            credential_version="session",
+            billing_mode=BillingMode.USER_DIRECT,
+        )
+        resolved = ResolvedCredential(binding=binding, secrets={"api_key": session_secret})
+        return {"primary_provider": binding}, {"primary_provider": resolved}
+
     def _resolve_local_binding(
         self,
         provider: str,
         runtime_context: StageRuntimeContext,
     ) -> tuple[dict[str, CredentialBinding], dict[str, ResolvedCredential]]:
-        session_secret = runtime_context.session_provider_secrets.get(provider)
-        if session_secret:
-            binding = CredentialBinding(
-                provider=provider,
-                credential_source=CredentialSource.USER_PERSONAL_SESSION,
-                credential_id=f"session/{provider}/active",
-                credential_version="session",
-                billing_mode=BillingMode.USER_DIRECT,
-            )
-            resolved = ResolvedCredential(binding=binding, secrets={"api_key": session_secret})
-            return {"primary_provider": binding}, {"primary_provider": resolved}
-
         persisted = self._read_persisted_provider(provider)
         if not persisted:
             raise CredentialResolutionError(
