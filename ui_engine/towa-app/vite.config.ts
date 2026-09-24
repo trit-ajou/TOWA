@@ -115,6 +115,16 @@ export default defineConfig({
         : {}),
     }
   })(),
+  // Production `vite preview` server (serves the built dist/). allowedHosts can only
+  // come from config, so the accessed host (public domain or tailscale IP) is whitelisted here.
+  preview: (() => {
+    const publicHost = process.env.VITE_PUBLIC_HOST
+    return {
+      host: '0.0.0.0',
+      port: 5173,
+      ...(publicHost ? { allowedHosts: [publicHost, `.${publicHost}`] } : {}),
+    }
+  })(),
   define: {
     'global': 'globalThis',
   },
