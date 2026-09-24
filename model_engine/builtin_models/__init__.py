@@ -15,6 +15,7 @@ from .manga_ocr import (
     register_manga_ocr_model,
 )
 from .nanobanana_inpaint import (
+    MINDLOGIC_IMAGE_GEN_MODEL,
     MINDLOGIC_IMAGE_MODEL,
     MINDLOGIC_INPAINT_MODEL_ID,
     NANOBANANA_DEFAULT_PROMPT,
@@ -52,6 +53,7 @@ from .vertex_translation import (
 __all__ = [
     "CRAFT_TEXT_DETECTION_MODEL_ID",
     "MANGA_OCR_MODEL_ID",
+    "MINDLOGIC_IMAGE_GEN_MODEL",
     "MINDLOGIC_IMAGE_MODEL",
     "MINDLOGIC_INPAINT_MODEL_ID",
     "NANOBANANA_DEFAULT_PROMPT",

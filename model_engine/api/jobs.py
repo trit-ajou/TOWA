@@ -27,7 +27,7 @@ from ..config.runtime_config import load_runtime_config, runtime_config_value
 from ..builtin_models import (
     CRAFT_TEXT_DETECTION_MODEL_ID,
     MANGA_OCR_MODEL_ID,
-    MINDLOGIC_IMAGE_MODEL,
+    MINDLOGIC_IMAGE_GEN_MODEL,
     MINDLOGIC_INPAINT_MODEL_ID,
     NANOBANANA_INPAINT_MODEL_ID,
     OPENAI_COMPATIBLE_DEFAULT_BASE_URL,
@@ -1062,7 +1062,7 @@ def _inpaint_provider_config_from_runtime(
             "model_name": str(
                 runtime_context.metadata.get("inpaint_model_name")
                 or runtime_config_value(RUNTIME_CONFIG, "TOWA_INPAINT_MODEL_NAME")
-                or MINDLOGIC_IMAGE_MODEL
+                or MINDLOGIC_IMAGE_GEN_MODEL
             ),
         }
     return {"provider": "nanobanana"}
