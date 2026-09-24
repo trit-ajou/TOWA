@@ -1,11 +1,17 @@
 #!/bin/bash
-# Server auto-deploy: bootstrap .env on first run, pull main, rebuild if changed.
-# Usage: cron entry like `*/5 * * * * /path/to/TOWA/deploy.sh >> /path/to/TOWA/deploy.log 2>&1`
+# Server auto-deploy: bootstrap .env on first run, pull THIS worktree's tracking branch,
+# rebuild its compose stack if changed. Each environment is its own worktree on its own
+# branch (prod worktree -> production, staging -> pre-production); the stack is selected by
+# COMPOSE_PROJECT_NAME in that worktree's .env (docker compose reads it automatically).
+# Usage: `*/5 * * * * cd /home/jy/TOWA-prod && ./deploy.sh >> deploy.log 2>&1` (one cron per env).
 
 set -e
 
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$REPO_DIR"
+
+# Deploy whatever branch this worktree is checked out on — no forced branch switch.
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
 
 STUCK_MARKER=".deploy-stuck-at-sha"
 NEEDS_BUILD=0
@@ -16,18 +22,14 @@ if [ ! -f .env ]; then
   NEEDS_BUILD=1
 fi
 
-git fetch origin main --quiet
+git fetch origin "$BRANCH" --quiet
 
-LOCAL=$(git rev-parse main 2>/dev/null || echo "none")
-REMOTE=$(git rev-parse origin/main)
+LOCAL=$(git rev-parse "$BRANCH" 2>/dev/null || echo "none")
+REMOTE=$(git rev-parse "origin/$BRANCH")
 
 if [ "$LOCAL" != "$REMOTE" ]; then
-  echo "[$(date '+%Y-%m-%d %H:%M:%S')] main updated: $LOCAL -> $REMOTE"
-  CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-  if [ "$CURRENT_BRANCH" != "main" ]; then
-    git checkout main
-  fi
-  git pull origin main
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] $BRANCH updated: $LOCAL -> $REMOTE"
+  git pull origin "$BRANCH"
   NEEDS_BUILD=1
   # New code arrived — clear any stuck-build marker so we retry.
   rm -f "$STUCK_MARKER"
