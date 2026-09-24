@@ -8,8 +8,24 @@ const store = useStore()
 const router = useRouter()
 const route = useRoute()
 
+const mode = ref<'login' | 'signup'>('login')
 const email = ref('')
+const password = ref('')
+const inviteCode = ref('')
 const nickname = ref('')
+
+const isSignup = computed(() => mode.value === 'signup')
+
+function toggleMode() {
+  mode.value = isSignup.value ? 'login' : 'signup'
+  store.commit('auth/SET_ERROR', null)
+}
+
+const canSubmit = computed(() => {
+  if (!email.value.trim() || !password.value) return false
+  if (isSignup.value && !inviteCode.value.trim()) return false
+  return true
+})
 
 const authError = computed(() => store.state.auth.error)
 const isLoading = computed(() => store.state.auth.isLoading)
@@ -31,16 +47,23 @@ onMounted(() => {
 })
 
 async function submit() {
-  if (!email.value.trim()) return
+  if (!canSubmit.value) return
   try {
-    await store.dispatch('auth/devLogin', {
-      email: email.value.trim(),
-      nickname: nickname.value.trim() || undefined,
-    })
-    // Server state is now driven by TanStack Query. The auth/SET_SESSION
-    // subscription in main.ts wires the new user namespace; the cross-cutting
-    // invalidate-on-login (#39 §sync) lives there too. No imperative load
-    // needed here.
+    if (isSignup.value) {
+      await store.dispatch('auth/signup', {
+        email: email.value.trim(),
+        password: password.value,
+        inviteCode: inviteCode.value.trim(),
+        nickname: nickname.value.trim() || undefined,
+      })
+    } else {
+      await store.dispatch('auth/login', {
+        email: email.value.trim(),
+        password: password.value,
+      })
+    }
+    // Server state is driven by TanStack Query; the auth/SET_SESSION subscription
+    // in main.ts wires the user namespace and invalidate-on-login (#39 §sync).
     router.replace(redirectTarget.value)
   } catch {
     // store가 error 관리
@@ -142,13 +165,13 @@ async function submit() {
         <!-- Header -->
         <div class="mb-10">
           <div class="text-[11px] tracking-[0.3em] text-towa-accent uppercase font-display font-medium mb-3">
-            Sign in
+            {{ isSignup ? 'Create account' : 'Sign in' }}
           </div>
           <h1 class="font-display font-bold text-towa-text leading-tight" style="font-size: clamp(2rem, 4vw, 2.75rem)">
-            로그인
+            {{ isSignup ? '회원가입' : '로그인' }}
           </h1>
           <p class="text-xs text-towa-text-muted mt-2">
-            현재 개발용 임시 로그인 — 이메일과 닉네임만 입력하면 진입할 수 있습니다.
+            {{ isSignup ? '초대코드와 이메일, 비밀번호로 계정을 만듭니다.' : '이메일과 비밀번호로 로그인합니다.' }}
           </p>
         </div>
 
@@ -169,6 +192,31 @@ async function submit() {
           </div>
 
           <div>
+            <label class="block text-[11px] tracking-[0.2em] text-towa-text-muted uppercase font-display font-medium mb-2">
+              비밀번호
+            </label>
+            <input
+              v-model="password"
+              type="password"
+              :autocomplete="isSignup ? 'new-password' : 'current-password'"
+              placeholder="••••••••"
+              class="w-full bg-transparent border-0 border-b-2 border-towa-border px-0 py-3 text-base text-towa-text placeholder:text-towa-text-muted/60 focus:outline-none focus:border-towa-accent transition-colors font-korean"
+            />
+          </div>
+
+          <div v-if="isSignup">
+            <label class="block text-[11px] tracking-[0.2em] text-towa-text-muted uppercase font-display font-medium mb-2">
+              초대코드
+            </label>
+            <input
+              v-model="inviteCode"
+              type="text"
+              placeholder="invite code"
+              class="w-full bg-transparent border-0 border-b-2 border-towa-border px-0 py-3 text-base text-towa-text placeholder:text-towa-text-muted/60 focus:outline-none focus:border-towa-accent transition-colors font-korean"
+            />
+          </div>
+
+          <div v-if="isSignup">
             <label class="block text-[11px] tracking-[0.2em] text-towa-text-muted uppercase font-display font-medium mb-2">
               닉네임 <span class="text-towa-text-muted/60 lowercase">(선택)</span>
             </label>
@@ -207,11 +255,11 @@ async function submit() {
           <!-- Submit -->
           <button
             type="submit"
-            :disabled="!email.trim() || isLoading"
+            :disabled="!canSubmit || isLoading"
             class="group w-full inline-flex items-center justify-center gap-3 bg-towa-accent hover:bg-towa-accent-hover transition-colors px-5 py-4 text-white font-display font-medium disabled:opacity-50 disabled:cursor-not-allowed mt-2"
             style="border: 2px solid var(--towa-text); box-shadow: 5px 5px 0 0 var(--towa-text)"
           >
-            <span>{{ isLoading ? '로그인 중...' : '로그인' }}</span>
+            <span>{{ isLoading ? (isSignup ? '가입 중...' : '로그인 중...') : (isSignup ? '회원가입' : '로그인') }}</span>
             <ArrowRight v-if="!isLoading" :size="18" class="transition-transform group-hover:translate-x-1" />
           </button>
         </form>
@@ -225,14 +273,13 @@ async function submit() {
 
         <!-- Signup placeholder -->
         <div class="text-center text-sm text-towa-text-muted">
-          아직 계정이 없으신가요?
+          {{ isSignup ? '이미 계정이 있으신가요?' : '아직 계정이 없으신가요?' }}
           <button
             type="button"
-            class="ml-1 text-towa-pink hover:text-towa-pink/80 underline underline-offset-4 decoration-2 cursor-not-allowed opacity-70"
-            disabled
-            title="추후 정식 회원가입 예정"
+            class="ml-1 text-towa-pink hover:text-towa-pink/80 underline underline-offset-4 decoration-2 cursor-pointer"
+            @click="toggleMode"
           >
-            회원가입 (준비 중)
+            {{ isSignup ? '로그인' : '회원가입' }}
           </button>
         </div>
 

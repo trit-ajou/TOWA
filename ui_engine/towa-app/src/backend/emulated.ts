@@ -8,8 +8,10 @@ import type {
   AuthRequestOptions,
   CurrentSessionInfo,
   FilesBackend,
+  LoginCredentials,
   LoginInput,
   LoginResult,
+  SignupInput,
   PageSnapshotPayload,
   PageSummaryDto,
   ProjectCreateInput,
@@ -92,6 +94,15 @@ export function createEmulatedAppBackend(): AppBackend {
       }
       sessions.set(sessionKey, payload)
       return clone(payload)
+    },
+
+    async signup(input: SignupInput): Promise<LoginResult> {
+      // Emulated backend does not enforce invite codes; mirror a dev login.
+      return auth.devLogin({ email: input.email, nickname: input.nickname })
+    },
+
+    async login(input: LoginCredentials): Promise<LoginResult> {
+      return auth.devLogin({ email: input.email })
     },
 
     async getCurrentUser(options: AuthRequestOptions): Promise<CurrentSessionInfo> {
