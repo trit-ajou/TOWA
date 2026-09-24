@@ -35,6 +35,11 @@ NANOBANANA_INPAINT_MODEL_ID = "builtin.nanobanana.inpaint"
 NANOBANANA_IMAGE_MODEL = "gemini-3.1-flash-image-preview"
 MINDLOGIC_INPAINT_MODEL_ID = "builtin.mindlogic.inpaint"
 MINDLOGIC_IMAGE_MODEL = "imagen-3.0-capability-001"
+# Mindlogic/factchat gateway image endpoint (OpenAI-images style, single input image).
+# Used for accounts exposing gateway image models (gemini-*-image, gpt-image-*) instead of
+# Vertex imagen edit. The edited image is returned in data[].url as a base64 data URL.
+MINDLOGIC_IMAGE_GEN_URL = "https://factchat-cloud.mindlogic.ai/v1/gateway/images/generate/"
+MINDLOGIC_IMAGE_GEN_MODEL = "gemini-3.1-flash-image-preview"
 MINDLOGIC_GOOGLE_EDIT_BASE_URL = "https://factchat-cloud.mindlogic.ai/v1/api/google"
 MINDLOGIC_GOOGLE_EDIT_PATH = "/models/edit-image"
 NANOBANANA_DEFAULT_PROMPT = (
@@ -138,10 +143,10 @@ def nanobanana_inpaint_handler(request: StageRequest) -> StageResponse:
 def mindlogic_inpaint_handler(request: StageRequest) -> StageResponse:
     return run_nanobanana_inpaint(
         request,
-        generate_edit_fn=_generate_with_mindlogic_google_edit,
-        default_model_name=MINDLOGIC_IMAGE_MODEL,
+        generate_edit_fn=_generate_with_mindlogic_image,
+        default_model_name=MINDLOGIC_IMAGE_GEN_MODEL,
         provider_name="mindlogic",
-        engine_name="mindlogic_google_edit",
+        engine_name="mindlogic_image",
     )
 
 
@@ -409,6 +414,37 @@ def _image_part_to_png_bytes(part: object) -> bytes:
             return _image_to_bytes(pil_image.convert("RGBA"), format_hint="PNG")
 
     raise RuntimeError("Nanobanana image part could not be converted into PNG bytes")
+
+
+def _generate_with_mindlogic_image(
+    reference_images: Sequence[ImageReference],
+    prompt: str,
+    model_name: str,
+    api_key: str,
+) -> bytes:
+    # Single source image is edited in place; the gateway returns the edited image in data[].url.
+    image_bytes, mime_type = reference_images[0]
+    data_url = f"data:{mime_type};base64," + base64.b64encode(image_bytes).decode("ascii")
+    payload = {"model": model_name, "prompt": prompt, "image": data_url}
+    body = json.dumps(payload).encode("utf-8")
+    req = request.Request(MINDLOGIC_IMAGE_GEN_URL, data=body, method="POST")
+    req.add_header("Authorization", f"Bearer {api_key}")
+    req.add_header("Accept", "application/json")
+    req.add_header("Content-Type", "application/json")
+    # Cloudflare in front of the gateway rejects Python's default UA (error 1010).
+    req.add_header("User-Agent", "curl/8.7.1")
+    try:
+        with request.urlopen(req, timeout=180.0) as resp:
+            response_payload = json.loads(resp.read().decode("utf-8"))
+    except error.HTTPError as exc:
+        raw = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"Mindlogic image edit failed: HTTP {exc.code}: {raw}") from exc
+
+    image_bytes = _extract_mindlogic_image_bytes(response_payload)
+    if image_bytes is None:
+        keys = sorted(response_payload.keys()) if isinstance(response_payload, dict) else []
+        raise RuntimeError(f"Mindlogic image edit response did not include an image: keys={keys}")
+    return image_bytes
 
 
 def _generate_with_mindlogic_google_edit(
