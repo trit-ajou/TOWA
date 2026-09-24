@@ -416,6 +416,17 @@ def _image_part_to_png_bytes(part: object) -> bytes:
     raise RuntimeError("Nanobanana image part could not be converted into PNG bytes")
 
 
+_SUPPORTED_ASPECT_RATIOS = (
+    ("1:1", 1.0), ("2:3", 2 / 3), ("3:2", 3 / 2),
+    ("3:4", 3 / 4), ("4:3", 4 / 3), ("9:16", 9 / 16), ("16:9", 16 / 9),
+)
+
+
+def _nearest_supported_aspect_ratio(width: int, height: int) -> str:
+    ratio = width / height if height else 1.0
+    return min(_SUPPORTED_ASPECT_RATIOS, key=lambda item: abs(item[1] - ratio))[0]
+
+
 def _generate_with_mindlogic_image(
     reference_images: Sequence[ImageReference],
     prompt: str,
@@ -425,7 +436,16 @@ def _generate_with_mindlogic_image(
     # Single source image is edited in place; the gateway returns the edited image in data[].url.
     image_bytes, mime_type = reference_images[0]
     data_url = f"data:{mime_type};base64," + base64.b64encode(image_bytes).decode("ascii")
-    payload = {"model": model_name, "prompt": prompt, "image": data_url}
+    width, height = Image.open(BytesIO(image_bytes)).size
+    # `input_images` (NOT `image`) is what puts the gateway into edit mode — otherwise it
+    # generates a brand-new image from the prompt. aspect_ratio keeps the output near the
+    # page orientation instead of the default square (the pipeline still fits it to page size).
+    payload = {
+        "model": model_name,
+        "prompt": prompt,
+        "input_images": [data_url],
+        "aspect_ratio": _nearest_supported_aspect_ratio(width, height),
+    }
     body = json.dumps(payload).encode("utf-8")
     req = request.Request(MINDLOGIC_IMAGE_GEN_URL, data=body, method="POST")
     req.add_header("Authorization", f"Bearer {api_key}")
