@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import copy
+import os
 import re
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -17,6 +19,77 @@ from app.modules.projects import folders as folder_service
 from app.modules.projects.models import Folder, Page, PageSnapshot, Project
 
 ULID_RE = re.compile(r"^[0-9A-HJKMNP-TV-Z]{26}$")
+
+_CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+
+
+def generate_ulid() -> str:
+    # 48-bit millisecond timestamp + 80-bit randomness, Crockford base32 (26 chars).
+    value = ((int(time.time() * 1000) & ((1 << 48) - 1)) << 80) | int.from_bytes(os.urandom(10), "big")
+    chars = []
+    for _ in range(26):
+        chars.append(_CROCKFORD[value & 0x1F])
+        value >>= 5
+    return "".join(reversed(chars))
+
+
+def _rewrite_snapshot_metadata(meta: Any, *, page_id: str, project_id: str) -> dict[str, Any]:
+    result = copy.deepcopy(meta) if isinstance(meta, dict) else {}
+    page = result.get("page")
+    if isinstance(page, dict):
+        page["id"] = page_id
+        page["project_id"] = project_id
+    return result
+
+
+def seed_sample_project(session: Session, *, user_id, template_project_id: str) -> str | None:
+    """Deep-copy the sample project (pages + snapshots) into a fresh project for a new user."""
+    template = session.get(Project, template_project_id)
+    if template is None:
+        return None
+
+    new_project_id = generate_ulid()
+    session.add(
+        Project(
+            id=new_project_id,
+            user_id=user_id,
+            name=template.name,
+            thumbnail_url=None,
+            source_lang=template.source_lang,
+            target_lang=template.target_lang,
+            status=template.status,
+            folder_id=None,
+            config=copy.deepcopy(template.config) if template.config else {},
+        )
+    )
+
+    template_pages = session.scalars(
+        select(Page).where(Page.project_id == template_project_id).order_by(Page.index)
+    ).all()
+    for tpage in template_pages:
+        new_page_id = generate_ulid()
+        session.add(Page(id=new_page_id, project_id=new_project_id, index=tpage.index, status=tpage.status))
+        snap = session.get(PageSnapshot, tpage.id)
+        if snap is None:
+            continue
+        session.add(
+            PageSnapshot(
+                page_id=new_page_id,
+                metadata_json=_rewrite_snapshot_metadata(
+                    snap.metadata_json, page_id=new_page_id, project_id=new_project_id
+                ),
+                original_image_bytes=snap.original_image_bytes,
+                original_image_media_type=snap.original_image_media_type,
+                original_image_byte_size=snap.original_image_byte_size,
+                layer_blob_bytes=snap.layer_blob_bytes,
+                layer_blob_media_type=snap.layer_blob_media_type,
+                layer_blob_byte_size=snap.layer_blob_byte_size,
+                thumbnail_bytes=snap.thumbnail_bytes,
+                thumbnail_media_type=snap.thumbnail_media_type,
+                thumbnail_byte_size=snap.thumbnail_byte_size,
+            )
+        )
+    return new_project_id
 
 
 class ProjectStorageError(RuntimeError):

@@ -36,6 +36,10 @@ class Settings(BaseSettings):
         default="",
         validation_alias="SERVICE_ENGINE_INVITE_CODES",
     )
+    sample_project_id: str = Field(
+        default="",
+        validation_alias="SERVICE_ENGINE_SAMPLE_PROJECT_ID",
+    )
 
     def cors_origins(self) -> list[str]:
         return [origin.strip() for origin in self.cors_allow_origins.split(",") if origin.strip()]
