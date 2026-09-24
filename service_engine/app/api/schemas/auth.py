@@ -25,6 +25,22 @@ class DevLoginRequest(BaseModel):
     nickname: str | None = None
 
 
+class SignupRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    email: str
+    password: str
+    invite_code: str
+    nickname: str | None = None
+
+
+class LoginRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    email: str
+    password: str
+
+
 class DevLoginResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.clock import ensure_utc, utcnow
+from app.core.passwords import hash_password, verify_password
 from app.core.settings import get_settings
 from app.core.tokens import generate_session_token, hash_token
 from app.db.enums import UserStatus
@@ -27,6 +28,18 @@ class SessionExpiredError(InvalidSessionError):
 
 class EmailNotAllowedError(AuthServiceError):
     """Dev login is restricted and this email is not on the allowlist."""
+
+
+class InvalidInviteCodeError(AuthServiceError):
+    """Signup invite code is missing or invalid."""
+
+
+class EmailAlreadyRegisteredError(AuthServiceError):
+    """Signup attempted with an email that already has an account."""
+
+
+class InvalidCredentialsError(AuthServiceError):
+    """Login email/password did not match."""
 
 
 @dataclass(frozen=True)
@@ -83,6 +96,96 @@ def _build_context(user: User, auth_session: AuthSession) -> AuthenticatedContex
         user=user,
         auth_session=auth_session,
         credit_account=credit_account,
+    )
+
+
+def create_password_signup(
+    session: Session,
+    *,
+    email: str,
+    password: str,
+    invite_code: str,
+    nickname: str | None,
+) -> DevLoginResult:
+    # Invite code is validated before any DB work; codes are configured out of band.
+    if invite_code.strip() not in get_settings().signup_invite_codes():
+        raise InvalidInviteCodeError("Invalid invite code")
+    normalized_email = _normalize_email(email)
+    normalized_nickname = _normalize_optional_nickname(nickname)
+    password_hash = hash_password(password)
+    session_bundle = generate_session_token()
+
+    with session.begin():
+        existing = session.scalar(select(User).where(User.email == normalized_email))
+        if existing is not None:
+            raise EmailAlreadyRegisteredError(f"Email already registered: {normalized_email}")
+        user = User(
+            email=normalized_email,
+            nickname=normalized_nickname or _default_nickname(normalized_email),
+            status=UserStatus.ACTIVE,
+            password_hash=password_hash,
+        )
+        session.add(user)
+        session.flush()
+
+        credit_account = _ensure_credit_account(session, user=user)
+        auth_session = AuthSession(
+            user_id=user.id,
+            session_token_hash=session_bundle.token_hash,
+            expires_at=session_bundle.expires_at,
+            last_used_at=utcnow(),
+        )
+        session.add(auth_session)
+        session.flush()
+
+    return DevLoginResult(
+        session_key=session_bundle.plaintext,
+        expires_in=session_bundle.expires_in,
+        context=AuthenticatedContext(
+            user=user,
+            auth_session=auth_session,
+            credit_account=credit_account,
+        ),
+    )
+
+
+def authenticate_password_login(
+    session: Session,
+    *,
+    email: str,
+    password: str,
+) -> DevLoginResult:
+    normalized_email = _normalize_email(email)
+    session_bundle = generate_session_token()
+
+    with session.begin():
+        user = session.scalar(
+            select(User)
+            .options(selectinload(User.credit_account))
+            .where(User.email == normalized_email),
+        )
+        # Same error whether the email is unknown or the password is wrong (no user enumeration).
+        if user is None or not verify_password(password, user.password_hash):
+            raise InvalidCredentialsError("Invalid email or password")
+
+        credit_account = _ensure_credit_account(session, user=user)
+        auth_session = AuthSession(
+            user_id=user.id,
+            session_token_hash=session_bundle.token_hash,
+            expires_at=session_bundle.expires_at,
+            last_used_at=utcnow(),
+        )
+        session.add(auth_session)
+        session.flush()
+
+    return DevLoginResult(
+        session_key=session_bundle.plaintext,
+        expires_in=session_bundle.expires_in,
+        context=AuthenticatedContext(
+            user=user,
+            auth_session=auth_session,
+            credit_account=credit_account,
+        ),
     )
 
 

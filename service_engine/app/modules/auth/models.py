@@ -23,6 +23,7 @@ class User(TimestampMixin, Base):
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     email: Mapped[str] = mapped_column(String(320), nullable=False, unique=True, index=True)
     nickname: Mapped[str] = mapped_column(String(50), nullable=False)
+    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     status: Mapped[UserStatus] = mapped_column(
         enum_type(UserStatus, name="user_status"),
         nullable=False,

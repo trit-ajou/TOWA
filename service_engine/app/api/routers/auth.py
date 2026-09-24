@@ -10,6 +10,8 @@ from app.api.schemas.auth import (
     CurrentUserResponse,
     DevLoginRequest,
     DevLoginResponse,
+    LoginRequest,
+    SignupRequest,
 )
 from app.db import get_db_session
 from app.modules.auth import service as auth_service
@@ -49,6 +51,58 @@ def dev_login(
         credit_balance=result.context.credit_account.balance_units,
         reserved_units=result.context.credit_account.reserved_units,
     )
+
+
+def _dev_login_response(result: auth_service.DevLoginResult) -> DevLoginResponse:
+    return DevLoginResponse(
+        session_key=result.session_key,
+        expires_in=result.expires_in,
+        user=AuthenticatedUserResponse.model_validate(result.context.user),
+        credit_balance=result.context.credit_account.balance_units,
+        reserved_units=result.context.credit_account.reserved_units,
+    )
+
+
+@router.post(
+    "/signup",
+    response_model=DevLoginResponse,
+    responses=openapi_error_responses(409, 422),
+)
+def signup(
+    payload: SignupRequest,
+    session: Session = Depends(get_db_session),
+) -> DevLoginResponse:
+    try:
+        result = auth_service.create_password_signup(
+            session,
+            email=payload.email,
+            password=payload.password,
+            invite_code=payload.invite_code,
+            nickname=payload.nickname,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise_auth_http_error(exc)
+    return _dev_login_response(result)
+
+
+@router.post(
+    "/login",
+    response_model=DevLoginResponse,
+    responses=openapi_error_responses(401, 422),
+)
+def login(
+    payload: LoginRequest,
+    session: Session = Depends(get_db_session),
+) -> DevLoginResponse:
+    try:
+        result = auth_service.authenticate_password_login(
+            session,
+            email=payload.email,
+            password=payload.password,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise_auth_http_error(exc)
+    return _dev_login_response(result)
 
 
 @router.get("/me", response_model=CurrentUserResponse, responses=openapi_error_responses(401))

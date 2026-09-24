@@ -32,6 +32,10 @@ class Settings(BaseSettings):
         default="",
         validation_alias="SERVICE_ENGINE_DEV_LOGIN_ALLOWLIST",
     )
+    invite_codes: str = Field(
+        default="",
+        validation_alias="SERVICE_ENGINE_INVITE_CODES",
+    )
 
     def cors_origins(self) -> list[str]:
         return [origin.strip() for origin in self.cors_allow_origins.split(",") if origin.strip()]
@@ -39,6 +43,9 @@ class Settings(BaseSettings):
     def dev_login_allowed_emails(self) -> set[str]:
         # Empty allowlist = open (unchanged); non-empty = only these emails may dev-login.
         return {e.strip().lower() for e in self.dev_login_allowlist.split(",") if e.strip()}
+
+    def signup_invite_codes(self) -> set[str]:
+        return {c.strip() for c in self.invite_codes.split(",") if c.strip()}
 
 
 @lru_cache

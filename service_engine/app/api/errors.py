@@ -14,7 +14,10 @@ from starlette.requests import Request
 from app.api.schemas.common import ErrorBody, ErrorResponse
 from app.modules.auth.service import (
     AuthServiceError,
+    EmailAlreadyRegisteredError,
     EmailNotAllowedError,
+    InvalidCredentialsError,
+    InvalidInviteCodeError,
     InvalidSessionError,
     SessionExpiredError,
 )
@@ -180,6 +183,24 @@ def raise_auth_http_error(exc: Exception) -> None:
         raise APIError(
             status_code=status.HTTP_403_FORBIDDEN,
             code="email_not_allowed",
+            message=str(exc),
+        ) from exc
+    if isinstance(exc, InvalidCredentialsError):
+        raise APIError(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            code="invalid_credentials",
+            message=str(exc),
+        ) from exc
+    if isinstance(exc, InvalidInviteCodeError):
+        raise APIError(
+            status_code=status.HTTP_403_FORBIDDEN,
+            code="invalid_invite_code",
+            message=str(exc),
+        ) from exc
+    if isinstance(exc, EmailAlreadyRegisteredError):
+        raise APIError(
+            status_code=status.HTTP_409_CONFLICT,
+            code="email_already_registered",
             message=str(exc),
         ) from exc
     if isinstance(exc, AuthServiceError):
