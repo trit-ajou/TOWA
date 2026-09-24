@@ -111,6 +111,61 @@ const auth: Module<AuthState, unknown> = {
       }
     },
 
+    async signup(
+      { commit },
+      input: { email: string; password: string; inviteCode: string; nickname?: string },
+    ) {
+      if (!ctx.auth) throw new Error('auth module not initialized — dispatch auth/init first')
+      commit('SET_LOADING', true)
+      commit('SET_ERROR', null)
+      try {
+        const result: LoginResult = await ctx.auth.signup(input)
+        const persist: PersistedSession = {
+          sessionKey: result.sessionKey,
+          user: result.user,
+          creditBalance: result.creditBalance,
+          reservedUnits: result.reservedUnits,
+        }
+        commit('SET_SESSION', persist)
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(persist))
+      } catch (e) {
+        if (e instanceof BackendError) {
+          commit('SET_ERROR', e.payload)
+        } else {
+          commit('SET_ERROR', { code: 'unknown', message: String(e), retryable: false, details: null })
+        }
+        throw e
+      } finally {
+        commit('SET_LOADING', false)
+      }
+    },
+
+    async login({ commit }, input: { email: string; password: string }) {
+      if (!ctx.auth) throw new Error('auth module not initialized — dispatch auth/init first')
+      commit('SET_LOADING', true)
+      commit('SET_ERROR', null)
+      try {
+        const result: LoginResult = await ctx.auth.login(input)
+        const persist: PersistedSession = {
+          sessionKey: result.sessionKey,
+          user: result.user,
+          creditBalance: result.creditBalance,
+          reservedUnits: result.reservedUnits,
+        }
+        commit('SET_SESSION', persist)
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(persist))
+      } catch (e) {
+        if (e instanceof BackendError) {
+          commit('SET_ERROR', e.payload)
+        } else {
+          commit('SET_ERROR', { code: 'unknown', message: String(e), retryable: false, details: null })
+        }
+        throw e
+      } finally {
+        commit('SET_LOADING', false)
+      }
+    },
+
     async restoreFromStorage({ commit }) {
       const raw = localStorage.getItem(STORAGE_KEY)
       if (!raw) return

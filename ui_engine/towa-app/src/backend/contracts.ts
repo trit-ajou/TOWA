@@ -33,6 +33,18 @@ export interface LoginResult extends CurrentSessionInfo {
   expiresIn: number
 }
 
+export interface SignupInput {
+  email: string
+  password: string
+  inviteCode: string
+  nickname?: string
+}
+
+export interface LoginCredentials {
+  email: string
+  password: string
+}
+
 export interface AuthRequestOptions {
   sessionKey?: string
 }
@@ -131,6 +143,8 @@ export interface AiJobSnapshot {
 
 export interface AuthBackend {
   devLogin(input: LoginInput): Promise<LoginResult>
+  signup(input: SignupInput): Promise<LoginResult>
+  login(input: LoginCredentials): Promise<LoginResult>
   getCurrentUser(options: AuthRequestOptions): Promise<CurrentSessionInfo>
 }
 

@@ -9,8 +9,10 @@ import type {
   CurrentSessionInfo,
   EngineError,
   FilesBackend,
+  LoginCredentials,
   LoginInput,
   LoginResult,
+  SignupInput,
   PageSnapshotPayload,
   PageSummaryDto,
   ProjectCreateInput,
@@ -54,6 +56,30 @@ export function createRealAuthBackend(options: RealBackendOptions): AuthBackend 
         body: JSON.stringify({
           email: input.email,
           nickname: input.nickname,
+        }),
+      })
+      return toLoginResult(payload)
+    },
+
+    async signup(input: SignupInput): Promise<LoginResult> {
+      const payload = await requestJson(`${options.serviceEngineUrl}/auth/signup`, {
+        method: 'POST',
+        body: JSON.stringify({
+          email: input.email,
+          password: input.password,
+          invite_code: input.inviteCode,
+          nickname: input.nickname,
+        }),
+      })
+      return toLoginResult(payload)
+    },
+
+    async login(input: LoginCredentials): Promise<LoginResult> {
+      const payload = await requestJson(`${options.serviceEngineUrl}/auth/login`, {
+        method: 'POST',
+        body: JSON.stringify({
+          email: input.email,
+          password: input.password,
         }),
       })
       return toLoginResult(payload)
