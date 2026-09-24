@@ -138,6 +138,7 @@ def create_password_signup(
         session.add(auth_session)
         session.flush()
 
+    _seed_sample_for_user(session, user_id=user.id)
     return DevLoginResult(
         session_key=session_bundle.plaintext,
         expires_in=session_bundle.expires_in,
@@ -147,6 +148,21 @@ def create_password_signup(
             credit_account=credit_account,
         ),
     )
+
+
+def _seed_sample_for_user(session: Session, *, user_id) -> None:
+    # Best-effort: give a brand-new account a copy of the sample project to try immediately.
+    sample_id = get_settings().sample_project_id
+    if not sample_id:
+        return
+    try:
+        from app.modules.projects.service import seed_sample_project
+
+        with session.begin():
+            seed_sample_project(session, user_id=user_id, template_project_id=sample_id)
+    except Exception:
+        # Seeding must never block a successful signup.
+        pass
 
 
 def authenticate_password_login(
