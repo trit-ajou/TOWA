@@ -33,7 +33,7 @@ services:
       - "${SERVICE_ENGINE_PORT:-8000}:8000"
     command: >
       sh -c "python -m app.cli.dev_admin migrate &&
-             uvicorn main:app --host 0.0.0.0 --port 8000"
+             uvicorn main:app --host 0.0.0.0 --port 8000 --workers 2"
     healthcheck:
       test:
         [
@@ -85,6 +85,18 @@ services:
     build:
       context: ./ui_engine
       dockerfile: ./towa-app/Dockerfile
+      # `vite build` bakes VITE_* into the static bundle, so they must be present at
+      # build time (not just runtime). The environment: block below still applies at
+      # runtime for VITE_PUBLIC_HOST (vite preview reads it for allowedHosts).
+      args:
+        VITE_DEPLOYMENT_MODE: ${VITE_DEPLOYMENT_MODE:-cloud}
+        VITE_PUBLIC_HOST: ${VITE_PUBLIC_HOST:-}
+        VITE_SERVICE_ENGINE_URL: ${VITE_SERVICE_ENGINE_URL:-http://localhost:8000}
+        VITE_MODEL_ENGINE_URL: ${VITE_MODEL_ENGINE_URL:-http://localhost:8100}
+        VITE_UI_BACKEND_MODE: ${VITE_UI_BACKEND_MODE:-real}
+        VITE_UI_AUTH_BACKEND: ${VITE_UI_AUTH_BACKEND:-}
+        VITE_UI_AI_BACKEND: ${VITE_UI_AI_BACKEND:-}
+        VITE_UI_FILES_BACKEND: ${VITE_UI_FILES_BACKEND:-}
     environment:
       VITE_DEPLOYMENT_MODE: ${VITE_DEPLOYMENT_MODE:-cloud}
       VITE_PUBLIC_HOST: ${VITE_PUBLIC_HOST:-}
