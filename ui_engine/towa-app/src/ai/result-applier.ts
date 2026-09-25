@@ -5,7 +5,7 @@ import type { AiJobSnapshot, AiJobsBackend, TransportPatchOperation } from '@/ba
 import type { FileAdapter, PageSummary } from '@/file-adapter'
 import type { LayerTextMeta, TextPolygon, WritingMode } from '@/types/text-block'
 import { queryKeys } from '@/composables/queryKeys'
-import { thumbnailCache } from '@/file-adapter/cache-instances'
+import { pageBinaryCache, thumbnailCache } from '@/file-adapter/cache-instances'
 // @ts-expect-error bitmappery JS module
 import DocumentFactory from '@bitmappery/factories/document-factory'
 // @ts-expect-error bitmappery JS module
@@ -245,10 +245,17 @@ async function applyInBackground(
     thumbnail,
   })
 
-  // 5) Keep the consumer caches in sync (thumbnail + page status) so any UI
-  //    showing this page's card refreshes immediately.
-  await thumbnailCache.set(page.id, thumbnail)
-  options.queryClient.setQueryData(queryKeys.binary.thumbnail(page.id), thumbnail)
+  // 5) The server snapshot we just PUT is the source of truth. Pushing the
+  //    locally re-rendered blob into the client caches is what lets a bad
+  //    render — or any drift from the server's normalized copy — get stuck:
+  //    useThumbnailUrl reads cache-first and never re-hits the server, so a
+  //    poisoned entry survives reloads until the IDB copy is evicted. Instead
+  //    drop the cached entries and invalidate, so the next read falls through
+  //    to the server. pageBinaryCache is dropped too so re-entering the editor
+  //    reloads the fresh layerBlob rather than a stale/pre-AI document.
+  await thumbnailCache.delete(page.id)
+  await pageBinaryCache.delete(page.id)
+  options.queryClient.invalidateQueries({ queryKey: queryKeys.binary.thumbnail(page.id) })
   options.queryClient.setQueryData<PageSummary[]>(
     queryKeys.pages.byProject(options.projectId),
     (old) => {
@@ -390,8 +397,11 @@ async function applyTranslateInBackground(
     thumbnail,
   })
 
-  await thumbnailCache.set(page.id, thumbnail)
-  options.queryClient.setQueryData(queryKeys.binary.thumbnail(page.id), thumbnail)
+  // Server snapshot is SSOT; drop client caches instead of pushing the local
+  // re-render (see applyInBackground step 5 for the full rationale).
+  await thumbnailCache.delete(page.id)
+  await pageBinaryCache.delete(page.id)
+  options.queryClient.invalidateQueries({ queryKey: queryKeys.binary.thumbnail(page.id) })
   options.queryClient.setQueryData<PageSummary[]>(
     queryKeys.pages.byProject(options.projectId),
     (old) => {
