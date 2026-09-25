@@ -82,6 +82,24 @@ export class BlobCache {
     await this.setToIDB(key, blob)
   }
 
+  /**
+   * Drop one entry from both memory and IDB. Used to invalidate a stale
+   * client-cached blob so the next read falls through to the server (SSOT).
+   * Unlike clearMemory, this also removes the persisted IDB copy — that copy
+   * is exactly what survives reloads and keeps a poisoned blob visible.
+   */
+  async delete(key: string): Promise<void> {
+    this.memory.delete(key)
+    const idx = this.accessOrder.indexOf(key)
+    if (idx !== -1) this.accessOrder.splice(idx, 1)
+    try {
+      const db = await getCacheDB()
+      await db.delete(this.storeName, key)
+    } catch {
+      // IDB unavailable (private mode / blocked) — memory drop above suffices.
+    }
+  }
+
   // --- LRU helpers ---
 
   private touchAccessOrder(key: string): void {
