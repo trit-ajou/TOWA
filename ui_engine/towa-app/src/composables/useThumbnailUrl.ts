@@ -62,10 +62,14 @@ export function useThumbnailUrl(pageId: MaybeRef<string | null | undefined>) {
     setUrl(null)
   })
 
-  // imperative refresh — for callers that want to force a re-fetch
-  function refresh() {
+  // imperative refresh — for callers that want to force a re-fetch. Drops the
+  // cached blob first: the query's own queryFn reads thumbnailCache before the
+  // server, so invalidating alone would just re-read the same (possibly stale
+  // or poisoned) cache entry and never reach the server.
+  async function refresh() {
     const pid = unref(pageId)
     if (!pid) return
+    await thumbnailCache.delete(pid)
     qc.invalidateQueries({ queryKey: queryKeys.binary.thumbnail(pid) })
   }
 
