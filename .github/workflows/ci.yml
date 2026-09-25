@@ -1,0 +1,75 @@
+name: CI
+
+# GitLab Flow 변형 3: 검증 게이트는 main -> pre-production PR에서 돈다.
+# (main은 통합의 장이라 테스트하지 않음. production 승격 전 pre-production에서 검증.)
+on:
+  pull_request:
+    branches: [pre-production]
+
+# 같은 PR에 새 커밋이 push되면 이전 실행을 취소한다.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  model-engine:
+    name: model-engine (unittest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install deps
+        # requirements-api = base + fastapi/uvicorn 등(가벼움). test_job_api가 fastapi를 요구한다.
+        run: pip install -r model_engine/requirements-api.txt
+      - name: Run model-engine tests
+        # PYTHONPATH=workspace root: 테스트가 `from model_engine.xxx`로 import한다.
+        run: PYTHONPATH=. python3 -m unittest discover -s model_engine/tests -v
+
+  service-engine:
+    name: service-engine (pytest + postgres)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: towa
+          POSTGRES_PASSWORD: towa
+          POSTGRES_DB: towa_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U towa -d towa_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      # conftest의 postgres_session_factory / test_migrations는 이 값이 있어야 skip하지 않는다.
+      TEST_DATABASE_URL: postgresql+psycopg://towa:towa@localhost:5432/towa_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install deps
+        run: pip install -r service_engine/requirements-dev.txt
+      - name: Run service-engine tests
+        working-directory: service_engine
+        run: python3 -m pytest -v
+
+  ui-engine:
+    name: ui-engine (vitest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install deps
+        # 락파일이 없고 peer dep 충돌이 있어 --legacy-peer-deps로 설치한다.
+        working-directory: ui_engine/towa-app
+        run: npm install --legacy-peer-deps
+      - name: Run ui-engine unit tests
+        working-directory: ui_engine/towa-app
+        run: npm run test
