@@ -43,6 +43,14 @@ vi.mock('@bitmappery/utils/document-util', () => ({
   createSyncSnapshot: vi.fn(() => document.createElement('canvas')),
 }))
 
+// Offscreen render pulls in zcanvas' browser-only bundle; the active path under
+// test never renders offscreen, so stub it out like the other bitmappery deps.
+vi.mock('@/ai/offscreen-thumbnail', () => ({
+  renderDetachedDocument: vi.fn(),
+  toThumbnailCanvas: vi.fn(),
+  isBlankCanvas: vi.fn(() => true),
+}))
+
 vi.mock('@bitmappery/factories/document-factory', () => ({
   default: {
     fromBlob: vi.fn(),
