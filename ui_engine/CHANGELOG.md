@@ -4,6 +4,21 @@
 
 ---
 
+## 2026-09-25
+
+### 15:06 — background AI 적용 썸네일을 화면 밖 전용 렌더로 생성 (빈/타 페이지 썸네일 해소)
+- 배경: AI 작업이 원래 페이지를 떠난 뒤 끝나면(background 경로) detached 문서를 `createSyncSnapshot`으로 그렸는데, bitmappery는 그리기·텍스트/효과 렌더(`renderEffectsForLayer`) 모두 **전역 renderer 캐시를 `layer.id`로 조회**하고 마운트된 문서만 renderer를 가짐 → **완전 투명 썸네일이 서버에 저장**됨(본섭 재현: 10,360B → 204B, RGBA 전부 0). layer id(`layer_N`)가 페이지 간 겹쳐 다른 페이지 renderer가 걸리면 **엉뚱한 페이지 그림**이 그려질 여지도 있었음
+- 신규 `src/ai/offscreen-thumbnail.ts`: 레이어를 고유 id(`bgsnap-<nonce>-…`)로 얕은 복제 → 임시 zCanvas에 renderer 등록 → 폰트 로드 후 `renderEffectsForLayer`(텍스트는 2패스) → `createSyncSnapshot` → 임시 renderer flush. 원본 레이어는 불변이라 저장되는 layerBlob 무영향. bitmappery 원본은 무수정
+- `result-applier.ts` background 두 경로(detect/inpaint·translate)가 이 렌더를 사용. **렌더 실패·완전 투명이면 기존 서버 썸네일을 그대로 저장**(나쁜 렌더가 좋은 썸네일을 덮어쓰지 않게)
+- spec: 새 모듈이 zcanvas 브라우저 번들을 끌어와 node 환경 import가 실패 → 기존 bitmappery mock과 같은 방식으로 mock 추가(active 경로만 테스트하는 기존 방침 유지)
+- 검증: vitest result-applier 7/7, `vue-tsc` 0 error. 수정본 dev 서버 + staging 백엔드로 Playwright 실검증 — 페이지 이탈 상태에서 detect/translate/inpaint 3경로 모두 서버 썸네일이 불투명·정상 페이지. 번역 후 서버 썸네일 = 편집기 라이브 렌더와 **픽셀 차이 0**, 인페인팅 후 원화 제목이 지워지고 한국어 번역문이 썸네일에 반영. 렌더 동안 활성 페이지(2p) 썸네일 무오염, 세션 내 사이드바 즉시 정상
+
+### 11:55 — background AI 적용이 클라이언트 썸네일 캐시를 오염시키던 문제 (서버 SSOT)
+- 배경: 일괄 작업 후 샘플프로젝트 썸네일·편집 로드가 깨짐 → 서버 데이터/서빙/썸네일은 정상, **시크릿탭에선 정상** = 클라 IDB 캐시 오염. background 경로가 로컬 재렌더 썸네일을 `thumbnailCache`+query에 직접 push했고, `useThumbnailUrl`은 캐시 우선이라 서버로 돌아오지 못해 새로고침·재로그인으로도 자가치유 안 됨
+- `BlobCache.delete()` 추가(memory + IDB). background 두 경로: 서버 snapshot PUT 후 `thumbnailCache`·`pageBinaryCache`를 비우고 invalidate → 다음 조회가 서버본. `pageBinaryCache` 제거로 편집 재진입 시 AI 이전 문서가 뜨던 문제도 해소. `useThumbnailUrl.refresh()`는 캐시 삭제 후 invalidate(강제 새로고침이 실제로 서버 도달)
+- active 경로 `savePage`의 직접 캐시 write는 race 회피 의도라 유지
+- 검증: CI(PR #72) green, 본섭 Playwright — 캐시가 서버 WebP로 채워지고 새로고침 후 유지, 재진입 시 검출 레이어 반영
+
 ## 2026-06-11
 
 ### 08:10 — ④ 상세 편집 텍스트 패널 펼치기 + 헤더 재구성
