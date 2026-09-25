@@ -4,6 +4,14 @@
 
 ---
 
+## 2026-09-26
+
+### 00:34 — 이미 오염된 클라이언트 캐시를 자동 폐기 (cache-db v3 + query persist buster)
+- 배경: 9/25 수정들은 **앞으로의** 캐시 오염만 막고, 이미 브라우저 IDB에 굳은 오염분(빈 썸네일·읽을 수 없는/AI 이전 문서)은 그대로 남음 → 사용자 계정 샘플프로젝트가 서버는 정상인데도 기존 탭에서 계속 깨져 보임(시크릿탭은 정상)
+- `cache-db.ts`: `CACHE_DB_VERSION` 2 → 3. 기존 DB(v1·v2)를 올릴 때 `page-cache`·`thumbnail-cache`를 비움 → 다음 조회가 서버 정상본으로. 신규 DB는 영향 없음
+- `query-client.ts`: `persistQueryClient`에 `buster` 추가 — 영속 query 스냅샷에도 썸네일 Blob이 들어 있어 함께 폐기
+- 검증: `cache-db-upgrade.spec.ts`(v2에 오염 레코드 심고 v3로 열면 비워짐; 버전을 2로 되돌리면 FAIL 확인). Playwright로 로그인 전 v2 캐시에 투명 썸네일·손상 문서·옛 query 스냅샷을 심고 접속 — 수정 전 빌드: 썸네일 투명 + 편집기 로드 실패(사용자 증상 그대로), 수정본: 조작 없이 서버 썸네일·문서로 자동 복구, 에러 0
+
 ## 2026-09-25
 
 ### 16:43 — background AI 적용 후 세션 내 캐시 race 2건 (썸네일 null · AI 이전 문서 재로드)
