@@ -13,6 +13,9 @@ type CacheStoreName = Extract<keyof CacheDBSchema, string>
 export class BlobCache {
   private memory = new Map<string, Blob>()
   private accessOrder: string[] = []
+  // Bumped by every set()/delete(). An IDB read that started under an older
+  // version must not repopulate memory with what it read — a newer write won.
+  private versions = new Map<string, number>()
 
   constructor(
     private readonly storeName: CacheStoreName,
@@ -46,18 +49,30 @@ export class BlobCache {
   // --- L2: IDB ---
 
   async getFromIDB(key: string): Promise<Blob | undefined> {
+    const version = this.versionOf(key)
     let db
     try {
       db = await getCacheDB()
     } catch {
       return undefined
     }
-    const record = await db.get(this.storeName, key)
-    if (record) {
-      await db.put(this.storeName, { ...record, accessedAt: Date.now() })
-      this.setToMemory(key, record.blob)
+    // Read and touch accessedAt in ONE readwrite transaction. As separate
+    // get + put transactions, the put wrote back the record it had read and
+    // silently undid a set()/delete() that landed in between (prefetch
+    // resurrecting a pre-AI document). IDB serializes readwrite transactions
+    // per store, so here a concurrent write lands entirely before or after.
+    const tx = db.transaction(this.storeName, 'readwrite')
+    const record = await tx.store.get(key)
+    if (record) await tx.store.put({ ...record, accessedAt: Date.now() })
+    await tx.done
+    if (!record) return undefined
+    if (this.versionOf(key) !== version) {
+      // A set()/delete() happened while we were reading: it wins. Memory
+      // already holds its value (or nothing, after a delete).
+      return this.getFromMemory(key)
     }
-    return record?.blob
+    this.setToMemory(key, record.blob)
+    return record.blob
   }
 
   async setToIDB(key: string, blob: Blob): Promise<void> {
@@ -78,6 +93,7 @@ export class BlobCache {
   }
 
   async set(key: string, blob: Blob): Promise<void> {
+    this.bumpVersion(key)
     this.setToMemory(key, blob)
     await this.setToIDB(key, blob)
   }
@@ -89,6 +105,7 @@ export class BlobCache {
    * is exactly what survives reloads and keeps a poisoned blob visible.
    */
   async delete(key: string): Promise<void> {
+    this.bumpVersion(key)
     this.memory.delete(key)
     const idx = this.accessOrder.indexOf(key)
     if (idx !== -1) this.accessOrder.splice(idx, 1)
@@ -101,6 +118,14 @@ export class BlobCache {
   }
 
   // --- LRU helpers ---
+
+  private versionOf(key: string): number {
+    return this.versions.get(key) ?? 0
+  }
+
+  private bumpVersion(key: string): void {
+    this.versions.set(key, this.versionOf(key) + 1)
+  }
 
   private touchAccessOrder(key: string): void {
     const idx = this.accessOrder.indexOf(key)
