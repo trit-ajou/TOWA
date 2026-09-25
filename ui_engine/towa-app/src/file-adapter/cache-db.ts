@@ -23,7 +23,11 @@ interface CacheDBSchema extends DBSchema {
   }
 }
 
-const CACHE_DB_VERSION = 2
+// v3: one-time wipe. Before the 2026-09-25 fixes, background AI applies could
+// leave poisoned entries here (blank thumbnails, pre-AI documents) that are
+// read cache-first and survive reloads. Bumping the version clears them on
+// every existing client's next load; the server copy is always intact.
+const CACHE_DB_VERSION = 3
 
 let currentUserId: string | null = null
 let dbPromise: Promise<IDBPDatabase<CacheDBSchema>> | null = null
@@ -36,7 +40,7 @@ async function openCacheDB(userId: string): Promise<IDBPDatabase<CacheDBSchema>>
   const dbName = buildDbName(userId)
   try {
     return await openDB<CacheDBSchema>(dbName, CACHE_DB_VERSION, {
-      upgrade(db, oldVersion) {
+      upgrade(db, oldVersion, _newVersion, tx) {
         if (oldVersion < 1) {
           const pageStore = db.createObjectStore('page-cache', { keyPath: 'pageId' })
           pageStore.createIndex('by-accessed', 'accessedAt')
@@ -44,6 +48,10 @@ async function openCacheDB(userId: string): Promise<IDBPDatabase<CacheDBSchema>>
         if (oldVersion < 2 && !db.objectStoreNames.contains('thumbnail-cache')) {
           const thumbStore = db.createObjectStore('thumbnail-cache', { keyPath: 'pageId' })
           thumbStore.createIndex('by-accessed', 'accessedAt')
+        }
+        if (oldVersion >= 1 && oldVersion < 3) {
+          void tx.objectStore('page-cache').clear()
+          void tx.objectStore('thumbnail-cache').clear()
         }
       },
     })

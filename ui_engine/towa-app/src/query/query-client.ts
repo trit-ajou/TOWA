@@ -59,6 +59,10 @@ export async function setQueryUser(userId: string | null): Promise<void> {
     queryClient,
     persister,
     maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
+    // Bump to discard every client's persisted snapshot on next load. The
+    // snapshot also holds thumbnail Blobs (['binary','thumbnail', id]), so it
+    // must be dropped together with the cache-db v3 wipe.
+    buster: QUERY_CACHE_BUSTER,
   })
   // Surface restore errors but don't block the caller.
   restored.catch((e) => console.warn('[QueryPersister] restore failed', e))
@@ -74,6 +78,9 @@ export async function setQueryUser(userId: string | null): Promise<void> {
   }
   await queryClient.invalidateQueries()
 }
+
+// See persistQueryClient({ buster }) above.
+const QUERY_CACHE_BUSTER = '2026-09-26-cache-reset'
 
 export function getActiveQueryUserId(): string | null {
   return getCacheUserId()
