@@ -6,6 +6,12 @@
 
 ## 2026-09-25
 
+### 16:43 — background AI 적용 후 세션 내 캐시 race 2건 (썸네일 null · AI 이전 문서 재로드)
+- 배경: 본섭 검증 중 같은 세션에서 (A) AI를 연달아 background로 적용하면 대상 페이지 썸네일 query가 `null`로 굳어 placeholder가 남고(새로고침 시 정상), (B) 간헐적으로 페이지 복귀 시 **AI 결과 없는 이전 문서**가 로드됨 → 그대로 편집·자동저장하면 서버의 AI 결과를 덮어쓸 위험
+- (B) 원인: `BlobCache.getFromIDB`가 accessedAt 갱신을 위해 읽은 레코드를 **별도 트랜잭션으로 다시 put** → 그 사이의 `set()/delete()`가 되돌려짐(prefetch가 옛 layerBlob을 부활). 수정: 읽기+touch를 한 readwrite 트랜잭션으로 묶고, 키별 버전 번호로 읽는 도중 쓰기/삭제가 끼면 읽은 값으로 memory를 채우지 않음. `blob-cache.spec.ts` 추가(fake-indexeddb) — 수정 전 두 race 테스트 FAIL, 수정 후 PASS
+- (A) 대응: background 경로가 11:55의 "캐시 삭제 + 재조회" 대신 **방금 PUT한 값(thumbnail·layerBlob)으로 캐시를 직접 채움**(active 경로 `savePage`와 같은 방식). 11:55에 이를 뺐던 이유(로컬 렌더가 빈 이미지)는 15:06 화면 밖 렌더 + 투명 시 서버 썸네일 폴백으로 해소됨
+- 검증: vitest 10/10, `vue-tsc` 0 error. Playwright 반복 시나리오(3라운드 검출→복귀→번역→이탈 + 인페인팅): 수정 전 staging 빌드 7/12(썸네일 placeholder 5회 재현) → 수정본 14/14
+
 ### 15:06 — background AI 적용 썸네일을 화면 밖 전용 렌더로 생성 (빈/타 페이지 썸네일 해소)
 - 배경: AI 작업이 원래 페이지를 떠난 뒤 끝나면(background 경로) detached 문서를 `createSyncSnapshot`으로 그렸는데, bitmappery는 그리기·텍스트/효과 렌더(`renderEffectsForLayer`) 모두 **전역 renderer 캐시를 `layer.id`로 조회**하고 마운트된 문서만 renderer를 가짐 → **완전 투명 썸네일이 서버에 저장**됨(본섭 재현: 10,360B → 204B, RGBA 전부 0). layer id(`layer_N`)가 페이지 간 겹쳐 다른 페이지 renderer가 걸리면 **엉뚱한 페이지 그림**이 그려질 여지도 있었음
 - 신규 `src/ai/offscreen-thumbnail.ts`: 레이어를 고유 id(`bgsnap-<nonce>-…`)로 얕은 복제 → 임시 zCanvas에 renderer 등록 → 폰트 로드 후 `renderEffectsForLayer`(텍스트는 2패스) → `createSyncSnapshot` → 임시 renderer flush. 원본 레이어는 불변이라 저장되는 layerBlob 무영향. bitmappery 원본은 무수정

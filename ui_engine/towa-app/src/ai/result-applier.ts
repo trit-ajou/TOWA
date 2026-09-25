@@ -233,17 +233,15 @@ async function applyInBackground(
     thumbnail,
   })
 
-  // 5) The server snapshot we just PUT is the source of truth. Pushing the
-  //    locally re-rendered blob into the client caches is what lets a bad
-  //    render — or any drift from the server's normalized copy — get stuck:
-  //    useThumbnailUrl reads cache-first and never re-hits the server, so a
-  //    poisoned entry survives reloads until the IDB copy is evicted. Instead
-  //    drop the cached entries and invalidate, so the next read falls through
-  //    to the server. pageBinaryCache is dropped too so re-entering the editor
-  //    reloads the fresh layerBlob rather than a stale/pre-AI document.
-  await thumbnailCache.delete(page.id)
-  await pageBinaryCache.delete(page.id)
-  options.queryClient.invalidateQueries({ queryKey: queryKeys.binary.thumbnail(page.id) })
+  // 5) Seed the client caches with exactly what we just PUT, so the page card
+  //    and a later editor re-entry show the AI result immediately. Write the
+  //    values rather than delete-and-refetch: a refetch races other readers
+  //    (prefetch, the PUT itself) and could leave a null thumbnail or reload a
+  //    pre-AI document. The thumbnail is safe to trust now — it comes from the
+  //    dedicated offscreen render, or the server's own copy if that failed.
+  await thumbnailCache.set(page.id, thumbnail)
+  await pageBinaryCache.set(page.id, layerBlob)
+  options.queryClient.setQueryData(queryKeys.binary.thumbnail(page.id), thumbnail)
   options.queryClient.setQueryData<PageSummary[]>(
     queryKeys.pages.byProject(options.projectId),
     (old) => {
@@ -374,11 +372,10 @@ async function applyTranslateInBackground(
     thumbnail,
   })
 
-  // Server snapshot is SSOT; drop client caches instead of pushing the local
-  // re-render (see applyInBackground step 5 for the full rationale).
-  await thumbnailCache.delete(page.id)
-  await pageBinaryCache.delete(page.id)
-  options.queryClient.invalidateQueries({ queryKey: queryKeys.binary.thumbnail(page.id) })
+  // Seed caches with what we just PUT (see applyInBackground step 5).
+  await thumbnailCache.set(page.id, thumbnail)
+  await pageBinaryCache.set(page.id, layerBlob)
+  options.queryClient.setQueryData(queryKeys.binary.thumbnail(page.id), thumbnail)
   options.queryClient.setQueryData<PageSummary[]>(
     queryKeys.pages.byProject(options.projectId),
     (old) => {
