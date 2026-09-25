@@ -11,6 +11,7 @@ from unittest.mock import patch
 from PIL import Image
 
 from model_engine.builtin_models.nanobanana_inpaint import (
+    MINDLOGIC_IMAGE_GEN_MODEL,
     MINDLOGIC_IMAGE_MODEL,
     MINDLOGIC_INPAINT_MODEL_ID,
     NANOBANANA_DEFAULT_PROMPT,
@@ -170,7 +171,7 @@ class NanobananaInpaintTests(unittest.TestCase):
                 )
 
             with patch(
-                "model_engine.builtin_models.nanobanana_inpaint._generate_with_mindlogic_google_edit",
+                "model_engine.builtin_models.nanobanana_inpaint._generate_with_mindlogic_image",
                 side_effect=_capture_generate_edit,
             ):
                 response = stage.run(
@@ -185,7 +186,7 @@ class NanobananaInpaintTests(unittest.TestCase):
             self.assertIn(NANOBANANA_DEFAULT_PROMPT, captured["prompt"])
             self.assertIn("exactly 10x10 pixels", captured["prompt"])
             self.assertIn("Do not crop, pad, rotate, stretch, zoom", captured["prompt"])
-            self.assertEqual(MINDLOGIC_IMAGE_MODEL, captured["model_name"])
+            self.assertEqual(MINDLOGIC_IMAGE_GEN_MODEL, captured["model_name"])
             self.assertEqual("1", captured["reference_count"])
             self.assertEqual("image/png", captured["source_mime_type"])
             self.assertEqual("test-key", captured["api_key"])
@@ -194,7 +195,7 @@ class NanobananaInpaintTests(unittest.TestCase):
             self.assertEqual(1, response.stage_report.metrics["provider_reference_image_count"])
             self.assertEqual("no", response.stage_report.metrics["provider_mask_guide"])
             self.assertEqual(MINDLOGIC_INPAINT_MODEL_ID, response.stage_report.metrics["model_id"])
-            self.assertEqual("mindlogic_google_edit", response.patches[1].payload["value"]["engine"])
+            self.assertEqual("mindlogic_image", response.patches[1].payload["value"]["engine"])
 
     def test_registry_runs_mindlogic_inpaint_with_bitmap_only(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -211,7 +212,7 @@ class NanobananaInpaintTests(unittest.TestCase):
             )
 
             with patch(
-                "model_engine.builtin_models.nanobanana_inpaint._generate_with_mindlogic_google_edit",
+                "model_engine.builtin_models.nanobanana_inpaint._generate_with_mindlogic_image",
                 side_effect=_fake_generate_edit,
             ):
                 response = stage.run(
@@ -226,7 +227,7 @@ class NanobananaInpaintTests(unittest.TestCase):
             self.assertEqual(MINDLOGIC_INPAINT_MODEL_ID, response.stage_report.metrics["model_id"])
             self.assertEqual("0", str(response.stage_report.metrics["task_count"]))
             self.assertEqual("pixel_diff", response.stage_report.metrics["composite_mask_mode"])
-            self.assertEqual("mindlogic_google_edit", response.patches[1].payload["value"]["engine"])
+            self.assertEqual("mindlogic_image", response.patches[1].payload["value"]["engine"])
 
     def test_mindlogic_google_edit_uses_prod_payload_shape(self) -> None:
         source_image = Image.new("RGBA", (2, 2), color=(1, 2, 3, 255))
