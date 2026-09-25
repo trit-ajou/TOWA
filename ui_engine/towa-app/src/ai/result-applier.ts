@@ -14,8 +14,7 @@ import type { Document, Layer } from '@bitmappery/definitions/document'
 import { LayerTypes } from '@bitmappery/definitions/layer-types'
 // @ts-expect-error bitmappery JS module
 import { blobToCanvas, canvasToBlob } from '@bitmappery/utils/canvas-util'
-// @ts-expect-error bitmappery JS module
-import { createSyncSnapshot } from '@bitmappery/utils/document-util'
+import { isBlankCanvas, renderDetachedDocument, toThumbnailCanvas } from '@/ai/offscreen-thumbnail'
 
 const AI_TEXT_FONT = 'Noto Sans KR'
 const AI_TEXT_SIZE = 24
@@ -215,20 +214,9 @@ async function applyInBackground(
     doc.layers.push(layer)
   }
 
-  // 3) Capture a fresh thumbnail off the detached document without touching
-  //    the active zCanvas. createSyncSnapshot renders to an offscreen canvas.
-  const composedCanvas = createSyncSnapshot(doc) as HTMLCanvasElement
-  const maxW = 200
-  const maxH = 300
-  const scale = Math.min(maxW / composedCanvas.width, maxH / composedCanvas.height, 1)
-  const tw = Math.max(1, Math.round(composedCanvas.width * scale))
-  const th = Math.max(1, Math.round(composedCanvas.height * scale))
-  const thumbCanvas = document.createElement('canvas')
-  thumbCanvas.width = tw
-  thumbCanvas.height = th
-  const tctx = thumbCanvas.getContext('2d')
-  if (tctx) tctx.drawImage(composedCanvas, 0, 0, tw, th)
-  const thumbnail = await canvasToBlob(thumbCanvas, 'image/png')
+  // 3) Render a fresh thumbnail off the detached document (see
+  //    offscreen-thumbnail.ts for why createSyncSnapshot alone can't).
+  const thumbnail = await renderBackgroundThumbnail(doc, snapshot.thumbnail)
 
   // 4) PUT directly. Bypass usePageLoader.savePage because that one reads
   //    activeDocument, which is some other page right now.
@@ -371,18 +359,7 @@ async function applyTranslateInBackground(
     console.warn(`[AI translate bg] ${updates.size} response blocks did not match any layer`, Array.from(updates.keys()))
   }
 
-  const composedCanvas = createSyncSnapshot(doc) as HTMLCanvasElement
-  const maxW = 200
-  const maxH = 300
-  const scale = Math.min(maxW / composedCanvas.width, maxH / composedCanvas.height, 1)
-  const tw = Math.max(1, Math.round(composedCanvas.width * scale))
-  const th = Math.max(1, Math.round(composedCanvas.height * scale))
-  const thumbCanvas = document.createElement('canvas')
-  thumbCanvas.width = tw
-  thumbCanvas.height = th
-  const tctx = thumbCanvas.getContext('2d')
-  if (tctx) tctx.drawImage(composedCanvas, 0, 0, tw, th)
-  const thumbnail = await canvasToBlob(thumbCanvas, 'image/png')
+  const thumbnail = await renderBackgroundThumbnail(doc, snapshot.thumbnail)
 
   const layerBlob = (await DocumentFactory.toBlob(doc)) as Blob
   await options.fileAdapter.savePageSnapshot({
@@ -419,6 +396,24 @@ async function applyTranslateInBackground(
     textLayerCount: updatedCount,
     graphicLayerCount: 0,
   }
+}
+
+// --- background thumbnail ---------------------------------------------------
+
+/**
+ * Thumbnail for a background-applied page. Falls back to the page's existing
+ * server thumbnail when the offscreen render fails or comes out blank, so a
+ * bad render can never overwrite a good thumbnail on the server.
+ */
+async function renderBackgroundThumbnail(doc: Document, fallback: Blob): Promise<Blob> {
+  try {
+    const thumb = toThumbnailCanvas(await renderDetachedDocument(doc))
+    if (!isBlankCanvas(thumb)) return (await canvasToBlob(thumb, 'image/png')) as Blob
+    console.warn('[AI bg] offscreen thumbnail rendered blank; keeping the server thumbnail')
+  } catch (e) {
+    console.warn('[AI bg] offscreen thumbnail render failed; keeping the server thumbnail', e)
+  }
+  return fallback
 }
 
 // --- helpers (shared by both paths) -----------------------------------------
