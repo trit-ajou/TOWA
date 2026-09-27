@@ -6,6 +6,15 @@
 
 ## 2026-09-28
 
+### 02:15 — BYOK(개인 API 키) 등록 UI + 전달 경로 (staging까지만 배포)
+- 배경: model_engine resolver는 이미 `runtime_context.session_provider_secrets`의 사용자 키를 플랫폼 키보다 우선 사용(SaaS 포함)하지만, UI에 키를 등록·전송하는 경로가 없었음. service_engine에는 사용자 secret 저장소가 없음
+- 신규 `src/ai/byok.ts`: 사용자별 키를 **이 브라우저 localStorage에만** 보관(`towa.byok.<userId>`), 마스킹, 요청 payload 생성. FactChat 키 하나로 번역(`openai_compatible`)·인페인팅(`mindlogic`) 두 provider에 같은 키
+- `useAiActions`: cloud 모드에서 키가 있으면 AI 작업 요청 `runtime_context`에 실어 보냄(없으면 기존대로 플랫폼 키)
+- `SettingsModal` 환경설정 → 모델(클라우드) 탭: "내 API 키 (BYOK)" — 상태(등록됨 ••••끝4자리/미등록), 입력, 저장·삭제
+- model_engine은 코드 변경 없음. 계약을 `test_byok_session_keys.py`로 고정(사용자 키 우선, 번역 stage의 resolver 전환)
+- 미결: BYOK 작업도 플랫폼 크레딧 hold는 그대로 걸림(과금 면제 분기 없음)
+- 검증: `byok.spec.ts` 7, UI vitest 54 통과(로컬 node18 crypto 1건 기존 이슈), `vue-tsc` 0, model_engine BYOK 테스트 5 통과
+
 ### 02:06 — dev-login 제거, 재로그인 창을 비밀번호 방식으로
 - 배경: 초대코드 가입 + 비밀번호 로그인으로 전환된 뒤에도 임시 방식이던 dev-login(email만으로 세션 발급)이 UI·service에 남아 있었음. 쓰이지 않는 인증 경로라 보안상 제거
 - `LoginModal.vue`: 이메일+닉네임 → **이메일+비밀번호**, `auth/login` 호출. store의 `devLogin` action, `AuthBackend.devLogin`/`LoginInput`, real backend의 `/auth/dev/login` 호출 제거. emulated backend는 내부 헬퍼로 대체
