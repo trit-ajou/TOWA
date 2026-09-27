@@ -14,6 +14,7 @@ import type { AiJobCreateInput, AiJobSnapshot, AiOperationKind } from '@/backend
 import type { Page, PageStatus } from '@/types/page'
 import type { PageSummary } from '@/file-adapter'
 import { applyAiJobSnapshotToCurrentPage } from '@/ai/result-applier'
+import { loadByokKey, sessionProviderSecrets } from '@/ai/byok'
 import { getTextMeta, isTextLayer } from '@/utils/text-layer'
 import type { Layer } from '@bitmappery/definitions/document'
 
@@ -120,8 +121,17 @@ export function useAiActions() {
         requested_by: requestedBy,
         target_regions: [],
         selected_layer_ids: [],
+        // BYOK: the user's own key, if registered, wins over the platform key
+        // in model_engine's credential resolver (see src/ai/byok.ts).
+        ...byokRuntimeContext(),
       },
     }
+  }
+
+  function byokRuntimeContext(): { session_provider_secrets?: Record<string, string> } {
+    if (DEPLOYMENT_MODE.value !== 'cloud') return {}  // BYOK is a cloud (saas) feature
+    const secrets = sessionProviderSecrets(loadByokKey(store.state.auth.user?.id))
+    return secrets ? { session_provider_secrets: secrets } : {}
   }
 
   async function pollUntilTerminal(jobId: string, sessionKey: string | null): Promise<AiJobSnapshot> {
