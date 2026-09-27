@@ -11,7 +11,8 @@ FastAPI 기반 `service_engine` 초안입니다.
 
 현재 구현 범위:
 
-- `POST /auth/dev/login`
+- `POST /auth/signup` (초대코드 가입)
+- `POST /auth/login` (비밀번호 로그인)
 - `GET /auth/me`
 - `POST /usage/jobs`
 - `POST /usage/jobs/{job_id}/capture`
