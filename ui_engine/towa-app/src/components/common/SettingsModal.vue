@@ -7,6 +7,7 @@ import BaseButton from './BaseButton.vue'
 import { useDeploymentMode, type ModeTag } from '@/composables/useDeploymentMode'
 import { DEPLOYMENT_MODE, setDeploymentMode, type DeploymentMode } from '@/config/deployment'
 import { MODEL_ENGINE_URL } from '@/config/engines'
+import { clearByokKey, loadByokKey, maskByokKey, saveByokKey } from '@/ai/byok'
 
 const store = useStore()
 const currentTheme = computed(() => store.getters['editor/theme'])
@@ -28,6 +29,35 @@ const authCreditBalance = computed(() => store.state.auth.creditBalance)
 
 function handleAccountLogout() {
   store.dispatch('auth/logout')
+}
+
+// BYOK: the user's own provider key, kept in this browser only (src/ai/byok.ts).
+const byokUserId = computed<string | null>(() => store.state.auth.user?.id ?? null)
+const byokInput = ref('')
+const byokSaved = ref<string | null>(null)
+const byokError = ref<string | null>(null)
+watch(byokUserId, (id) => {
+  byokSaved.value = loadByokKey(id)
+  byokInput.value = ''
+  byokError.value = null
+}, { immediate: true })
+
+function saveByok() {
+  if (!byokUserId.value) return
+  try {
+    saveByokKey(byokUserId.value, byokInput.value)
+    byokSaved.value = loadByokKey(byokUserId.value)
+    byokInput.value = ''
+    byokError.value = null
+  } catch {
+    byokError.value = '이 브라우저에서는 키를 저장할 수 없습니다 (저장소 차단).'
+  }
+}
+
+function clearByok() {
+  if (!byokUserId.value) return
+  clearByokKey(byokUserId.value)
+  byokSaved.value = null
 }
 
 function handleOpenLogin() {
@@ -218,6 +248,33 @@ const transLanguages = [
                 <div class="text-xs text-towa-text-muted">현재 플랜</div>
                 <div class="text-sm text-towa-text font-medium mt-1">Free</div>
                 <p class="text-xs text-towa-text-muted mt-1">Pro 모델은 유료 플랜에서 사용 가능합니다.</p>
+              </div>
+
+              <div class="pt-4 border-t border-towa-border space-y-2" data-testid="byok-section">
+                <h3 class="text-base font-semibold text-towa-text">내 API 키 (BYOK)</h3>
+                <p class="text-xs text-towa-text-muted">
+                  FactChat API 키를 등록하면 번역·인페인팅에 이 키를 사용합니다.
+                  키는 이 브라우저에만 저장되고, AI 작업 요청에만 실려 전송됩니다.
+                </p>
+                <div class="text-xs" :class="byokSaved ? 'text-towa-accent' : 'text-towa-text-muted'" data-testid="byok-status">
+                  {{ byokSaved ? `등록됨 ${maskByokKey(byokSaved)}` : '미등록 — 서비스 기본 키 사용' }}
+                </div>
+                <div class="flex gap-2">
+                  <input
+                    v-model="byokInput"
+                    type="password"
+                    autocomplete="off"
+                    placeholder="API 키 입력"
+                    :disabled="!byokUserId"
+                    data-testid="byok-input"
+                    class="flex-1 bg-towa-bg border border-towa-border rounded-md px-3 py-2 text-sm text-towa-text placeholder:text-towa-text-muted focus:outline-none focus:border-towa-accent disabled:opacity-50"
+                    @keyup.enter="saveByok"
+                  />
+                  <BaseButton variant="primary" :disabled="!byokUserId || !byokInput.trim()" @click="saveByok">저장</BaseButton>
+                  <BaseButton v-if="byokSaved" variant="secondary" @click="clearByok">삭제</BaseButton>
+                </div>
+                <p v-if="!byokUserId" class="text-xs text-towa-text-muted">로그인 후 등록할 수 있습니다.</p>
+                <p v-if="byokError" class="text-xs text-red-400">{{ byokError }}</p>
               </div>
             </div>
 
