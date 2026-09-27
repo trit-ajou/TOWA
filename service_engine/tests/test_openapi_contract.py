@@ -27,7 +27,7 @@ def test_auth_usage_and_storage_routes_document_common_error_envelope() -> None:
 
     assert _json_schema_ref(
         openapi,
-        path="/auth/dev/login",
+        path="/auth/login",
         method="post",
         status_code="422",
     ) == "#/components/schemas/ErrorResponse"

@@ -18,13 +18,6 @@ class AuthenticatedUserResponse(BaseModel):
     created_at: datetime
 
 
-class DevLoginRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    email: str
-    nickname: str | None = None
-
-
 class SignupRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -41,7 +34,7 @@ class LoginRequest(BaseModel):
     password: str
 
 
-class DevLoginResponse(BaseModel):
+class SessionLoginResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     session_key: str
