@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { devLogin, clearBrowserState } from './helpers/auth'
+import { signUp, clearBrowserState } from './helpers/auth'
 
 // Category 6: per-user cache isolation (#39 §User namespace)
 test.describe('user cache isolation', () => {
@@ -8,7 +8,7 @@ test.describe('user cache isolation', () => {
   })
 
   test('different user emails materialize as different IDB namespaces', async ({ page }) => {
-    await devLogin(page, `alice-${Date.now()}@towa.test`)
+    await signUp(page, `alice-${Date.now()}@towa.test`)
     await page.waitForTimeout(1000)
     const dbsAfterFirst = await page.evaluate(async () => {
       const list = await indexedDB.databases?.()
@@ -21,7 +21,7 @@ test.describe('user cache isolation', () => {
 
     // Log out, then log in as a different user.
     await page.evaluate(() => localStorage.removeItem('towa.auth.session'))
-    await devLogin(page, `bob-${Date.now()}@towa.test`)
+    await signUp(page, `bob-${Date.now()}@towa.test`)
     await page.waitForTimeout(1500)
 
     const dbsAfterSecond = await page.evaluate(async () => {

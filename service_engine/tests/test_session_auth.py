@@ -12,6 +12,7 @@ from app.db import get_db_session
 from app.main import create_app
 from app.modules.auth.models import AuthSession, User
 from app.modules.billing.models import CreditAccount
+from auth_helpers import TEST_INVITE_CODE, TEST_PASSWORD, login_as
 
 
 def _build_test_client(sqlite_session_factory: sessionmaker) -> TestClient:
@@ -35,13 +36,15 @@ def _assert_error(payload: dict[str, object], *, code: str) -> None:
     assert error["code"] == code
 
 
-def test_dev_login_creates_user_session_and_initial_credits(sqlite_session_factory: sessionmaker) -> None:
+def test_signup_creates_user_session_and_initial_credits(sqlite_session_factory: sessionmaker) -> None:
     client = _build_test_client(sqlite_session_factory)
 
     response = client.post(
-        "/auth/dev/login",
+        "/auth/signup",
         json={
             "email": " User@example.com ",
+            "password": TEST_PASSWORD,
+            "invite_code": TEST_INVITE_CODE,
             "nickname": " Tester ",
         },
     )
@@ -68,22 +71,13 @@ def test_dev_login_creates_user_session_and_initial_credits(sqlite_session_facto
         assert auth_sessions[0].session_token_hash == hash_token(payload["session_key"])
 
 
-def test_dev_login_reuses_existing_user_and_creates_new_session(sqlite_session_factory: sessionmaker) -> None:
+def test_login_reuses_existing_user_and_creates_new_session(sqlite_session_factory: sessionmaker) -> None:
     client = _build_test_client(sqlite_session_factory)
 
-    first_response = client.post(
-        "/auth/dev/login",
-        json={"email": "user@example.com", "nickname": "first"},
-    )
-    second_response = client.post(
-        "/auth/dev/login",
-        json={"email": "user@example.com", "nickname": "second"},
-    )
+    first = login_as(client, "user@example.com")  # signs up
+    second = login_as(client, "user@example.com")  # already registered -> logs in
 
-    assert first_response.status_code == 200
-    assert second_response.status_code == 200
-    assert first_response.json()["session_key"] != second_response.json()["session_key"]
-    assert second_response.json()["user"]["nickname"] == "second"
+    assert first["session_key"] != second["session_key"]
 
     with sqlite_session_factory() as session:
         users = session.scalars(select(User)).all()
@@ -92,10 +86,19 @@ def test_dev_login_reuses_existing_user_and_creates_new_session(sqlite_session_f
         assert len(auth_sessions) == 2
 
 
+def test_dev_login_endpoint_is_retired(sqlite_session_factory: sessionmaker) -> None:
+    client = _build_test_client(sqlite_session_factory)
+
+    response = client.post("/auth/dev/login", json={"email": "user@example.com"})
+
+    assert response.status_code == 404
+    with sqlite_session_factory() as session:
+        assert session.scalars(select(User)).all() == []
+
+
 def test_auth_me_returns_current_user_summary(sqlite_session_factory: sessionmaker) -> None:
     client = _build_test_client(sqlite_session_factory)
-    login_response = client.post("/auth/dev/login", json={"email": "user@example.com"})
-    session_key = login_response.json()["session_key"]
+    session_key = login_as(client, "user@example.com")["session_key"]
 
     response = client.get("/auth/me", headers=_session_headers(session_key))
 
@@ -108,8 +111,7 @@ def test_auth_me_returns_current_user_summary(sqlite_session_factory: sessionmak
 
 def test_auth_me_rejects_expired_session(sqlite_session_factory: sessionmaker) -> None:
     client = _build_test_client(sqlite_session_factory)
-    login_response = client.post("/auth/dev/login", json={"email": "user@example.com"})
-    session_key = login_response.json()["session_key"]
+    session_key = login_as(client, "user@example.com")["session_key"]
 
     with sqlite_session_factory() as session:
         auth_session = session.scalar(
@@ -127,8 +129,7 @@ def test_auth_me_rejects_expired_session(sqlite_session_factory: sessionmaker) -
 
 def test_auth_me_rejects_revoked_session(sqlite_session_factory: sessionmaker) -> None:
     client = _build_test_client(sqlite_session_factory)
-    login_response = client.post("/auth/dev/login", json={"email": "user@example.com"})
-    session_key = login_response.json()["session_key"]
+    session_key = login_as(client, "user@example.com")["session_key"]
 
     with sqlite_session_factory() as session:
         auth_session = session.scalar(

@@ -15,17 +15,17 @@ const emit = defineEmits<{
 
 const store = useStore()
 const email = ref('')
-const nickname = ref('')
+const password = ref('')
 
 const authError = computed(() => store.state.auth.error)
 const isLoading = computed(() => store.state.auth.isLoading)
 
 async function submit() {
-  if (!email.value.trim()) return
+  if (!email.value.trim() || !password.value) return
   try {
-    await store.dispatch('auth/devLogin', {
+    await store.dispatch('auth/login', {
       email: email.value.trim(),
-      nickname: nickname.value.trim() || undefined,
+      password: password.value,
     })
     emit('login')
     emit('close')
@@ -49,11 +49,11 @@ async function submit() {
         />
       </div>
       <div>
-        <label class="block text-xs text-towa-text-muted mb-1">닉네임</label>
+        <label class="block text-xs text-towa-text-muted mb-1">비밀번호</label>
         <input
-          v-model="nickname"
-          type="text"
-          placeholder="tester"
+          v-model="password"
+          type="password"
+          autocomplete="current-password"
           class="w-full bg-towa-bg border border-towa-border rounded-md px-3 py-2 text-sm text-towa-text placeholder:text-towa-text-muted focus:outline-none focus:border-towa-accent"
           @keyup.enter="submit"
         />
@@ -78,7 +78,7 @@ async function submit() {
       <BaseButton variant="secondary" @click="emit('close')">취소</BaseButton>
       <BaseButton
         variant="primary"
-        :disabled="!email.trim() || isLoading"
+        :disabled="!email.trim() || !password || isLoading"
         @click="submit"
       >
         {{ isLoading ? '로그인 중...' : '로그인' }}

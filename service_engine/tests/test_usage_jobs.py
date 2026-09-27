@@ -6,6 +6,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.db import get_db_session
 from app.main import create_app
+from auth_helpers import login_as
 from app.modules.auth.models import User
 from app.modules.billing.models import CreditAccount, CreditHold, CreditLedger, UsageJob
 
@@ -32,9 +33,7 @@ def _assert_error(payload: dict[str, object], *, code: str) -> None:
 
 
 def _login(client: TestClient, email: str) -> dict[str, object]:
-    response = client.post("/auth/dev/login", json={"email": email})
-    assert response.status_code == 200
-    return response.json()
+    return login_as(client, email)
 
 
 def test_create_usage_job_reserves_credit_and_is_idempotent(sqlite_session_factory: sessionmaker) -> None:

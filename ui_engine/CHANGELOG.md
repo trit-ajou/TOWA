@@ -4,6 +4,18 @@
 
 ---
 
+## 2026-09-28
+
+### 02:06 — dev-login 제거, 재로그인 창을 비밀번호 방식으로
+- 배경: 초대코드 가입 + 비밀번호 로그인으로 전환된 뒤에도 임시 방식이던 dev-login(email만으로 세션 발급)이 UI·service에 남아 있었음. 쓰이지 않는 인증 경로라 보안상 제거
+- `LoginModal.vue`: 이메일+닉네임 → **이메일+비밀번호**, `auth/login` 호출. store의 `devLogin` action, `AuthBackend.devLogin`/`LoginInput`, real backend의 `/auth/dev/login` 호출 제거. emulated backend는 내부 헬퍼로 대체
+- `backend.spec`은 `auth.login` 기준으로, e2e 헬퍼는 로그인 화면의 가입 모드로(`E2E_INVITE_CODE`) 변경
+- (service_engine 쪽: `/auth/dev/login`·allowlist 설정 제거, 테스트 fixture를 가입/로그인으로 이전)
+- 검증: vitest 47 통과(1건은 로컬 node18 crypto 기존 이슈, CI node20 통과), `vue-tsc` 0. service_engine pytest 43 통과(postgres 4 skip — CI에서 실행)
+
+### 02:06 — AI 작업 결과 대기 한도 약 5분 → 10분 (`useAiActions.pollUntilTerminal`)
+- 한도를 넘긴 작업 결과는 도착해도 반영되지 않음. 평상시 10~60초 대비 여유를 크게 둠
+
 ## 2026-09-26
 
 ### 00:46 — 캐시 DB 업그레이드가 다른 탭에 막히면 썸네일이 영영 안 뜨던 회귀 수정

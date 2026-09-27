@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { devLogin, clearBrowserState } from './helpers/auth'
+import { signUp, clearBrowserState } from './helpers/auth'
 import { createProjectWithOnePage } from './helpers/project'
 
 // Category 2: page-navigation cache hit + prefetch (#39 §page-binary-prefetch)
@@ -9,7 +9,7 @@ test.describe('page cache + prefetch', () => {
   })
 
   test('switches pages without a full reload and warms IDB cache for neighbors', async ({ page }) => {
-    await devLogin(page)
+    await signUp(page)
     const projectId = await createProjectWithOnePage(page, `cache-${Date.now()}`)
 
     await page.goto(`/project/${projectId}/edit`)
