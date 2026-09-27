@@ -1,11 +1,21 @@
 import type { Page } from '@playwright/test'
 
-const DEFAULT_EMAIL = 'e2e@towa.test'
+const E2E_PASSWORD = 'e2e-password'
 
-/** Sign in via the dev-login form. Returns once /library is reached. */
-export async function devLogin(page: Page, email: string = DEFAULT_EMAIL, nickname?: string): Promise<void> {
+/**
+ * Sign up a fresh account through the login page's signup mode (the retired
+ * dev-login form used to create-or-reuse by email alone). Each e2e email is
+ * unique, so signup always creates the account. Returns once /library is reached.
+ * Needs an invite code accepted by the target service engine (E2E_INVITE_CODE).
+ */
+export async function signUp(page: Page, email: string = `e2e-${Date.now()}@towa.test`, nickname?: string): Promise<void> {
+  const inviteCode = process.env.E2E_INVITE_CODE
+  if (!inviteCode) throw new Error('E2E_INVITE_CODE is required (a code from SERVICE_ENGINE_INVITE_CODES)')
   await page.goto('/login')
+  await page.getByRole('button', { name: '회원가입' }).first().click()
   await page.locator('input[type=email]').fill(email)
+  await page.locator('input[type=password]').fill(E2E_PASSWORD)
+  await page.locator('input[placeholder="invite code"]').fill(inviteCode)
   if (nickname) await page.locator('input[autocomplete=nickname]').fill(nickname)
   await page.locator('button[type=submit]').click()
   await page.waitForURL(/\/library/, { timeout: 15_000 })

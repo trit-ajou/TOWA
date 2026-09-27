@@ -16,7 +16,7 @@ import { createAppBackend } from '@/backend'
 
 const backend = createAppBackend()
 
-const login = await backend.auth.devLogin({ email: 'user@example.com' })
+const login = await backend.auth.login({ email: 'user@example.com', password: 'secret' })
 const job = await backend.aiJobs.createJob(payload, { sessionKey: login.sessionKey })
 ```
 
@@ -47,7 +47,7 @@ Notes:
 Live smoke reference:
 
 - 날짜: `2026-03-29`
-- 검증 경로: `auth.devLogin -> auth.getCurrentUser -> aiJobs.createJob -> aiJobs.getJob`
+- 검증 경로(당시 dev-login 기준, 현재는 `auth.login`): `auth.devLogin -> auth.getCurrentUser -> aiJobs.createJob -> aiJobs.getJob`
 - `real/real` 조합으로 실제 `service_engine`과 `model_engine`에 연결해 확인했다.
 - cloud/`saas`의 `detect` 작업은 최종적으로 `succeeded`까지 갔고, service credit은 `1000 -> 995`로 줄었다.
 
