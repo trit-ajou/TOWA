@@ -126,7 +126,10 @@ export function useAiActions() {
 
   async function pollUntilTerminal(jobId: string, sessionKey: string | null): Promise<AiJobSnapshot> {
     const opts = sessionKey ? { sessionKey } : undefined
-    for (let i = 0; i < 300; i++) {
+    // ~10 min. A job that finishes after the client gives up is never applied,
+    // so keep generous headroom over the normal 10-60s (a first job after a
+    // model-engine restart under CPU contention once took ~5 min).
+    for (let i = 0; i < 600; i++) {
       const snap = await backend.aiJobs.getJob(jobId, opts)
       if (snap.status === 'succeeded' || snap.status === 'failed' || snap.status === 'partial') {
         return snap

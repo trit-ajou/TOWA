@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { devLogin, clearBrowserState } from './helpers/auth'
+import { signUp, clearBrowserState } from './helpers/auth'
 import { createProjectWithOnePage, createProjectWithPages } from './helpers/project'
 
 // Regression suite for the user-validation round fixes (CHANGELOG 23:17):
@@ -15,7 +15,7 @@ test.describe('autosave regression', () => {
   })
 
   test('thumbnail blob URL rotates after a save (no permanent blank)', async ({ page }) => {
-    await devLogin(page, `regress-${Date.now()}@towa.test`)
+    await signUp(page, `regress-${Date.now()}@towa.test`)
     const projectId = await createProjectWithOnePage(page, `thumb-${Date.now()}`)
 
     await page.goto(`/project/${projectId}/edit`)
@@ -58,7 +58,7 @@ test.describe('autosave regression', () => {
   })
 
   test('switching pages does not raise a false "저장 안 됨" badge on a clean page', async ({ page }) => {
-    await devLogin(page, `regress-${Date.now()}@towa.test`)
+    await signUp(page, `regress-${Date.now()}@towa.test`)
     const projectId = await createProjectWithOnePage(page, `clean-switch-${Date.now()}`)
     // The helper only uploads one page; we need at least two pages for the
     // "switch and observe no false dirty" check. Add the second one inline.
@@ -96,7 +96,7 @@ test.describe('autosave regression', () => {
     // painted on the next page's canvas while activeDocument.layers reports
     // none. (Reproduced before the fix; this test guards the deserialize
     // patch that allocates a fresh UID per loaded layer.)
-    await devLogin(page, `regress-${Date.now()}@towa.test`)
+    await signUp(page, `regress-${Date.now()}@towa.test`)
     const projectId = await createProjectWithPages(page, `idconflict-${Date.now()}`, 2)
 
     await page.goto(`/project/${projectId}/edit`)
@@ -139,7 +139,7 @@ test.describe('autosave regression', () => {
     // Fix: TextBlockItem flips its own `disabled` attribute synchronously
     // inside onRemove. Subsequent same-tick clicks land on a disabled
     // button and no-op; the click selector skips to the next live button.
-    await devLogin(page, `removerace-${Date.now()}@towa.test`)
+    await signUp(page, `removerace-${Date.now()}@towa.test`)
     const projectId = await createProjectWithOnePage(page, `removerace-${Date.now()}`)
 
     await page.goto(`/project/${projectId}/edit`)
@@ -185,7 +185,7 @@ test.describe('autosave regression', () => {
     // version of the same page. The fix: usePageLoader tracks
     // currentLoadedPageId and switchPage no-ops when the requested page
     // is already the active document.
-    await devLogin(page, `tabswap-${Date.now()}@towa.test`)
+    await signUp(page, `tabswap-${Date.now()}@towa.test`)
     const projectId = await createProjectWithOnePage(page, `tabswap-${Date.now()}`)
 
     await page.goto(`/project/${projectId}/edit`)
@@ -245,7 +245,7 @@ test.describe('autosave regression', () => {
   })
 
   test('text edit raises the badge on the active page card and clears after save', async ({ page }) => {
-    await devLogin(page, `regress-${Date.now()}@towa.test`)
+    await signUp(page, `regress-${Date.now()}@towa.test`)
     const projectId = await createProjectWithOnePage(page, `badge-${Date.now()}`)
 
     await page.goto(`/project/${projectId}/edit`)

@@ -23,11 +23,6 @@ export interface CurrentSessionInfo {
   reservedUnits: number
 }
 
-export interface LoginInput {
-  email: string
-  nickname?: string
-}
-
 export interface LoginResult extends CurrentSessionInfo {
   sessionKey: string
   expiresIn: number
@@ -142,7 +137,6 @@ export interface AiJobSnapshot {
 }
 
 export interface AuthBackend {
-  devLogin(input: LoginInput): Promise<LoginResult>
   signup(input: SignupInput): Promise<LoginResult>
   login(input: LoginCredentials): Promise<LoginResult>
   getCurrentUser(options: AuthRequestOptions): Promise<CurrentSessionInfo>

@@ -5,6 +5,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.db import get_db_session
 from app.main import create_app
+from auth_helpers import login_as
 
 
 def _build_test_client(sqlite_session_factory: sessionmaker) -> TestClient:
@@ -23,9 +24,7 @@ def _session_headers(session_key: str) -> dict[str, str]:
 
 
 def _login(client: TestClient, email: str = "user@example.com") -> str:
-    response = client.post("/auth/dev/login", json={"email": email})
-    assert response.status_code == 200
-    return response.json()["session_key"]
+    return login_as(client, email)["session_key"]
 
 
 def _assert_error(payload: dict[str, object], *, code: str, reason: str | None = None) -> None:

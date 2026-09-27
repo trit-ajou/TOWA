@@ -26,10 +26,6 @@ class SessionExpiredError(InvalidSessionError):
     pass
 
 
-class EmailNotAllowedError(AuthServiceError):
-    """Dev login is restricted and this email is not on the allowlist."""
-
-
 class InvalidInviteCodeError(AuthServiceError):
     """Signup invite code is missing or invalid."""
 
@@ -50,7 +46,7 @@ class AuthenticatedContext:
 
 
 @dataclass(frozen=True)
-class DevLoginResult:
+class SessionLoginResult:
     session_key: str
     expires_in: int
     context: AuthenticatedContext
@@ -106,7 +102,7 @@ def create_password_signup(
     password: str,
     invite_code: str,
     nickname: str | None,
-) -> DevLoginResult:
+) -> SessionLoginResult:
     # Invite code is validated before any DB work; codes are configured out of band.
     if invite_code.strip() not in get_settings().signup_invite_codes():
         raise InvalidInviteCodeError("Invalid invite code")
@@ -139,7 +135,7 @@ def create_password_signup(
         session.flush()
 
     _seed_sample_for_user(session, user_id=user.id)
-    return DevLoginResult(
+    return SessionLoginResult(
         session_key=session_bundle.plaintext,
         expires_in=session_bundle.expires_in,
         context=AuthenticatedContext(
@@ -170,7 +166,7 @@ def authenticate_password_login(
     *,
     email: str,
     password: str,
-) -> DevLoginResult:
+) -> SessionLoginResult:
     normalized_email = _normalize_email(email)
     session_bundle = generate_session_token()
 
@@ -194,59 +190,7 @@ def authenticate_password_login(
         session.add(auth_session)
         session.flush()
 
-    return DevLoginResult(
-        session_key=session_bundle.plaintext,
-        expires_in=session_bundle.expires_in,
-        context=AuthenticatedContext(
-            user=user,
-            auth_session=auth_session,
-            credit_account=credit_account,
-        ),
-    )
-
-
-def create_dev_session(
-    session: Session,
-    *,
-    email: str,
-    nickname: str | None,
-) -> DevLoginResult:
-    normalized_email = _normalize_email(email)
-    # Temporary access gate: when an allowlist is configured, only those emails may sign in.
-    allowed_emails = get_settings().dev_login_allowed_emails()
-    if allowed_emails and normalized_email.lower() not in allowed_emails:
-        raise EmailNotAllowedError(f"Email not permitted to sign in: {normalized_email}")
-    normalized_nickname = _normalize_optional_nickname(nickname)
-    session_bundle = generate_session_token()
-
-    with session.begin():
-        user = session.scalar(
-            select(User)
-            .options(selectinload(User.credit_account))
-            .where(User.email == normalized_email),
-        )
-        if user is None:
-            user = User(
-                email=normalized_email,
-                nickname=normalized_nickname or _default_nickname(normalized_email),
-                status=UserStatus.ACTIVE,
-            )
-            session.add(user)
-            session.flush()
-        elif normalized_nickname is not None:
-            user.nickname = normalized_nickname
-
-        credit_account = _ensure_credit_account(session, user=user)
-        auth_session = AuthSession(
-            user_id=user.id,
-            session_token_hash=session_bundle.token_hash,
-            expires_at=session_bundle.expires_at,
-            last_used_at=utcnow(),
-        )
-        session.add(auth_session)
-        session.flush()
-
-    return DevLoginResult(
+    return SessionLoginResult(
         session_key=session_bundle.plaintext,
         expires_in=session_bundle.expires_in,
         context=AuthenticatedContext(

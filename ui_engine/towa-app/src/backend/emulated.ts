@@ -9,7 +9,6 @@ import type {
   CurrentSessionInfo,
   FilesBackend,
   LoginCredentials,
-  LoginInput,
   LoginResult,
   SignupInput,
   PageSnapshotPayload,
@@ -74,35 +73,36 @@ export function createEmulatedAppBackend(): AppBackend {
   let jobSequence = 1
   let pipelineSequence = 1
 
-  const auth: AuthBackend = {
-    async devLogin(input: LoginInput): Promise<LoginResult> {
-      const normalizedEmail = input.email.trim().toLowerCase()
-      const nickname = input.nickname?.trim() || normalizedEmail.split('@')[0] || 'tester'
-      const sessionKey = `emu-session-${sessionSequence++}`
-      const payload: LoginResult = {
-        sessionKey,
-        expiresIn: 24 * 60 * 60,
-        user: {
-          id: `emu-user-${normalizedEmail.replace(/[^a-z0-9]+/gi, '-')}`,
-          email: normalizedEmail,
-          nickname,
-          status: 'active',
-          createdAt: '2026-03-25T00:00:00Z',
-        },
-        creditBalance: 1000,
-        reservedUnits: 0,
-      }
-      sessions.set(sessionKey, payload)
-      return clone(payload)
-    },
+  // Emulated backend does not check passwords or invite codes: any email gets
+  // a session, the same create-or-reuse behavior the real signup/login pair has.
+  function openEmulatedSession(email: string, requestedNickname?: string): LoginResult {
+    const normalizedEmail = email.trim().toLowerCase()
+    const nickname = requestedNickname?.trim() || normalizedEmail.split('@')[0] || 'tester'
+    const sessionKey = `emu-session-${sessionSequence++}`
+    const payload: LoginResult = {
+      sessionKey,
+      expiresIn: 24 * 60 * 60,
+      user: {
+        id: `emu-user-${normalizedEmail.replace(/[^a-z0-9]+/gi, '-')}`,
+        email: normalizedEmail,
+        nickname,
+        status: 'active',
+        createdAt: '2026-03-25T00:00:00Z',
+      },
+      creditBalance: 1000,
+      reservedUnits: 0,
+    }
+    sessions.set(sessionKey, payload)
+    return clone(payload)
+  }
 
+  const auth: AuthBackend = {
     async signup(input: SignupInput): Promise<LoginResult> {
-      // Emulated backend does not enforce invite codes; mirror a dev login.
-      return auth.devLogin({ email: input.email, nickname: input.nickname })
+      return openEmulatedSession(input.email, input.nickname)
     },
 
     async login(input: LoginCredentials): Promise<LoginResult> {
-      return auth.devLogin({ email: input.email })
+      return openEmulatedSession(input.email)
     },
 
     async getCurrentUser(options: AuthRequestOptions): Promise<CurrentSessionInfo> {

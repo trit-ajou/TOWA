@@ -6,6 +6,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.db import get_db_session
 from app.main import create_app
+from auth_helpers import login_as
 from app.modules.billing.models import CreditAccount
 
 
@@ -33,13 +34,7 @@ def _assert_error(payload: dict[str, object], *, code: str) -> None:
 def test_contract_example_login_and_me_flow(sqlite_session_factory: sessionmaker) -> None:
     client = _build_test_client(sqlite_session_factory)
 
-    login_response = client.post(
-        "/auth/dev/login",
-        json={"email": "user@example.com", "nickname": "tester"},
-    )
-
-    assert login_response.status_code == 200
-    login_payload = login_response.json()
+    login_payload = login_as(client, "user@example.com", nickname="tester")
     assert login_payload["expires_in"] == 86400
 
     me_response = client.get(
@@ -56,7 +51,7 @@ def test_contract_example_login_and_me_flow(sqlite_session_factory: sessionmaker
 
 def test_contract_example_usage_hold_is_idempotent_per_user(sqlite_session_factory: sessionmaker) -> None:
     client = _build_test_client(sqlite_session_factory)
-    session_key = client.post("/auth/dev/login", json={"email": "user@example.com"}).json()["session_key"]
+    session_key = login_as(client, "user@example.com")["session_key"]
 
     payload = {
         "idempotency_key": "page-1-translate",
@@ -77,7 +72,7 @@ def test_contract_example_usage_hold_is_idempotent_per_user(sqlite_session_facto
 
 def test_contract_example_insufficient_credit_returns_conflict(sqlite_session_factory: sessionmaker) -> None:
     client = _build_test_client(sqlite_session_factory)
-    session_key = client.post("/auth/dev/login", json={"email": "user@example.com"}).json()["session_key"]
+    session_key = login_as(client, "user@example.com")["session_key"]
 
     with sqlite_session_factory() as session:
         account = session.scalar(select(CreditAccount))
@@ -102,7 +97,7 @@ def test_contract_example_insufficient_credit_returns_conflict(sqlite_session_fa
 
 def test_contract_example_duplicate_capture_is_idempotent(sqlite_session_factory: sessionmaker) -> None:
     client = _build_test_client(sqlite_session_factory)
-    session_key = client.post("/auth/dev/login", json={"email": "user@example.com"}).json()["session_key"]
+    session_key = login_as(client, "user@example.com")["session_key"]
 
     job_id = client.post(
         "/usage/jobs",
@@ -135,7 +130,7 @@ def test_contract_example_duplicate_capture_is_idempotent(sqlite_session_factory
 
 def test_contract_example_duplicate_release_is_idempotent(sqlite_session_factory: sessionmaker) -> None:
     client = _build_test_client(sqlite_session_factory)
-    session_key = client.post("/auth/dev/login", json={"email": "user@example.com"}).json()["session_key"]
+    session_key = login_as(client, "user@example.com")["session_key"]
 
     job_id = client.post(
         "/usage/jobs",

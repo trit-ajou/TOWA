@@ -45,12 +45,12 @@ describe('real backend adapters', () => {
       serviceEngineUrl: 'http://localhost:8000',
       modelEngineUrl: 'http://localhost:8100',
     })
-    const result = await backend.auth.devLogin({ email: 'user@example.com' })
+    const result = await backend.auth.login({ email: 'user@example.com', password: 'pw' })
 
     expect(result.sessionKey).toBe('session-1')
     expect(result.user.email).toBe('user@example.com')
     expect(fetch).toHaveBeenCalledWith(
-      'http://localhost:8000/auth/dev/login',
+      'http://localhost:8000/auth/login',
       expect.objectContaining({
         method: 'POST',
       }),
@@ -227,7 +227,7 @@ describe('real backend adapters', () => {
       modelEngineUrl: 'http://localhost:8100',
     })
 
-    await expect(backend.auth.devLogin({ email: 'user@example.com' })).rejects.toMatchObject({
+    await expect(backend.auth.login({ email: 'user@example.com', password: 'pw' })).rejects.toMatchObject({
       payload: {
         code: 'invalid_response',
       },
@@ -242,7 +242,7 @@ describe('real backend adapters', () => {
       modelEngineUrl: 'http://localhost:8100',
     })
 
-    await expect(backend.auth.devLogin({ email: 'user@example.com' })).rejects.toMatchObject({
+    await expect(backend.auth.login({ email: 'user@example.com', password: 'pw' })).rejects.toMatchObject({
       payload: {
         code: 'backend_unreachable',
       },
@@ -253,7 +253,7 @@ describe('real backend adapters', () => {
 describe('emulated backend adapters', () => {
   it('emulates login and polling lifecycle without network calls', async () => {
     const backend = createEmulatedAppBackend()
-    const login = await backend.auth.devLogin({ email: 'user@example.com' })
+    const login = await backend.auth.login({ email: 'user@example.com', password: 'pw' })
     const currentUser = await backend.auth.getCurrentUser({ sessionKey: login.sessionKey })
 
     expect(currentUser.user.email).toBe('user@example.com')
@@ -286,8 +286,8 @@ describe('emulated backend adapters', () => {
 
   it('scopes emulated saas jobs to the creating session and rejects mismatch payloads', async () => {
     const backend = createEmulatedAppBackend()
-    const firstLogin = await backend.auth.devLogin({ email: 'first@example.com' })
-    const secondLogin = await backend.auth.devLogin({ email: 'second@example.com' })
+    const firstLogin = await backend.auth.login({ email: 'first@example.com', password: 'pw' })
+    const secondLogin = await backend.auth.login({ email: 'second@example.com', password: 'pw' })
 
     const created = await backend.aiJobs.createJob(
       {
@@ -363,7 +363,7 @@ describe('backend factory', () => {
       modelEngineUrl: 'http://localhost:8100',
     })
 
-    const login = await backend.auth.devLogin({ email: 'user@example.com' })
+    const login = await backend.auth.login({ email: 'user@example.com', password: 'pw' })
     const created = await backend.aiJobs.createJob(
       {
         idempotencyKey: 'project:proj-1:page:001:op:detect:v:2',

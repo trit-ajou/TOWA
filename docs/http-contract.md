@@ -56,7 +56,7 @@ UI의 `deployment mode=standalone`은 model의 `runtime_context.mode=local`에 �
 
 | Caller | Target | Endpoints |
 | --- | --- | --- |
-| `UI engine` | `service engine` | `POST /auth/dev/login`, `GET /auth/me` |
+| `UI engine` | `service engine` | `POST /auth/signup`, `POST /auth/login`, `GET /auth/me` |
 | `UI engine` | `service engine` | `GET /api/v1/folders`, `POST /api/v1/folders`, `PATCH /api/v1/folders/{folder_id}`, `DELETE /api/v1/folders/{folder_id}`, `POST /api/v1/folders/{folder_id}/restore`, `GET /api/v1/trash` |
 | `UI engine` | `service engine` | `POST /api/v1/projects`, `GET /api/v1/projects`, `GET /api/v1/projects/{project_id}`, `PATCH /api/v1/projects/{project_id}`, `DELETE /api/v1/projects/{project_id}`, `POST /api/v1/projects/{project_id}/restore` |
 | `UI engine` | `service engine` | `GET /api/v1/projects/{project_id}/pages`, `POST /api/v1/projects/{project_id}/pages`, `GET /api/v1/pages/{page_id}/snapshot`, `PUT /api/v1/pages/{page_id}/snapshot`, `DELETE /api/v1/pages/{page_id}`, `GET /api/v1/pages/{page_id}/thumbnail` |
@@ -199,18 +199,20 @@ project:{project_id}:page:{page_id}:op:{operation_kind}:v:{attempt_or_revision}
 
 ### Auth
 
-#### `POST /auth/dev/login`
+#### `POST /auth/signup`
 
 요청:
 
 ```json
 {
   "email": "user@example.com",
+  "password": "secret",
+  "invite_code": "towa-2026-demo",
   "nickname": "tester"
 }
 ```
 
-응답:
+응답 (`POST /auth/login`과 동일한 형태):
 
 ```json
 {
@@ -230,9 +232,29 @@ project:{project_id}:page:{page_id}:op:{operation_kind}:v:{attempt_or_revision}
 
 규칙:
 
-- `email`은 trim, lowercase 처리한다
-- 기존 유저면 새 `session_key`를 다시 발급한다
-- `nickname`이 들어오면 기존 유저 닉네임도 갱신한다
+- `email`은 trim, lowercase 처리한다. `nickname`이 없으면 email local part를 쓴다
+- `invite_code`는 `SERVICE_ENGINE_INVITE_CODES`(콤마 구분) 중 하나여야 한다 — 아니면 `403 invalid_invite_code`
+- 이미 가입된 email이면 `409 email_already_registered`
+- 비밀번호는 pbkdf2로 해시해 저장한다
+- `SERVICE_ENGINE_SAMPLE_PROJECT_ID`가 설정돼 있으면 새 계정에 샘플 프로젝트를 복사한다(best-effort, 실패해도 가입은 성공)
+
+#### `POST /auth/login`
+
+요청:
+
+```json
+{
+  "email": "user@example.com",
+  "password": "secret"
+}
+```
+
+규칙:
+
+- 성공할 때마다 새 `session_key`를 발급한다
+- email/password 불일치는 `401 invalid_credentials`
+
+> 임시 방식이던 `POST /auth/dev/login`(비밀번호 없이 email만으로 세션 발급)과 `SERVICE_ENGINE_DEV_LOGIN_ALLOWLIST`는 2026-09-28 폐지됐다.
 
 #### `GET /auth/me`
 

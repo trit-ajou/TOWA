@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { devLogin, clearBrowserState } from './helpers/auth'
+import { signUp, clearBrowserState } from './helpers/auth'
 import { createProjectWithOnePage } from './helpers/project'
 
 // Category 4: cache survives reload (#39 §QueryClient IDB persister)
@@ -9,7 +9,7 @@ test.describe('cache persistence across reload', () => {
   })
 
   test('query persister database is created and a hard reload still shows the library', async ({ page }) => {
-    await devLogin(page)
+    await signUp(page)
     await createProjectWithOnePage(page, `persist-${Date.now()}`)
     await page.goto('/library')
 
