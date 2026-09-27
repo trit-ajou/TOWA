@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { devLogin, clearBrowserState } from './helpers/auth'
+import { signUp, clearBrowserState } from './helpers/auth'
 import { createProjectWithOnePage } from './helpers/project'
 
 // Category 1: library → project → editor entry flow (#39 §메타지침)
@@ -9,7 +9,7 @@ test.describe('entry flow', () => {
   })
 
   test('logs in, opens library, creates a project, and reaches the editor', async ({ page }) => {
-    await devLogin(page)
+    await signUp(page)
     await expect(page).toHaveURL(/\/library/)
 
     const name = `e2e-${Date.now()}`

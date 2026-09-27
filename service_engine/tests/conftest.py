@@ -20,6 +20,8 @@ from app.db.session import make_engine, make_session_factory
 @pytest.fixture(autouse=True)
 def clear_caches(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("DATABASE_URL", raising=False)
+    # Sessions are created via invite-code signup (see auth_helpers.login_as).
+    monkeypatch.setenv("SERVICE_ENGINE_INVITE_CODES", "test-invite")
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()

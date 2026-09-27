@@ -57,7 +57,7 @@
 
 ### UI engine
 
-- `POST /auth/dev/login`
+- `POST /auth/signup`, `POST /auth/login` (초대코드 가입 + 비밀번호 로그인)
 - `GET /auth/me`
 - cloud에서 folder CRUD/trash/restore
 - cloud에서 project CRUD

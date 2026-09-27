@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { devLogin, clearBrowserState } from './helpers/auth'
+import { signUp, clearBrowserState } from './helpers/auth'
 import { createProjectWithOnePage } from './helpers/project'
 
 // Category 3: auto-save + Ctrl+S + dirty title (#39 §저장 모델)
@@ -9,7 +9,7 @@ test.describe('save model', () => {
   })
 
   test('dirty title prefix and Ctrl+S clear it', async ({ page }) => {
-    await devLogin(page)
+    await signUp(page)
     const projectId = await createProjectWithOnePage(page, `save-${Date.now()}`)
     await page.goto(`/project/${projectId}/edit`)
     await expect(page.locator('#towa-canvas-area')).toBeVisible()

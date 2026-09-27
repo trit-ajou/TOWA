@@ -10,7 +10,6 @@ import type {
   EngineError,
   FilesBackend,
   LoginCredentials,
-  LoginInput,
   LoginResult,
   SignupInput,
   PageSnapshotPayload,
@@ -50,17 +49,6 @@ export function createRealAppBackend(options: RealBackendOptions): AppBackend {
 
 export function createRealAuthBackend(options: RealBackendOptions): AuthBackend {
   return {
-    async devLogin(input: LoginInput): Promise<LoginResult> {
-      const payload = await requestJson(`${options.serviceEngineUrl}/auth/dev/login`, {
-        method: 'POST',
-        body: JSON.stringify({
-          email: input.email,
-          nickname: input.nickname,
-        }),
-      })
-      return toLoginResult(payload)
-    },
-
     async signup(input: SignupInput): Promise<LoginResult> {
       const payload = await requestJson(`${options.serviceEngineUrl}/auth/signup`, {
         method: 'POST',

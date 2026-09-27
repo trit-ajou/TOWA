@@ -8,8 +8,7 @@ from app.api.errors import openapi_error_responses, raise_auth_http_error
 from app.api.schemas.auth import (
     AuthenticatedUserResponse,
     CurrentUserResponse,
-    DevLoginRequest,
-    DevLoginResponse,
+    SessionLoginResponse,
     LoginRequest,
     SignupRequest,
 )
@@ -27,34 +26,8 @@ def _current_user_response(context: auth_service.AuthenticatedContext) -> Curren
     )
 
 
-@router.post(
-    "/dev/login",
-    response_model=DevLoginResponse,
-    responses=openapi_error_responses(422, 409),
-)
-def dev_login(
-    payload: DevLoginRequest,
-    session: Session = Depends(get_db_session),
-) -> DevLoginResponse:
-    try:
-        result = auth_service.create_dev_session(
-            session,
-            email=payload.email,
-            nickname=payload.nickname,
-        )
-    except Exception as exc:  # noqa: BLE001
-        raise_auth_http_error(exc)
-    return DevLoginResponse(
-        session_key=result.session_key,
-        expires_in=result.expires_in,
-        user=AuthenticatedUserResponse.model_validate(result.context.user),
-        credit_balance=result.context.credit_account.balance_units,
-        reserved_units=result.context.credit_account.reserved_units,
-    )
-
-
-def _dev_login_response(result: auth_service.DevLoginResult) -> DevLoginResponse:
-    return DevLoginResponse(
+def _session_login_response(result: auth_service.SessionLoginResult) -> SessionLoginResponse:
+    return SessionLoginResponse(
         session_key=result.session_key,
         expires_in=result.expires_in,
         user=AuthenticatedUserResponse.model_validate(result.context.user),
@@ -65,13 +38,13 @@ def _dev_login_response(result: auth_service.DevLoginResult) -> DevLoginResponse
 
 @router.post(
     "/signup",
-    response_model=DevLoginResponse,
+    response_model=SessionLoginResponse,
     responses=openapi_error_responses(409, 422),
 )
 def signup(
     payload: SignupRequest,
     session: Session = Depends(get_db_session),
-) -> DevLoginResponse:
+) -> SessionLoginResponse:
     try:
         result = auth_service.create_password_signup(
             session,
@@ -82,18 +55,18 @@ def signup(
         )
     except Exception as exc:  # noqa: BLE001
         raise_auth_http_error(exc)
-    return _dev_login_response(result)
+    return _session_login_response(result)
 
 
 @router.post(
     "/login",
-    response_model=DevLoginResponse,
+    response_model=SessionLoginResponse,
     responses=openapi_error_responses(401, 422),
 )
 def login(
     payload: LoginRequest,
     session: Session = Depends(get_db_session),
-) -> DevLoginResponse:
+) -> SessionLoginResponse:
     try:
         result = auth_service.authenticate_password_login(
             session,
@@ -102,7 +75,7 @@ def login(
         )
     except Exception as exc:  # noqa: BLE001
         raise_auth_http_error(exc)
-    return _dev_login_response(result)
+    return _session_login_response(result)
 
 
 @router.get("/me", response_model=CurrentUserResponse, responses=openapi_error_responses(401))
