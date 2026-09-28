@@ -6,6 +6,15 @@
 
 ## 2026-09-28
 
+### 16:15 — AI 사용 방식 선택: 클라우드(서비스 키) / 개인 키(FactChat·Gemini)
+- 배경(임시 운영 방침): 실서비스 전이라 cloud/standalone을 나눠 운영하지 않고 웹 하나로 운영하면서, 로그인한 사용자가 AI 사용 방식을 고른다. 클라우드는 관리자가 클라우드 비밀번호로 제한할 수 있음(계정 유지, 변경 시 전원 해제). 02:15의 BYOK(클라우드 탭에 키를 넣으면 플랫폼 키보다 우선)는 과금 주체가 섞여 이 구조로 대체
+- `src/ai/ai-credentials.ts`(byok.ts 대체): 사용자별 모드·제공자·제공자별 키(브라우저에만), 요청용 `credential_mode`/`personal_provider`/`session_provider_secrets` 생성, 이전 BYOK 키는 FactChat 개인 키로 이전
+- auth store: `cloudAccess {required, granted}`(로그인·`/auth/me`), `unlockCloudAccess` → `POST /auth/cloud-access`
+- 환경설정 → 모델: "AI 사용 방식" — 클라우드(사용 가능/비밀번호 입력) · 개인 키(제공자 선택, 키 저장·삭제)
+- `useAiActions`: 선택한 모드로 요청. 클라우드 권한 없음 / 번역·인페인팅에 개인 키 없음이면 요청 전에 안내(검출은 키 불필요)
+- (함께: service_engine 클라우드 비밀번호·usage hold 403, model_engine credential mode 분리 + SaaS provider 라우팅 보안 수정)
+- 검증: `ai-credentials.spec` 10, UI vitest 57(로컬 node18 crypto 1건 기존), `vue-tsc` 0
+
 ### 02:15 — BYOK(개인 API 키) 등록 UI + 전달 경로 (staging까지만 배포)
 - 배경: model_engine resolver는 이미 `runtime_context.session_provider_secrets`의 사용자 키를 플랫폼 키보다 우선 사용(SaaS 포함)하지만, UI에 키를 등록·전송하는 경로가 없었음. service_engine에는 사용자 secret 저장소가 없음
 - 신규 `src/ai/byok.ts`: 사용자별 키를 **이 브라우저 localStorage에만** 보관(`towa.byok.<userId>`), 마스킹, 요청 payload 생성. FactChat 키 하나로 번역(`openai_compatible`)·인페인팅(`mindlogic`) 두 provider에 같은 키

@@ -15,6 +15,14 @@
 - `NEXT_SESSION_HANDOFF.md`: 다음 세션 시작 시 바로 읽을 상태 요약과 우선순위 메모
 - `SPEC.md`, `../docs/http-contract.md`: 외부 엔진 경계와 SaaS/local 계약 참고
 
+## 2026-09-28 — SaaS credential mode 분리 + provider 라우팅 보안 수정
+
+- `credentials/policy.py`: SaaS를 platform mode(기본, 플랫폼 키 + usage hold)와 personal mode(`metadata.credential_mode=personal`, `personal_provider` ∈ factchat·gemini, 사용자 키만·hold 없음·platform fallback 금지)로 분리. 임시 운영 방침 — `SESSION_AND_CREDENTIAL_IMPLEMENTATION.md` §5.4
+- resolver: SaaS platform mode는 요청의 사용자 키를 무시하고 항상 플랫폼 키, personal mode는 사용자 키가 없으면 `CredentialResolutionError`. local은 기존대로(요청 키 → 로컬 저장 키)
+- `api/jobs.py`: **보안 수정** — SaaS에서 클라이언트 `metadata`의 provider 라우팅 override(base_url·api_key·backend·model·inpaint provider) 무시(플랫폼 키가 임의 주소로 전송될 수 있었음). personal provider 라우팅은 서버 결정(FactChat 게이트웨이 / Gemini Developer API). 알 수 없는 provider는 `422 invalid_personal_provider`, personal job은 usage hold 생략
+- `vertex_translation`: `gemini_vertexai` stage config(개인 Gemini 키는 AI Studio 키) — platform 기본값 유지
+- 테스트: `tests/test_byok_session_keys.py` 11개(모드별 credential, SaaS override 무시, provider 라우팅, hold 생략, 잘못된 provider)
+
 ## 이번에 구현한 범위
 
 현재는 공통 계약층을 넘어서, 첫 built-in 모델 경로까지 구현했다.
