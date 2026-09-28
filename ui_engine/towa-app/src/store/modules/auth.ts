@@ -1,6 +1,7 @@
 import type { Module } from 'vuex'
 import type {
   AuthBackend,
+  CloudAccess,
   CurrentSessionInfo,
   EngineError,
   LoginResult,
@@ -15,9 +16,13 @@ export interface AuthState {
   user: SessionUser | null
   creditBalance: number
   reservedUnits: number
+  /** Platform-key access; refreshed from the server on login and session restore. */
+  cloudAccess: CloudAccess
   error: EngineError | null
   isLoading: boolean
 }
+
+const OPEN_CLOUD_ACCESS: CloudAccess = { required: false, granted: true }
 
 interface PersistedSession {
   sessionKey: string
@@ -41,6 +46,7 @@ const auth: Module<AuthState, unknown> = {
     user: null,
     creditBalance: 0,
     reservedUnits: 0,
+    cloudAccess: { ...OPEN_CLOUD_ACCESS },
     error: null,
     isLoading: false,
   }),
@@ -62,6 +68,10 @@ const auth: Module<AuthState, unknown> = {
       state.user = null
       state.creditBalance = 0
       state.reservedUnits = 0
+      state.cloudAccess = { ...OPEN_CLOUD_ACCESS }
+    },
+    SET_CLOUD_ACCESS(state, access: CloudAccess | undefined) {
+      state.cloudAccess = access ? { ...access } : { ...OPEN_CLOUD_ACCESS }
     },
     SET_ERROR(state, e: EngineError | null) {
       state.error = e
@@ -89,6 +99,7 @@ const auth: Module<AuthState, unknown> = {
       commit('SET_ERROR', null)
       try {
         const result: LoginResult = await ctx.auth.signup(input)
+        commit('SET_CLOUD_ACCESS', result.cloudAccess)
         const persist: PersistedSession = {
           sessionKey: result.sessionKey,
           user: result.user,
@@ -115,6 +126,7 @@ const auth: Module<AuthState, unknown> = {
       commit('SET_ERROR', null)
       try {
         const result: LoginResult = await ctx.auth.login(input)
+        commit('SET_CLOUD_ACCESS', result.cloudAccess)
         const persist: PersistedSession = {
           sessionKey: result.sessionKey,
           user: result.user,
@@ -148,6 +160,7 @@ const auth: Module<AuthState, unknown> = {
               sessionKey: parsed.sessionKey,
             })
             commit('SET_CREDIT', info.creditBalance)
+            commit('SET_CLOUD_ACCESS', info.cloudAccess)
           } catch {
             commit('CLEAR_SESSION')
             localStorage.removeItem(STORAGE_KEY)
@@ -156,6 +169,13 @@ const auth: Module<AuthState, unknown> = {
       } catch {
         localStorage.removeItem(STORAGE_KEY)
       }
+    },
+
+    /** Unlock the platform ("cloud") AI key for this account; throws BackendError on a wrong password. */
+    async unlockCloudAccess({ state, commit }, password: string) {
+      if (!ctx.auth || !state.sessionKey) throw new Error('not logged in')
+      const info: CurrentSessionInfo = await ctx.auth.unlockCloudAccess(password, { sessionKey: state.sessionKey })
+      commit('SET_CLOUD_ACCESS', info.cloudAccess)
     },
 
     logout({ commit }) {
@@ -170,6 +190,7 @@ const auth: Module<AuthState, unknown> = {
           sessionKey: state.sessionKey,
         })
         commit('SET_CREDIT', info.creditBalance)
+        commit('SET_CLOUD_ACCESS', info.cloudAccess)
         const raw = localStorage.getItem(STORAGE_KEY)
         if (raw) {
           try {

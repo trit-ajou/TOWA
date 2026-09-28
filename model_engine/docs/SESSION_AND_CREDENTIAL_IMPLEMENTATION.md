@@ -251,6 +251,23 @@ credential은 orchestrator가 stage 실행 직전에 resolve해서 stage request
 
 즉 cloud와 local의 기본 credential path는 코드상으로도 분기되어 있다.
 
+(2026-09 갱신) SaaS는 아래 §5.4의 두 credential mode로 나뉜다. `ExecutionMode.SAAS` + platform mode는 여전히 `PLATFORM_MANAGED`이고 요청에 사용자 키가 실려 와도 무시한다. personal mode만 `USER_PERSONAL_SESSION`을 쓴다.
+
+### 5.4 임시 운영 방침: SaaS에서 개인 키 병행 (2026-09)
+
+실서비스 전 단계라 cloud/local 배포를 나눠 운영하지 않고 SaaS(웹) 하나로 운영하면서, 로그인한 사용자가 credential mode를 고른다. §5.1(SaaS=platform managed) 원칙에서 의도적으로 벗어난 **임시 방침**이다. 구현: `model_engine/credentials/policy.py`.
+
+| mode | 선택 방법 (`runtime_context`) | credential | usage hold | 과금 |
+|---|---|---|---|---|
+| platform (기본) | 아무것도 안 보냄 | `PLATFORM_MANAGED` (사용자 키는 무시) | 필요 — service가 클라우드 권한 검사 | 크레딧 |
+| personal | `metadata.credential_mode="personal"`, `metadata.personal_provider` ∈ `factchat`·`gemini`, `session_provider_secrets` | `USER_PERSONAL_SESSION` 만 — 없으면 stage 실패, **platform fallback 금지** | 생략 | 사용자 provider 직접 |
+
+- 알 수 없는 `personal_provider`는 job create에서 `422 invalid_personal_provider`.
+- personal provider별 라우팅은 서버가 정한다. factchat은 번역 `openai_compatible`(FactChat 게이트웨이) + 인페인팅 `mindlogic`, gemini는 번역 `translation_provider`(Gemini Developer API, `gemini_vertexai=False`) + 인페인팅 `nanobanana`. 키는 해당 provider id로 `session_provider_secrets`에 실린다.
+- **보안**: SaaS에서는 클라이언트 `metadata`의 provider 라우팅 override(`openai_compatible_base_url`, `openai_compatible_api_key`, `translation_backend`, `translation_model_name`, `inpaint_provider`, `inpaint_model_name`)를 무시한다. 플랫폼 키는 서버에서 붙으므로, 이를 허용하면 클라이언트가 플랫폼 키를 임의 주소로 보낼 수 있었다. local 실행은 사용자 자신의 환경이라 override를 유지한다.
+- **클라우드 권한** (service_engine): 관리자가 클라우드 비밀번호를 설정하면(`dev_admin set-cloud-password`), `POST /auth/cloud-access`로 한 번 입력한 계정만 platform mode의 usage hold가 통과한다(`403 cloud_access_required`). 권한은 계정에 유지되고 비밀번호 변경·해제 시 전원 해제된다. 미설정이면 로그인한 모두에게 열린다.
+- 개인 키는 서버에 저장하지 않는다. UI가 브라우저(`towa.ai-credentials.<userId>`)에 보관하고 AI job 요청에만 싣는다.
+
 ## 6. 서버리스 실행을 고려한 구현 포인트
 
 동기 HTTP 처리만 보면 현재 구조는 서버리스와도 잘 맞는다.

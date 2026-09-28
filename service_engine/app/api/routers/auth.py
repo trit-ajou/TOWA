@@ -7,32 +7,42 @@ from app.api.dependencies import get_session_token
 from app.api.errors import openapi_error_responses, raise_auth_http_error
 from app.api.schemas.auth import (
     AuthenticatedUserResponse,
+    CloudAccessResponse,
+    CloudAccessUnlockRequest,
     CurrentUserResponse,
     SessionLoginResponse,
     LoginRequest,
     SignupRequest,
 )
 from app.db import get_db_session
+from app.modules.auth import cloud_access
 from app.modules.auth import service as auth_service
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-def _current_user_response(context: auth_service.AuthenticatedContext) -> CurrentUserResponse:
+def _cloud_access_response(session: Session, context: auth_service.AuthenticatedContext) -> CloudAccessResponse:
+    state = cloud_access.cloud_access_state(session, user=context.user)
+    return CloudAccessResponse(required=state.required, granted=state.granted)
+
+
+def _current_user_response(session: Session, context: auth_service.AuthenticatedContext) -> CurrentUserResponse:
     return CurrentUserResponse(
         user=AuthenticatedUserResponse.model_validate(context.user),
         credit_balance=context.credit_account.balance_units,
         reserved_units=context.credit_account.reserved_units,
+        cloud_access=_cloud_access_response(session, context),
     )
 
 
-def _session_login_response(result: auth_service.SessionLoginResult) -> SessionLoginResponse:
+def _session_login_response(session: Session, result: auth_service.SessionLoginResult) -> SessionLoginResponse:
     return SessionLoginResponse(
         session_key=result.session_key,
         expires_in=result.expires_in,
         user=AuthenticatedUserResponse.model_validate(result.context.user),
         credit_balance=result.context.credit_account.balance_units,
         reserved_units=result.context.credit_account.reserved_units,
+        cloud_access=_cloud_access_response(session, result.context),
     )
 
 
@@ -55,7 +65,7 @@ def signup(
         )
     except Exception as exc:  # noqa: BLE001
         raise_auth_http_error(exc)
-    return _session_login_response(result)
+    return _session_login_response(session, result)
 
 
 @router.post(
@@ -75,7 +85,7 @@ def login(
         )
     except Exception as exc:  # noqa: BLE001
         raise_auth_http_error(exc)
-    return _session_login_response(result)
+    return _session_login_response(session, result)
 
 
 @router.get("/me", response_model=CurrentUserResponse, responses=openapi_error_responses(401))
@@ -87,5 +97,27 @@ def get_me(
         context = auth_service.authenticate_session_token(session, session_token=session_token)
     except Exception as exc:  # noqa: BLE001
         raise_auth_http_error(exc)
-    return _current_user_response(context)
+    return _current_user_response(session, context)
 
+
+
+@router.post(
+    "/cloud-access",
+    response_model=CurrentUserResponse,
+    responses=openapi_error_responses(401, 403, 422),
+)
+def unlock_cloud_access(
+    payload: CloudAccessUnlockRequest,
+    session_token: str = Depends(get_session_token),
+    session: Session = Depends(get_db_session),
+) -> CurrentUserResponse:
+    """Unlock the platform ("cloud") AI key for this account with the cloud password."""
+    try:
+        context = auth_service.unlock_cloud_access_for_session(
+            session,
+            session_token=session_token,
+            password=payload.password,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise_auth_http_error(exc)
+    return _current_user_response(session, context)

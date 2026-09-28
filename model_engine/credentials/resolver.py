@@ -10,6 +10,7 @@ from typing import Optional
 from ..config.runtime_config import load_runtime_config, runtime_config_value
 from ..contracts.credentials import BillingMode, CredentialBinding, CredentialSource, ResolvedCredential
 from ..contracts.stages import ExecutionMode, StageRuntimeContext
+from .policy import is_personal_saas
 
 
 class CredentialResolutionError(RuntimeError):
@@ -60,14 +61,23 @@ class DefaultCredentialResolver(CredentialResolver):
         if provider is None:
             return {}, {}
 
-        # BYOK: a user-supplied session key wins in every mode so cloud users can
-        # spend their own provider credit instead of the shared platform key.
         session_secret = runtime_context.session_provider_secrets.get(provider)
+        if runtime_context.mode is ExecutionMode.SAAS:
+            if is_personal_saas(runtime_context):
+                # Personal-key mode skips the platform credit hold, so it must never
+                # fall back to the platform key: the user's key or nothing.
+                if not session_secret:
+                    raise CredentialResolutionError(
+                        f"Personal key mode requires your own key for provider={provider}"
+                    )
+                return self._session_binding(provider, session_secret)
+            # Platform mode is billed to credits: always the platform key, even if
+            # the request happens to carry a user key.
+            return self._resolve_platform_binding(provider)
+
+        # Local: a per-request key wins, else the locally persisted one.
         if session_secret:
             return self._session_binding(provider, session_secret)
-
-        if runtime_context.mode is ExecutionMode.SAAS:
-            return self._resolve_platform_binding(provider)
         return self._resolve_local_binding(provider, runtime_context)
 
     def _provider_for_stage(self, stage_name: str, stage_config: dict[str, object]) -> Optional[str]:

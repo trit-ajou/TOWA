@@ -134,6 +134,46 @@ def _command_reset_credits(args: argparse.Namespace) -> int:
     return 0
 
 
+def _read_secret(args: argparse.Namespace) -> str:
+    # Read from stdin so the password never lands in shell history or `ps`.
+    if args.password_stdin:
+        return sys.stdin.readline().rstrip("\n")
+    import getpass
+
+    return getpass.getpass("New cloud password: ")
+
+
+def _command_set_cloud_password(args: argparse.Namespace) -> int:
+    from app.modules.auth import cloud_access
+
+    password = _read_secret(args)
+    engine, session_factory = _build_session_factory()
+    try:
+        with session_factory() as session, session.begin():
+            version = cloud_access.set_cloud_password(session, password=password)
+    except Exception as exc:  # noqa: BLE001
+        engine.dispose()
+        return _handle_error(exc)
+    engine.dispose()
+    _print_json({"action": "set-cloud-password", "policy_version": version, "revoked_existing_unlocks": True})
+    return 0
+
+
+def _command_clear_cloud_password(_args: argparse.Namespace) -> int:
+    from app.modules.auth import cloud_access
+
+    engine, session_factory = _build_session_factory()
+    try:
+        with session_factory() as session, session.begin():
+            version = cloud_access.set_cloud_password(session, password=None)
+    except Exception as exc:  # noqa: BLE001
+        engine.dispose()
+        return _handle_error(exc)
+    engine.dispose()
+    _print_json({"action": "clear-cloud-password", "policy_version": version, "cloud_open_to_all": True})
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Service engine developer admin CLI.")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -159,6 +199,23 @@ def build_parser() -> argparse.ArgumentParser:
     reset_credits_parser.add_argument("--email", required=True)
     reset_credits_parser.add_argument("--balance", type=int, required=True)
     reset_credits_parser.set_defaults(handler=_command_reset_credits)
+
+    set_cloud_parser = subparsers.add_parser(
+        "set-cloud-password",
+        help="Require a cloud password for the platform AI key; revokes every existing unlock.",
+    )
+    set_cloud_parser.add_argument(
+        "--password-stdin",
+        action="store_true",
+        help="Read the password from stdin (first line) instead of prompting.",
+    )
+    set_cloud_parser.set_defaults(handler=_command_set_cloud_password)
+
+    clear_cloud_parser = subparsers.add_parser(
+        "clear-cloud-password",
+        help="Remove the cloud password: the platform AI key is open to every signed-in user.",
+    )
+    clear_cloud_parser.set_defaults(handler=_command_clear_cloud_password)
 
     return parser
 
