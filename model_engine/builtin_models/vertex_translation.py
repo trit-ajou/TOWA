@@ -163,7 +163,9 @@ def _translate_blocks_with_vertex(
         f"Input:\n{json.dumps(request_payload, ensure_ascii=False, indent=2)}"
     )
 
-    client = genai.Client(vertexai=True, api_key=api_key)
+    # Platform config uses a Vertex (express) key; a user's own Gemini key from AI
+    # Studio needs the Gemini Developer API instead, which personal mode requests.
+    client = genai.Client(vertexai=bool(config.get("gemini_vertexai", True)), api_key=api_key)
     response = client.models.generate_content(
         model=model_name,
         contents=prompt,
