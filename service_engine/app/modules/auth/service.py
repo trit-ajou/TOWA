@@ -218,3 +218,17 @@ def authenticate_session_token(session: Session, *, session_token: str) -> Authe
         raise InvalidSessionError("User is inactive.")
 
     return _build_context(user, auth_session)
+
+
+def unlock_cloud_access_for_session(
+    session: Session,
+    *,
+    session_token: str,
+    password: str,
+) -> AuthenticatedContext:
+    from app.modules.auth import cloud_access
+
+    with session.begin():
+        context = authenticate_session_token(session, session_token=session_token)
+        cloud_access.unlock_cloud_access(session, user=context.user, password=password)
+    return context

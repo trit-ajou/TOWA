@@ -17,10 +17,19 @@ export interface SessionUser {
   createdAt: string
 }
 
+/** Whether this account may run AI on the platform key (see service_engine cloud_access). */
+export interface CloudAccess {
+  /** A cloud password is configured by the admin. */
+  required: boolean
+  /** This account may use the platform key right now. */
+  granted: boolean
+}
+
 export interface CurrentSessionInfo {
   user: SessionUser
   creditBalance: number
   reservedUnits: number
+  cloudAccess: CloudAccess
 }
 
 export interface LoginResult extends CurrentSessionInfo {
@@ -140,6 +149,7 @@ export interface AuthBackend {
   signup(input: SignupInput): Promise<LoginResult>
   login(input: LoginCredentials): Promise<LoginResult>
   getCurrentUser(options: AuthRequestOptions): Promise<CurrentSessionInfo>
+  unlockCloudAccess(password: string, options: AuthRequestOptions): Promise<CurrentSessionInfo>
 }
 
 export interface AiJobsBackend {

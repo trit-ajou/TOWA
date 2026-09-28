@@ -7,6 +7,17 @@ import BaseButton from './BaseButton.vue'
 import { useDeploymentMode, type ModeTag } from '@/composables/useDeploymentMode'
 import { DEPLOYMENT_MODE, setDeploymentMode, type DeploymentMode } from '@/config/deployment'
 import { MODEL_ENGINE_URL } from '@/config/engines'
+import {
+  PERSONAL_PROVIDERS,
+  loadAiCredentials,
+  maskKey,
+  saveAiCredentials,
+  withPersonalKey,
+  type AiCredentialMode,
+  type AiCredentialSettings,
+  type PersonalProvider,
+} from '@/ai/ai-credentials'
+import { BackendError } from '@/backend/errors'
 
 const store = useStore()
 const currentTheme = computed(() => store.getters['editor/theme'])
@@ -28,6 +39,66 @@ const authCreditBalance = computed(() => store.state.auth.creditBalance)
 
 function handleAccountLogout() {
   store.dispatch('auth/logout')
+}
+
+// AI 사용 방식: cloud (platform key, credits; optional cloud password) or a
+// personal provider key kept in this browser (src/ai/ai-credentials.ts).
+const aiUserId = computed<string | null>(() => store.state.auth.user?.id ?? null)
+const aiSettings = ref<AiCredentialSettings>(loadAiCredentials(null))
+const keyInput = ref('')
+const aiError = ref<string | null>(null)
+watch(aiUserId, (id) => {
+  aiSettings.value = loadAiCredentials(id)
+  keyInput.value = ''
+  aiError.value = null
+}, { immediate: true })
+
+const savedKey = computed(() => aiSettings.value.keys[aiSettings.value.provider] ?? null)
+const providerHint = computed(() => PERSONAL_PROVIDERS.find((p) => p.id === aiSettings.value.provider)?.hint ?? '')
+
+function persistAi(next: AiCredentialSettings) {
+  if (!aiUserId.value) return
+  try {
+    saveAiCredentials(aiUserId.value, next)
+    aiSettings.value = next
+    aiError.value = null
+  } catch {
+    aiError.value = '이 브라우저에서는 설정을 저장할 수 없습니다 (저장소 차단).'
+  }
+}
+function setAiMode(mode: AiCredentialMode) {
+  persistAi({ ...aiSettings.value, mode })
+}
+function setPersonalProvider(provider: PersonalProvider) {
+  persistAi({ ...aiSettings.value, provider })
+  keyInput.value = ''
+}
+function savePersonalKey() {
+  persistAi(withPersonalKey(aiSettings.value, aiSettings.value.provider, keyInput.value))
+  keyInput.value = ''
+}
+function deletePersonalKey() {
+  persistAi(withPersonalKey(aiSettings.value, aiSettings.value.provider, ''))
+}
+
+const cloudAccess = computed(() => store.state.auth.cloudAccess ?? { required: false, granted: true })
+const cloudPassword = ref('')
+const cloudError = ref<string | null>(null)
+const cloudBusy = ref(false)
+async function unlockCloud() {
+  if (!cloudPassword.value) return
+  cloudBusy.value = true
+  cloudError.value = null
+  try {
+    await store.dispatch('auth/unlockCloudAccess', cloudPassword.value)
+    cloudPassword.value = ''
+  } catch (e) {
+    cloudError.value = e instanceof BackendError && e.payload.code === 'invalid_cloud_password'
+      ? '비밀번호가 올바르지 않습니다.'
+      : '확인에 실패했습니다. 잠시 후 다시 시도하세요.'
+  } finally {
+    cloudBusy.value = false
+  }
 }
 
 function handleOpenLogin() {
@@ -218,6 +289,82 @@ const transLanguages = [
                 <div class="text-xs text-towa-text-muted">현재 플랜</div>
                 <div class="text-sm text-towa-text font-medium mt-1">Free</div>
                 <p class="text-xs text-towa-text-muted mt-1">Pro 모델은 유료 플랜에서 사용 가능합니다.</p>
+              </div>
+
+              <div class="pt-4 border-t border-towa-border space-y-3" data-testid="ai-credentials">
+                <h3 class="text-base font-semibold text-towa-text">AI 사용 방식</h3>
+                <p v-if="!aiUserId" class="text-xs text-towa-text-muted">로그인 후 설정할 수 있습니다.</p>
+
+                <div class="grid grid-cols-2 gap-2">
+                  <button
+                    v-for="opt in ([{ id: 'cloud', title: '클라우드', desc: '서비스 키 · 크레딧 차감' }, { id: 'personal', title: '개인 키', desc: '내 API 키 · 크레딧 없음' }] as const)"
+                    :key="opt.id"
+                    type="button"
+                    :disabled="!aiUserId"
+                    :data-testid="`ai-mode-${opt.id}`"
+                    class="text-left p-3 rounded-md border transition-colors disabled:opacity-50"
+                    :class="aiSettings.mode === opt.id ? 'border-towa-accent bg-towa-accent/10' : 'border-towa-border hover:border-towa-text-muted'"
+                    @click="setAiMode(opt.id)"
+                  >
+                    <div class="text-sm font-medium text-towa-text">{{ opt.title }}</div>
+                    <div class="text-xs text-towa-text-muted mt-0.5">{{ opt.desc }}</div>
+                  </button>
+                </div>
+
+                <!-- 클라우드 -->
+                <div v-if="aiSettings.mode === 'cloud'" class="space-y-2" data-testid="cloud-panel">
+                  <div class="text-xs" :class="cloudAccess.granted ? 'text-towa-accent' : 'text-towa-warning'" data-testid="cloud-status">
+                    {{ cloudAccess.granted ? '사용 가능' : '클라우드 비밀번호가 필요합니다' }}
+                  </div>
+                  <div v-if="!cloudAccess.granted" class="flex gap-2">
+                    <input
+                      v-model="cloudPassword"
+                      type="password"
+                      autocomplete="off"
+                      placeholder="클라우드 비밀번호"
+                      data-testid="cloud-password"
+                      class="flex-1 bg-towa-bg border border-towa-border rounded-md px-3 py-2 text-sm text-towa-text placeholder:text-towa-text-muted focus:outline-none focus:border-towa-accent"
+                      @keyup.enter="unlockCloud"
+                    />
+                    <BaseButton variant="primary" :disabled="!cloudPassword || cloudBusy" @click="unlockCloud">확인</BaseButton>
+                  </div>
+                  <p v-if="cloudError" class="text-xs text-red-400">{{ cloudError }}</p>
+                </div>
+
+                <!-- 개인 키 -->
+                <div v-else class="space-y-2" data-testid="personal-panel">
+                  <div>
+                    <label class="block text-xs text-towa-text-muted mb-1">제공자</label>
+                    <select
+                      :value="aiSettings.provider"
+                      data-testid="personal-provider"
+                      class="w-full bg-towa-bg border border-towa-border rounded-md px-3 py-2 text-sm text-towa-text focus:outline-none focus:border-towa-accent"
+                      @change="setPersonalProvider(($event.target as HTMLSelectElement).value as PersonalProvider)"
+                    >
+                      <option v-for="p in PERSONAL_PROVIDERS" :key="p.id" :value="p.id">{{ p.label }}</option>
+                    </select>
+                    <p class="text-xs text-towa-text-muted mt-1">{{ providerHint }}</p>
+                  </div>
+                  <div class="text-xs" :class="savedKey ? 'text-towa-accent' : 'text-towa-text-muted'" data-testid="personal-key-status">
+                    {{ savedKey ? `등록됨 ${maskKey(savedKey)}` : '키 미등록' }}
+                  </div>
+                  <div class="flex gap-2">
+                    <input
+                      v-model="keyInput"
+                      type="password"
+                      autocomplete="off"
+                      placeholder="API 키 입력"
+                      :disabled="!aiUserId"
+                      data-testid="personal-key-input"
+                      class="flex-1 bg-towa-bg border border-towa-border rounded-md px-3 py-2 text-sm text-towa-text placeholder:text-towa-text-muted focus:outline-none focus:border-towa-accent disabled:opacity-50"
+                      @keyup.enter="savePersonalKey"
+                    />
+                    <BaseButton variant="primary" :disabled="!aiUserId || !keyInput.trim()" @click="savePersonalKey">저장</BaseButton>
+                    <BaseButton v-if="savedKey" variant="secondary" @click="deletePersonalKey">삭제</BaseButton>
+                  </div>
+                  <p class="text-xs text-towa-text-muted">키는 이 브라우저에만 저장되고, AI 작업 요청에만 실려 전송됩니다.</p>
+                </div>
+                <p v-if="aiError" class="text-xs text-red-400">{{ aiError }}</p>
               </div>
             </div>
 

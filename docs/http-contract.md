@@ -256,6 +256,35 @@ project:{project_id}:page:{page_id}:op:{operation_kind}:v:{attempt_or_revision}
 
 > 임시 방식이던 `POST /auth/dev/login`(비밀번호 없이 email만으로 세션 발급)과 `SERVICE_ENGINE_DEV_LOGIN_ALLOWLIST`는 2026-09-28 폐지됐다.
 
+#### `POST /auth/cloud-access`
+
+클라우드(플랫폼 키) 사용 권한을 이 계정에 부여한다. 임시 운영 방침(README 2.2).
+
+헤더: `Authorization: Bearer <session_key>`
+
+요청:
+
+```json
+{ "password": "cloud-password" }
+```
+
+응답: `GET /auth/me`와 같은 형태 (`cloud_access.granted=true`).
+
+규칙:
+
+- 클라우드 비밀번호가 설정돼 있지 않으면 비밀번호와 상관없이 `granted=true`
+- 틀리면 `403 invalid_cloud_password`
+- 권한은 계정에 유지된다. 관리자가 비밀번호를 바꾸거나 해제하면 기존 권한은 모두 해제된다
+
+`cloud_access` 필드 (`/auth/signup`, `/auth/login`, `/auth/me`, `/auth/cloud-access` 응답):
+
+```json
+{ "cloud_access": { "required": true, "granted": false } }
+```
+
+- `required`: 관리자가 클라우드 비밀번호를 설정했는지
+- `granted`: 지금 플랫폼 키(크레딧)로 AI를 쓸 수 있는지. `false`면 `POST /usage/jobs`가 `403 cloud_access_required`
+
 #### `GET /auth/me`
 
 헤더:
@@ -317,6 +346,7 @@ Authorization: Bearer <session_key>
 - 같은 유저가 같은 `idempotency_key`로 다시 호출하면 같은 `job_id`를 돌려준다
 - 같은 유저가 같은 `idempotency_key`를 다른 payload로 재사용하면 `409 usage_conflict`와 `details.reason=idempotency_payload_mismatch`를 반환한다
 - 사용 가능한 credit이 부족하면 `409 insufficient_credits`다
+- 클라우드 권한이 없는 사용자(관리자가 클라우드 비밀번호를 설정했고 이 계정이 해제하지 않음)는 `403 cloud_access_required`다. hold = 플랫폼 키 사용이므로 개인 키(personal) 작업은 hold를 요청하지 않는다
 - stale hold 정리는 authenticated user 범위에서만 수행한다
 
 #### `POST /usage/jobs/{job_id}/capture`
@@ -835,6 +865,11 @@ Content-Type: application/json
   - 큰 payload는 반드시 여기의 ref, uri로 전달한다
 - `runtime_context.mode`
   - `saas` 또는 `local`
+- `runtime_context.metadata.credential_mode` / `personal_provider` / `runtime_context.session_provider_secrets` (saas, 임시 운영 방침)
+  - 없으면 platform mode: 플랫폼 키 + usage hold(크레딧). 실려 온 사용자 키는 무시
+  - `credential_mode="personal"` + `personal_provider` ∈ `factchat`·`gemini` + `session_provider_secrets`(factchat: `openai_compatible`·`mindlogic`, gemini: `translation_provider`·`nanobanana`): 사용자 키만 사용, usage hold 없음, 키가 없으면 stage 실패(플랫폼 키로 대체하지 않음)
+  - 알 수 없는 `personal_provider`는 `422 invalid_personal_provider`
+  - saas에서는 `metadata`의 provider 라우팅 override(base_url·api_key·backend·model·inpaint provider)를 무시한다. 상세: `model_engine/docs/SESSION_AND_CREDENTIAL_IMPLEMENTATION.md` §5.4
 
 응답 예시:
 

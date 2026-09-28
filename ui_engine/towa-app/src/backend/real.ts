@@ -82,6 +82,17 @@ export function createRealAuthBackend(options: RealBackendOptions): AuthBackend 
       })
       return toCurrentSessionInfo(payload)
     },
+
+    async unlockCloudAccess(password: string, requestOptions: AuthRequestOptions): Promise<CurrentSessionInfo> {
+      const payload = await requestJson(`${options.serviceEngineUrl}/auth/cloud-access`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${ensureSessionKey(requestOptions.sessionKey)}`,
+        },
+        body: JSON.stringify({ password }),
+      })
+      return toCurrentSessionInfo(payload)
+    },
   }
 }
 
@@ -272,7 +283,15 @@ function toCurrentSessionInfo(payload: JsonObject): CurrentSessionInfo {
     },
     creditBalance: Number(payload.credit_balance),
     reservedUnits: Number(payload.reserved_units),
+    cloudAccess: toCloudAccess(payload.cloud_access),
   }
+}
+
+function toCloudAccess(value: unknown): { required: boolean; granted: boolean } {
+  // Older service engines don't send it: they have no cloud password, i.e. open.
+  if (!value || typeof value !== 'object') return { required: false, granted: true }
+  const v = value as Record<string, unknown>
+  return { required: Boolean(v.required), granted: v.granted !== false }
 }
 
 function toAiJobCreateResult(payload: JsonObject): AiJobCreateResult {

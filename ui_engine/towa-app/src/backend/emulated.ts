@@ -120,7 +120,13 @@ export function createEmulatedAppBackend(): AppBackend {
         user: payload.user,
         creditBalance: payload.creditBalance,
         reservedUnits: payload.reservedUnits,
+        cloudAccess: payload.cloudAccess,
       })
+    },
+
+    async unlockCloudAccess(_password: string, options: AuthRequestOptions): Promise<CurrentSessionInfo> {
+      // Emulated backend has no cloud password: always open.
+      return auth.getCurrentUser(options)
     },
   }
 

@@ -14,6 +14,7 @@ import type { AiJobCreateInput, AiJobSnapshot, AiOperationKind } from '@/backend
 import type { Page, PageStatus } from '@/types/page'
 import type { PageSummary } from '@/file-adapter'
 import { applyAiJobSnapshotToCurrentPage } from '@/ai/result-applier'
+import { PERSONAL_PROVIDERS, jobCredentialContext, loadAiCredentials, type JobCredentialContext } from '@/ai/ai-credentials'
 import { getTextMeta, isTextLayer } from '@/utils/text-layer'
 import type { Layer } from '@bitmappery/definitions/document'
 
@@ -120,8 +121,34 @@ export function useAiActions() {
         requested_by: requestedBy,
         target_regions: [],
         selected_layer_ids: [],
+        // Cloud (platform key, credits) or personal key — see src/ai/ai-credentials.ts.
+        ...credentialRuntimeContext(),
       },
     }
+  }
+
+  function credentialRuntimeContext(): JobCredentialContext {
+    if (DEPLOYMENT_MODE.value !== 'cloud') return {}
+    const settings = loadAiCredentials(store.state.auth.user?.id)
+    // Personal mode without a key still sends the mode: detection needs no
+    // provider key and must not be billed to the platform.
+    return jobCredentialContext(settings)
+      ?? { metadata: { credential_mode: 'personal', personal_provider: settings.provider } }
+  }
+
+  /** Why this AI action can't be sent with the current settings, or null. */
+  function credentialProblem(action: AiOperationKind): string | null {
+    if (DEPLOYMENT_MODE.value !== 'cloud') return null
+    const settings = loadAiCredentials(store.state.auth.user?.id)
+    if (settings.mode === 'cloud') {
+      const access = (store.state as { auth?: { cloudAccess?: { granted: boolean } } }).auth?.cloudAccess
+      return access && !access.granted
+        ? '클라우드(서비스 키)를 쓰려면 클라우드 비밀번호가 필요합니다. 환경설정 → 모델에서 비밀번호를 입력하거나 개인 키를 등록하세요.'
+        : null
+    }
+    if (action === 'detect' || jobCredentialContext(settings)) return null
+    const label = PERSONAL_PROVIDERS.find((p) => p.id === settings.provider)?.label ?? settings.provider
+    return `${label} 개인 키가 등록되지 않았습니다. 환경설정 → 모델에서 키를 등록하세요.`
   }
 
   async function pollUntilTerminal(jobId: string, sessionKey: string | null): Promise<AiJobSnapshot> {
@@ -141,6 +168,11 @@ export function useAiActions() {
 
   async function runAction(action: AiOperationKind) {
     if (loading.value !== null) return
+    const problem = credentialProblem(action)
+    if (problem) {
+      showError('AI 사용 설정 필요', problem)
+      return
+    }
     loading.value = action
     lastResult.value = null
     let previousPage: Page | null = null
