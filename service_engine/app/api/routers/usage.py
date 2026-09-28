@@ -23,7 +23,7 @@ router = APIRouter(prefix="/usage", tags=["usage"])
 @router.post(
     "/jobs",
     response_model=UsageJobCreateResponse,
-    responses=openapi_error_responses(401, 409, 422),
+    responses=openapi_error_responses(401, 403, 409, 422),
 )
 def create_usage_job(
     payload: UsageJobCreateRequest,

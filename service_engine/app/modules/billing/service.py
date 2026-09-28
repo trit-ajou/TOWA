@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.core.clock import ensure_utc, utcnow
 from app.core.settings import get_settings
 from app.db.enums import CreditHoldStatus, UsageJobStatus, UsageOperationKind
+from app.modules.auth import cloud_access
 from app.modules.auth import service as auth_service
 from app.modules.billing.credits import capture_credit_hold, release_credit_hold, reserve_credit_for_job
 from app.modules.billing.models import CreditHold, UsageJob
@@ -165,6 +166,8 @@ def create_usage_job(
     normalized_request_ref = _normalize_required_text(request_ref, field_name="request_ref")
     with session.begin():
         context = auth_service.authenticate_session_token(session, session_token=session_token)
+        # A usage hold means "run on the platform key": only for users with cloud access.
+        cloud_access.ensure_cloud_access(session, user=context.user)
         expire_stale_holds_for_user(session, user_id=context.user.id)
         existing_job = session.scalar(
             select(UsageJob)

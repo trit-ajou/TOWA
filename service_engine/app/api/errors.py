@@ -12,6 +12,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.requests import Request
 
 from app.api.schemas.common import ErrorBody, ErrorResponse
+from app.modules.auth.cloud_access import CloudAccessRequiredError, InvalidCloudPasswordError
 from app.modules.auth.service import (
     AuthServiceError,
     EmailAlreadyRegisteredError,
@@ -92,6 +93,7 @@ def error_response(
 def openapi_error_responses(*status_codes: int) -> dict[int, dict[str, Any]]:
     descriptions = {
         status.HTTP_401_UNAUTHORIZED: "Authentication failed.",
+        status.HTTP_403_FORBIDDEN: "Not permitted (e.g. cloud access or invite code).",
         status.HTTP_404_NOT_FOUND: "Requested resource was not found.",
         status.HTTP_409_CONFLICT: "Request conflicted with the current domain state.",
         status.HTTP_422_UNPROCESSABLE_CONTENT: "Request validation failed.",
@@ -160,6 +162,18 @@ def _default_error_code(status_code: int) -> str:
 
 
 def raise_auth_http_error(exc: Exception) -> None:
+    if isinstance(exc, CloudAccessRequiredError):
+        raise APIError(
+            status_code=status.HTTP_403_FORBIDDEN,
+            code="cloud_access_required",
+            message=str(exc),
+        ) from exc
+    if isinstance(exc, InvalidCloudPasswordError):
+        raise APIError(
+            status_code=status.HTTP_403_FORBIDDEN,
+            code="invalid_cloud_password",
+            message=str(exc),
+        ) from exc
     if isinstance(exc, SessionExpiredError):
         raise APIError(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -206,6 +220,18 @@ def raise_auth_http_error(exc: Exception) -> None:
 
 
 def raise_usage_http_error(exc: Exception) -> None:
+    if isinstance(exc, CloudAccessRequiredError):
+        raise APIError(
+            status_code=status.HTTP_403_FORBIDDEN,
+            code="cloud_access_required",
+            message=str(exc),
+        ) from exc
+    if isinstance(exc, InvalidCloudPasswordError):
+        raise APIError(
+            status_code=status.HTTP_403_FORBIDDEN,
+            code="invalid_cloud_password",
+            message=str(exc),
+        ) from exc
     if isinstance(exc, UsageJobNotFoundError):
         raise APIError(
             status_code=status.HTTP_404_NOT_FOUND,

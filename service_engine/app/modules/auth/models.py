@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
-from sqlalchemy import DateTime, ForeignKey, Index, String, Uuid
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
 from app.db.base import Base
@@ -24,6 +24,8 @@ class User(TimestampMixin, Base):
     email: Mapped[str] = mapped_column(String(320), nullable=False, unique=True, index=True)
     nickname: Mapped[str] = mapped_column(String(50), nullable=False)
     password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Cloud-access policy version this user unlocked (see CloudAccessPolicy).
+    cloud_access_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     status: Mapped[UserStatus] = mapped_column(
         enum_type(UserStatus, name="user_status"),
         nullable=False,
@@ -77,3 +79,19 @@ class AuthSession(CreatedAtMixin, Base):
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     user: Mapped["User"] = relationship(back_populates="auth_sessions")
+
+
+class CloudAccessPolicy(TimestampMixin, Base):
+    """Single-row policy gating the platform ("cloud") AI key.
+
+    No row, or a row without a password, means cloud is open to every signed-in
+    user. With a password, a user must unlock it once; that is remembered as
+    ``User.cloud_access_version``. Changing or clearing the password bumps
+    ``version``, which revokes every earlier unlock at once.
+    """
+
+    __tablename__ = "cloud_access_policy"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
