@@ -54,6 +54,7 @@ from ..contracts.stages import (
     StageStatus,
 )
 from ..ipc.serde import document_from_data, document_to_data, patch_to_data, stage_report_to_data
+from ..credentials.policy import is_personal_saas, personal_provider
 from ..logging_utils import log_event, log_exception
 from ..models import ModelRegistry
 from ..orchestrator import PipelineOrchestrator
@@ -669,6 +670,13 @@ class ModelJobManager:
         if submission.runtime_context.mode is not ExecutionMode.SAAS:
             return submission
 
+        if is_personal_saas(submission.runtime_context) and personal_provider(submission.runtime_context) is None:
+            raise ModelJobError(
+                status_code=422,
+                code="invalid_personal_provider",
+                message="Personal key mode requires personal_provider to be one of: factchat, gemini",
+            )
+
         service_session_key = _service_session_key_from_authorization(authorization)
         runtime_context = submission.runtime_context
         runtime_context.service_session_key = service_session_key
@@ -679,6 +687,10 @@ class ModelJobManager:
         submission: JobSubmission,
     ) -> str | None:
         if submission.runtime_context.mode is not ExecutionMode.SAAS:
+            return None
+        if is_personal_saas(submission.runtime_context):
+            # Personal-key jobs are billed by the user's own provider; the resolver
+            # refuses to fall back to the platform key, so no platform credit hold.
             return None
 
         client = self._require_service_client()
@@ -1035,12 +1047,39 @@ def _resolve_primary_bitmap_artifact_ref(artifacts: dict[str, ArtifactDescriptor
     raise ValueError("Model jobs require at least one bitmap artifact")
 
 
-def _translation_model_id_from_runtime(runtime_context: StageRuntimeContext) -> str:
-    backend = (
-        runtime_context.metadata.get("translation_backend")
-        or runtime_config_value(RUNTIME_CONFIG, "TOWA_TRANSLATION_BACKEND")
+# --- AI provider routing ------------------------------------------------------
+#
+# SaaS requests come from the browser, but the platform key is attached here on
+# the server. Letting the client pick endpoints/backends/models in SaaS would
+# let it redirect the platform key anywhere (e.g. a client-set
+# openai_compatible_base_url would receive the platform key), so in SaaS the
+# client may only choose the credential mode and a personal provider from a
+# fixed list; everything else comes from server config. Local (standalone)
+# runs are the user's own machine and keep the metadata overrides.
+
+FACTCHAT_GATEWAY_BASE_URL = "https://factchat-cloud.mindlogic.ai/v1/gateway"
+PERSONAL_TRANSLATION_DEFAULT_MODEL = "gemini-3.5-flash-lite"
+
+
+def _client_metadata(runtime_context: StageRuntimeContext, key: str) -> object | None:
+    if runtime_context.mode is ExecutionMode.SAAS:
+        return None
+    return runtime_context.metadata.get(key)
+
+
+def _translation_backend_from_runtime(runtime_context: StageRuntimeContext) -> object | None:
+    provider = personal_provider(runtime_context)
+    if provider == "gemini":
+        return "vertex"
+    if provider == "factchat":
+        return "openai_compatible"
+    return _client_metadata(runtime_context, "translation_backend") or runtime_config_value(
+        RUNTIME_CONFIG, "TOWA_TRANSLATION_BACKEND"
     )
-    if backend == "vertex":
+
+
+def _translation_model_id_from_runtime(runtime_context: StageRuntimeContext) -> str:
+    if _translation_backend_from_runtime(runtime_context) == "vertex":
         return VERTEX_TRANSLATION_MODEL_ID
     return OPENAI_COMPATIBLE_TRANSLATION_MODEL_ID
 
@@ -1057,20 +1096,22 @@ def _inpaint_provider_config_from_runtime(
 ) -> dict[str, object]:
     provider = _inpaint_provider_from_runtime(runtime_context)
     if provider == "mindlogic":
-        return {
-            "provider": "mindlogic",
-            "model_name": str(
-                runtime_context.metadata.get("inpaint_model_name")
-                or runtime_config_value(RUNTIME_CONFIG, "TOWA_INPAINT_MODEL_NAME")
-                or MINDLOGIC_IMAGE_GEN_MODEL
-            ),
-        }
+        model_name = None if is_personal_saas(runtime_context) else (
+            _client_metadata(runtime_context, "inpaint_model_name")
+            or runtime_config_value(RUNTIME_CONFIG, "TOWA_INPAINT_MODEL_NAME")
+        )
+        return {"provider": "mindlogic", "model_name": str(model_name or MINDLOGIC_IMAGE_GEN_MODEL)}
     return {"provider": "nanobanana"}
 
 
 def _inpaint_provider_from_runtime(runtime_context: StageRuntimeContext) -> str:
+    provider = personal_provider(runtime_context)
+    if provider == "gemini":
+        return "nanobanana"
+    if provider == "factchat":
+        return "mindlogic"
     return str(
-        runtime_context.metadata.get("inpaint_provider")
+        _client_metadata(runtime_context, "inpaint_provider")
         or runtime_config_value(
             RUNTIME_CONFIG,
             "TOWA_INPAINT_PROVIDER",
@@ -1083,22 +1124,32 @@ def _inpaint_provider_from_runtime(runtime_context: StageRuntimeContext) -> str:
 def _translation_provider_config_from_runtime(
     runtime_context: StageRuntimeContext,
 ) -> dict[str, object]:
-    backend = (
-        runtime_context.metadata.get("translation_backend")
-        or runtime_config_value(RUNTIME_CONFIG, "TOWA_TRANSLATION_BACKEND")
-    )
+    backend = _translation_backend_from_runtime(runtime_context)
+    personal = is_personal_saas(runtime_context)
+
+    if personal:
+        model_name = str(
+            runtime_config_value(RUNTIME_CONFIG, "TOWA_PERSONAL_TRANSLATION_MODEL_NAME")
+            or PERSONAL_TRANSLATION_DEFAULT_MODEL
+        )
+        if backend == "vertex":
+            return {"provider": "translation_provider", "model_name": model_name, "gemini_vertexai": False}
+        # FactChat gateway; the key is the user's own (resolved per request) —
+        # never the platform api_key from runtime config.
+        return {"provider": "openai_compatible", "base_url": FACTCHAT_GATEWAY_BASE_URL, "model_name": model_name}
+
     if backend == "vertex":
         return {
             "provider": "translation_provider",
             "model_name": str(
-                runtime_context.metadata.get("translation_model_name")
+                _client_metadata(runtime_context, "translation_model_name")
                 or runtime_config_value(RUNTIME_CONFIG, "TOWA_TRANSLATION_MODEL_NAME")
                 or "gemini-3.1-flash-lite-preview"
             ),
         }
 
     api_key = str(
-        runtime_context.metadata.get("openai_compatible_api_key")
+        _client_metadata(runtime_context, "openai_compatible_api_key")
         or runtime_config_value(
             RUNTIME_CONFIG,
             "TOWA_OPENAI_COMPATIBLE_API_KEY",
@@ -1108,19 +1159,20 @@ def _translation_provider_config_from_runtime(
     )
     config: dict[str, object] = {
         "base_url": str(
-            runtime_context.metadata.get("openai_compatible_base_url")
+            _client_metadata(runtime_context, "openai_compatible_base_url")
             or runtime_config_value(RUNTIME_CONFIG, "TOWA_OPENAI_COMPATIBLE_BASE_URL")
             or OPENAI_COMPATIBLE_DEFAULT_BASE_URL
         ),
         "model_name": str(
-            runtime_context.metadata.get("translation_model_name")
+            _client_metadata(runtime_context, "translation_model_name")
             or runtime_config_value(RUNTIME_CONFIG, "TOWA_TRANSLATION_MODEL_NAME")
             or OPENAI_COMPATIBLE_DEFAULT_MODEL
         ),
     }
     if api_key:
         config["api_key"] = api_key
-    if "openai_compatible" in runtime_context.session_provider_secrets:
+    if runtime_context.mode is not ExecutionMode.SAAS and "openai_compatible" in runtime_context.session_provider_secrets:
+        # Local runs may still pass a per-request key through the resolver.
         config["provider"] = "openai_compatible"
     else:
         config["skip_provider_resolution"] = True

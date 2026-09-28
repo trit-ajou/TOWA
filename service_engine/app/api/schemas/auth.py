@@ -34,6 +34,17 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class CloudAccessResponse(BaseModel):
+    required: bool
+    granted: bool
+
+
+class CloudAccessUnlockRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    password: str
+
+
 class SessionLoginResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -42,6 +53,7 @@ class SessionLoginResponse(BaseModel):
     user: AuthenticatedUserResponse
     credit_balance: int
     reserved_units: int
+    cloud_access: CloudAccessResponse
 
 
 class CurrentUserResponse(BaseModel):
@@ -50,4 +62,5 @@ class CurrentUserResponse(BaseModel):
     user: AuthenticatedUserResponse
     credit_balance: int
     reserved_units: int
+    cloud_access: CloudAccessResponse
 

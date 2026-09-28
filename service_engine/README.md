@@ -14,6 +14,7 @@ FastAPI 기반 `service_engine` 초안입니다.
 - `POST /auth/signup` (초대코드 가입)
 - `POST /auth/login` (비밀번호 로그인)
 - `GET /auth/me`
+- `POST /auth/cloud-access` (클라우드 비밀번호로 플랫폼 키 사용 권한 부여 — 임시 운영 방침)
 - `POST /usage/jobs`
 - `POST /usage/jobs/{job_id}/capture`
 - `POST /usage/jobs/{job_id}/release`
